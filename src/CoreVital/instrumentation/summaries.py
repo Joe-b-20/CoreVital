@@ -12,6 +12,8 @@
 #   2026-01-14: Fixed attention summary computation - improved tensor shape handling and normalization
 #                Added better error handling and logging for attention tensor processing
 #                Fixed logits summary to properly handle topk extraction
+#   2026-01-15: Enhanced attention summary to support cross-attention tensors (different source/target lengths)
+#                Added compute_encoder_hidden_states_summaries helper for Seq2Seq models
 # ============================================================================
 
 from typing import Dict, List, Optional, Tuple, Any
@@ -96,9 +98,14 @@ def compute_attention_summary(
 ) -> Dict[str, Any]:
     """
     Compute summary statistics for attention tensor.
+    
+    Supports both self-attention and cross-attention tensors:
+    - Self-attention: shape (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
+    - Cross-attention: shape (batch, heads, target_seq_len, source_seq_len) or (heads, target_seq_len, source_seq_len)
+      where target_seq_len (query) and source_seq_len (key) can differ
 
     Args:
-        attention: Attention tensor, shape (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
+        attention: Attention tensor (self-attention or cross-attention)
         config: Attention summaries configuration
 
     Returns:
@@ -136,15 +143,19 @@ def compute_attention_summary(
             return {}
 
         # Handle different tensor shapes
-        # Expected shapes: (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
+        # Expected shapes for self-attention: (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
+        # Expected shapes for cross-attention: (batch, heads, target_len, source_len) or (heads, target_len, source_len)
         original_shape = attention.shape
         
-        # Ensure 3D: (heads, seq_len, seq_len)
+        # Ensure 3D: (heads, target_len, source_len) or (heads, seq_len, seq_len)
         if attention.dim() == 4:
             attention = attention[0]  # Take first batch
         elif attention.dim() != 3:
             logger.warning(f"Unexpected attention tensor shape: {original_shape}, expected 3D or 4D")
             return {}
+        
+        # For cross-attention, the last two dimensions may differ (target_seq_len != source_seq_len)
+        # This is fine - we compute entropy over the source dimension (last dim) for each target position
         
         # Move to CPU
         attention = attention.cpu().float()
@@ -166,8 +177,9 @@ def compute_attention_summary(
             attention_safe = attention + eps
             
             # Entropy: -sum(p * log(p)) per query position, then average over queries
-            # attention shape: (heads, seq_len, seq_len)
-            # We compute entropy over the last dimension (keys) for each query
+            # attention shape: (heads, target_len, source_len) for cross-attention
+            #                  (heads, seq_len, seq_len) for self-attention
+            # We compute entropy over the last dimension (keys/source) for each query/target position
             entropy = -(attention_safe * torch.log(attention_safe)).sum(dim=-1)
             
             if "entropy_mean" in config.stats:
@@ -178,8 +190,9 @@ def compute_attention_summary(
         
         # Concentration: max attention weight per head
         if "concentration_max" in config.stats:
-            # Max over keys for each query, then max over queries, then max over heads
-            max_attn = attention.max(dim=-1)[0]  # Max over keys: (heads, seq_len)
+            # Max over keys/source for each query/target, then max over queries/targets, then max over heads
+            # Works for both self-attention and cross-attention
+            max_attn = attention.max(dim=-1)[0]  # Max over keys/source: (heads, target_len) or (heads, seq_len)
             summary["concentration_max"] = float(max_attn.max().item())
         
         return summary
@@ -267,6 +280,46 @@ def compute_logits_summary(
         logger.exception("Failed to compute logits summary")
         raise SummaryComputationError(
             "Logits summary computation failed",
+            details=str(e)
+        ) from e
+
+
+def compute_encoder_hidden_states_summaries(
+    encoder_hidden_states: List[torch.Tensor],
+    config: HiddenSummariesConfig,
+) -> List[Dict[str, Any]]:
+    """
+    Compute summaries for encoder hidden states (one per encoder layer).
+    
+    Args:
+        encoder_hidden_states: List of hidden state tensors, one per encoder layer
+                             Each tensor shape: (batch, seq_len, hidden_dim) or (seq_len, hidden_dim)
+        config: Hidden summaries configuration
+        
+    Returns:
+        List of summary dictionaries, one per encoder layer
+        
+    Raises:
+        SummaryComputationError: If computation fails
+    """
+    try:
+        summaries = []
+        for layer_idx, hidden_state in enumerate(encoder_hidden_states):
+            if hidden_state is None:
+                logger.debug(f"Encoder layer {layer_idx} hidden state is None")
+                summaries.append({})
+                continue
+            
+            # Use the standard hidden summary computation
+            layer_summary = compute_hidden_summary(hidden_state, config)
+            summaries.append(layer_summary)
+        
+        return summaries
+        
+    except Exception as e:
+        logger.exception("Failed to compute encoder hidden states summaries")
+        raise SummaryComputationError(
+            "Encoder hidden states summary computation failed",
             details=str(e)
         ) from e
 

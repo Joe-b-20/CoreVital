@@ -12,6 +12,11 @@
 #   2026-01-14: Fixed logits extraction from generation outputs (added output_scores=True)
 #                Fixed hidden_states and attentions extraction (handle tuple-of-tuples structure)
 #                Added diagnostic logging for attention extraction
+#   2026-01-15: Added manual generation for Seq2Seq models (T5, BART, etc.)
+#                Seq2Seq models don't return hidden_states/attentions via generate(),
+#                so we manually step through the decoder to capture these outputs
+#   2026-01-15: Added deep Seq2Seq instrumentation - extract encoder_hidden_states, encoder_attentions,
+#                and cross_attentions from decoder outputs at each generation step
 # ============================================================================
 
 from dataclasses import dataclass, field
@@ -28,6 +33,7 @@ from CoreVital.instrumentation.summaries import (
 )
 from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
+from transformers import AutoModelForSeq2SeqLM
 
 
 logger = get_logger(__name__)
@@ -43,6 +49,7 @@ class StepData:
     logits: Optional[torch.Tensor] = None
     hidden_states: Optional[List[torch.Tensor]] = None
     attentions: Optional[List[torch.Tensor]] = None
+    cross_attentions: Optional[List[torch.Tensor]] = None  # For Seq2Seq models
 
 
 @dataclass
@@ -56,6 +63,9 @@ class InstrumentationResults:
     timeline: List[StepData] = field(default_factory=list)
     elapsed_ms: int = 0
     warnings: List[Dict[str, str]] = field(default_factory=list)
+    # Seq2Seq-specific fields
+    encoder_hidden_states: Optional[List[torch.Tensor]] = None
+    encoder_attentions: Optional[List[torch.Tensor]] = None
 
 
 class InstrumentationCollector:
@@ -111,36 +121,53 @@ class InstrumentationCollector:
             prompt_token_ids = inputs.input_ids[0].tolist()
             logger.info(f"Prompt tokens: {len(prompt_token_ids)}")
             
-            # Prepare generation config
-            gen_config = {
-                "max_new_tokens": self.config.generation.max_new_tokens,
-                "do_sample": self.config.generation.do_sample,
-                "temperature": self.config.generation.temperature,
-                "top_k": self.config.generation.top_k,
-                "top_p": self.config.generation.top_p,
-                "output_hidden_states": True,
-                "output_attentions": True,
-                "output_scores": True,  # Enable logits extraction
-                "return_dict_in_generate": True,
-                "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
-            }
+            # Check if this is a Seq2Seq model
+            # Seq2Seq models don't return hidden_states/attentions via generate()
+            # so we need to use manual generation
+            is_seq2seq = (self.model_bundle.model_class == AutoModelForSeq2SeqLM or
+                         isinstance(self.model_bundle.model, AutoModelForSeq2SeqLM))
             
             # Run generation with instrumentation
             logger.info("Starting instrumented generation...")
             start_time = time.time()
             
             with torch.no_grad():
-                outputs = self.model_bundle.model.generate(
-                    **inputs,
-                    **gen_config,
-                )
+                if is_seq2seq:
+                    logger.info("Using manual generation for Seq2Seq model to capture hidden states and attentions")
+                    outputs = self._generate_seq2seq_manual(
+                        inputs,
+                        prompt_token_ids,
+                    )
+                else:
+                    # Prepare generation config for CausalLM models
+                    gen_config = {
+                        "max_new_tokens": self.config.generation.max_new_tokens,
+                        "do_sample": self.config.generation.do_sample,
+                        "temperature": self.config.generation.temperature,
+                        "top_k": self.config.generation.top_k,
+                        "top_p": self.config.generation.top_p,
+                        "output_hidden_states": True,
+                        "output_attentions": True,
+                        "output_scores": True,  # Enable logits extraction
+                        "return_dict_in_generate": True,
+                        "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
+                    }
+                    outputs = self.model_bundle.model.generate(
+                        **inputs,
+                        **gen_config,
+                    )
             
             elapsed_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Generation complete in {elapsed_ms}ms")
             
             # Extract generated tokens
-            generated_ids = outputs.sequences[0].tolist()
-            generated_token_ids = generated_ids[len(prompt_token_ids):]
+            if is_seq2seq:
+                generated_token_ids = outputs["generated_token_ids"]
+                generated_ids = prompt_token_ids + generated_token_ids
+            else:
+                # Type narrowing: outputs is GenerateOutput here, not dict
+                generated_ids = outputs.sequences[0].tolist()  # type: ignore[union-attr]
+                generated_token_ids = generated_ids[len(prompt_token_ids):]
             
             # Decode generated text
             generated_text = self.model_bundle.tokenizer.decode(
@@ -153,14 +180,33 @@ class InstrumentationCollector:
             #logger.info(f"Generated text: {generated_text}")
             
             # Process timeline
-            timeline = self._process_timeline(
-                outputs,
-                prompt_token_ids,
-                generated_token_ids,
-            )
+            # Handle both standard generate() output and manual Seq2Seq output
+            encoder_hidden_states = None
+            encoder_attentions = None
+            if isinstance(outputs, dict) and "output_obj" in outputs:
+                # Manual Seq2Seq generation output
+                encoder_hidden_states = outputs.get("encoder_hidden_states")
+                encoder_attentions = outputs.get("encoder_attentions")
+                timeline = self._process_timeline(
+                    outputs["output_obj"],
+                    prompt_token_ids,
+                    generated_token_ids,
+                    cross_attentions=outputs.get("cross_attentions"),
+                )
+            else:
+                # Standard generate() output
+                timeline = self._process_timeline(
+                    outputs,
+                    prompt_token_ids,
+                    generated_token_ids,
+                )
             
             # Collect warnings
-            warnings = self._collect_warnings(outputs)
+            # Handle both standard generate() output and manual Seq2Seq output
+            if isinstance(outputs, dict) and "output_obj" in outputs:
+                warnings = self._collect_warnings(outputs["output_obj"])
+            else:
+                warnings = self._collect_warnings(outputs)
             
             return InstrumentationResults(
                 model_bundle=self.model_bundle,
@@ -171,6 +217,8 @@ class InstrumentationCollector:
                 timeline=timeline,
                 elapsed_ms=elapsed_ms,
                 warnings=warnings,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attentions=encoder_attentions,
             )
             
         except Exception as e:
@@ -180,11 +228,239 @@ class InstrumentationCollector:
                 details=str(e)
             ) from e
     
+    def _generate_seq2seq_manual(
+        self,
+        inputs: Any,
+        prompt_token_ids: List[int],
+    ) -> Dict[str, Any]:
+        """
+        Manual generation for Seq2Seq models to capture hidden states and attentions.
+        
+        Seq2Seq models (T5, BART, etc.) don't return hidden_states/attentions via
+        generate(), so we need to manually step through the decoder.
+        
+        Args:
+            inputs: Tokenized input from tokenizer
+            prompt_token_ids: Prompt token IDs
+            
+        Returns:
+            Dictionary with sequences, scores, hidden_states, and attentions
+        """
+        if self.model_bundle is None:
+            raise InstrumentationError("Model bundle not initialized")
+        
+        model = self.model_bundle.model
+        tokenizer = self.model_bundle.tokenizer
+        device = self.model_bundle.device
+        
+        # Encode input with encoder
+        logger.debug("Encoding input with encoder...")
+        encoder_outputs = model.encoder(
+            input_ids=inputs.input_ids,
+            output_hidden_states=True,
+            output_attentions=True,
+            return_dict=True,
+        )
+        
+        # Extract encoder hidden states and attentions (computed once, fixed for the entire run)
+        encoder_hidden_states = None
+        encoder_attentions = None
+        if hasattr(encoder_outputs, 'hidden_states') and encoder_outputs.hidden_states is not None:
+            # Skip the first element (embedding) and take layer outputs
+            encoder_hidden_states = encoder_outputs.hidden_states[1:] if len(encoder_outputs.hidden_states) > 1 else []
+            logger.debug(f"Extracted {len(encoder_hidden_states)} encoder hidden state layers")
+        
+        if hasattr(encoder_outputs, 'attentions') and encoder_outputs.attentions is not None:
+            encoder_attentions = encoder_outputs.attentions
+            logger.debug(f"Extracted {len(encoder_attentions)} encoder attention layers")
+        
+        # Prepare decoder inputs
+        # For T5, decoder_start_token_id is typically pad_token_id
+        decoder_start_token_id = getattr(model.config, 'decoder_start_token_id', None)
+        if decoder_start_token_id is None:
+            decoder_start_token_id = tokenizer.pad_token_id
+            if decoder_start_token_id is None:
+                decoder_start_token_id = tokenizer.eos_token_id
+        
+        decoder_input_ids = torch.tensor(
+            [[decoder_start_token_id]],
+            device=device,
+            dtype=torch.long
+        )
+        
+        # Storage for outputs
+        all_scores = []
+        all_hidden_states = []
+        all_attentions = []  # Decoder self-attentions
+        all_cross_attentions = []  # Cross-attentions (decoder attending to encoder)
+        generated_token_ids = []
+        
+        max_new_tokens = self.config.generation.max_new_tokens
+        eos_token_id = tokenizer.eos_token_id or model.config.eos_token_id
+        
+        # Generation parameters
+        do_sample = self.config.generation.do_sample
+        temperature = self.config.generation.temperature
+        top_k = self.config.generation.top_k
+        top_p = self.config.generation.top_p
+        
+        logger.debug(f"Starting manual decoder generation (max_new_tokens={max_new_tokens})...")
+        
+        for step in range(max_new_tokens):
+            # Forward pass through decoder
+            # For T5 and other Seq2Seq models, we pass encoder_outputs as a BaseModelOutput
+            decoder_outputs = model(
+                input_ids=None,  # Not needed when using encoder_outputs
+                encoder_outputs=encoder_outputs,
+                decoder_input_ids=decoder_input_ids,
+                output_hidden_states=True,
+                output_attentions=True,
+                use_cache=False,  # Disable cache to get all hidden states
+                return_dict=True,
+            )
+            
+            # Extract logits for next token prediction
+            next_token_logits = decoder_outputs.logits[:, -1, :]  # Shape: (batch_size, vocab_size)
+            all_scores.append(next_token_logits)
+            
+            # Extract hidden states (decoder hidden states)
+            # decoder_hidden_states is a tuple: (embedding, layer1, layer2, ..., layerN)
+            # Each element is a tensor of shape (batch_size, seq_len, hidden_size)
+            if hasattr(decoder_outputs, 'decoder_hidden_states') and decoder_outputs.decoder_hidden_states is not None:
+                step_hidden = []
+                # Skip the first element (embedding) and extract last position from each layer
+                for layer_idx, layer_hidden in enumerate(decoder_outputs.decoder_hidden_states[1:], start=1):
+                    if layer_hidden is not None:
+                        # Extract the last position: [:, -1, :] -> (batch_size, hidden_size)
+                        # But we need to keep it as a 3D tensor for consistency: (batch_size, 1, hidden_size)
+                        last_pos = layer_hidden[:, -1:, :]  # Keep seq_len=1 dimension
+                        step_hidden.append(last_pos)
+                    else:
+                        logger.debug(f"Layer {layer_idx} hidden state is None")
+                if step_hidden:
+                    all_hidden_states.append(tuple(step_hidden))
+                else:
+                    all_hidden_states.append(None)
+                    logger.warning(f"No hidden states extracted at step {step}")
+            else:
+                all_hidden_states.append(None)
+                logger.debug(f"No decoder_hidden_states available at step {step}")
+            
+            # Extract decoder self-attentions
+            # decoder_outputs has decoder_attentions (self-attention) and cross_attentions (encoder-decoder)
+            # For T5: decoder_attentions is a tuple of tuples, one per layer
+            # Each layer has: (self_attn_tensor,) where tensor is (batch_size, num_heads, seq_len, seq_len)
+            step_attentions = []
+            if hasattr(decoder_outputs, 'decoder_attentions') and decoder_outputs.decoder_attentions is not None:
+                for layer_idx, layer_attn_tuple in enumerate(decoder_outputs.decoder_attentions):
+                    if layer_attn_tuple is not None:
+                        # layer_attn_tuple is typically a tuple with one element (self-attention)
+                        # or could be a tensor directly
+                        if isinstance(layer_attn_tuple, tuple) and len(layer_attn_tuple) > 0:
+                            # Take the self-attention tensor
+                            attn_tensor = layer_attn_tuple[0]
+                            if attn_tensor is not None:
+                                step_attentions.append(attn_tensor)
+                        elif isinstance(layer_attn_tuple, torch.Tensor):
+                            step_attentions.append(layer_attn_tuple)
+            
+            if step_attentions:
+                all_attentions.append(tuple(step_attentions))
+            else:
+                all_attentions.append(None)
+                logger.debug(f"No decoder attentions extracted at step {step}")
+            
+            # Extract cross-attentions (decoder attending to encoder)
+            # cross_attentions shape: (batch_size, num_heads, target_seq_len, source_seq_len)
+            # where target_seq_len is decoder sequence length and source_seq_len is encoder sequence length
+            step_cross_attentions = []
+            if hasattr(decoder_outputs, 'cross_attentions') and decoder_outputs.cross_attentions is not None:
+                for layer_idx, cross_attn_tensor in enumerate(decoder_outputs.cross_attentions):
+                    if cross_attn_tensor is not None:
+                        # Extract the last position for the current step: [:, :, -1, :]
+                        # Shape becomes (batch_size, num_heads, source_seq_len)
+                        # But we keep it as (batch_size, num_heads, 1, source_seq_len) for consistency
+                        if cross_attn_tensor.dim() == 4:
+                            last_pos_cross = cross_attn_tensor[:, :, -1:, :]  # Keep target_len=1 dimension
+                            step_cross_attentions.append(last_pos_cross)
+                        else:
+                            step_cross_attentions.append(cross_attn_tensor)
+            
+            if step_cross_attentions:
+                all_cross_attentions.append(tuple(step_cross_attentions))
+            else:
+                all_cross_attentions.append(None)
+                logger.debug(f"No cross-attentions extracted at step {step}")
+            
+            # Sample next token
+            if do_sample:
+                # Apply temperature
+                if temperature != 1.0:
+                    next_token_logits = next_token_logits / temperature
+                
+                # Apply top-k filtering
+                if top_k > 0:
+                    indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
+                    next_token_logits[indices_to_remove] = float('-inf')
+                
+                # Apply top-p (nucleus) filtering
+                if top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    next_token_logits[indices_to_remove] = float('-inf')
+                
+                # Sample from filtered distribution
+                probs = torch.softmax(next_token_logits, dim=-1)
+                next_token = torch.multinomial(probs, num_samples=1)
+            else:
+                # Greedy decoding
+                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+            
+            next_token_id = next_token.item()
+            generated_token_ids.append(next_token_id)
+            
+            # Check for EOS
+            if next_token_id == eos_token_id:
+                logger.debug(f"EOS token generated at step {step}")
+                break
+            
+            # Append to decoder input for next iteration
+            decoder_input_ids = torch.cat([decoder_input_ids, next_token], dim=-1)
+        
+        logger.info(f"Manual generation complete: {len(generated_token_ids)} tokens generated")
+        
+        # Build output structure similar to GenerateDecoderOnlyOutput
+        # Create a simple object to hold the outputs
+        class Seq2SeqOutput:
+            def __init__(self):
+                self.sequences = None
+                self.scores = tuple(all_scores) if all_scores else None
+                self.hidden_states = tuple(all_hidden_states) if all_hidden_states else None
+                self.attentions = tuple(all_attentions) if all_attentions else None
+        
+        output_obj = Seq2SeqOutput()
+        output_obj.sequences = torch.tensor([prompt_token_ids + generated_token_ids], device=device)
+        
+        # Return both the object and a dict for compatibility
+        # Include encoder outputs and cross-attentions for Seq2Seq models
+        return {
+            "output_obj": output_obj,
+            "generated_token_ids": generated_token_ids,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_attentions": encoder_attentions,
+            "cross_attentions": tuple(all_cross_attentions) if all_cross_attentions else None,
+        }
+    
     def _process_timeline(
         self,
         outputs: Any,
         prompt_token_ids: List[int],
         generated_token_ids: List[int],
+        cross_attentions: Optional[Any] = None,
     ) -> List[StepData]:
         """
         Process model outputs into timeline of steps.
@@ -238,6 +514,7 @@ class InstrumentationCollector:
                 logits=None,
                 hidden_states=None,
                 attentions=None,
+                cross_attentions=None,
             )
             
             # Extract logits (scores) if available
@@ -284,6 +561,20 @@ class InstrumentationCollector:
                 logger.warning(f"Could not extract attentions for step {step_idx}: {e}")
                 import traceback
                 logger.debug(traceback.format_exc())
+            
+            # Extract cross-attentions if available (for Seq2Seq models)
+            if cross_attentions is not None:
+                try:
+                    if isinstance(cross_attentions, (tuple, list)) and len(cross_attentions) > step_idx:
+                        step_cross_attn = cross_attentions[step_idx]
+                        if step_cross_attn is not None:
+                            if isinstance(step_cross_attn, (tuple, list)):
+                                step_data.cross_attentions = list(step_cross_attn)
+                            else:
+                                step_data.cross_attentions = [step_cross_attn]
+                            logger.debug(f"Extracted {len(step_data.cross_attentions) if step_data.cross_attentions else 0} cross-attention tensors for step {step_idx}")
+                except (IndexError, AttributeError, TypeError) as e:
+                    logger.debug(f"Could not extract cross-attentions for step {step_idx}: {e}")
             
             timeline.append(step_data)
         

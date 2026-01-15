@@ -13,16 +13,24 @@
 #                This enables output_attentions=True support for Llama and other SDPA-based models
 #                Added revision extraction from model config (_commit_hash)
 #                Added revision field to ModelBundle dataclass
+#   2026-01-15: Added dynamic model loading support using AutoConfig.from_pretrained()
+#                Automatically detects Seq2Seq models (T5, BART, etc.) and uses AutoModelForSeq2SeqLM
+#                Otherwise uses AutoModelForCausalLM. Model class type stored in ModelBundle.model_class
+#   2026-01-15: Added 4-bit and 8-bit quantization support using bitsandbytes library
+#                Supports load_in_4bit and load_in_8bit flags via config and CLI
 # ============================================================================
 
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Optional, Any, Type
 import torch
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM,
     AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizer,
+    BitsAndBytesConfig,
 )
 
 from CoreVital.config import Config
@@ -48,6 +56,7 @@ class ModelBundle:
         num_attention_heads: Number of attention heads
         architecture: Model architecture name
         revision: Model revision/commit hash if available
+        model_class: The model class type used for loading (AutoModelForCausalLM or AutoModelForSeq2SeqLM)
     """
     model: PreTrainedModel
     tokenizer: PreTrainedTokenizer
@@ -58,6 +67,7 @@ class ModelBundle:
     num_attention_heads: int
     architecture: str
     revision: Optional[str] = None
+    model_class: Type[PreTrainedModel] = AutoModelForCausalLM
 
 
 def load_model(config: Config) -> ModelBundle:
@@ -96,18 +106,92 @@ def load_model(config: Config) -> ModelBundle:
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         
-        # Load model
-        logger.debug("Loading model...")
-        model = AutoModelForCausalLM.from_pretrained(
+        # Inspect model type to determine which model class to use
+        logger.debug("Inspecting model architecture...")
+        model_config = AutoConfig.from_pretrained(
             config.model.hf_id,
             revision=config.model.revision,
             trust_remote_code=config.model.trust_remote_code,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True,
         )
         
-        # Move to device
-        model = model.to(device)
+        # Determine if this is a Seq2Seq model
+        model_type = getattr(model_config, 'model_type', '').lower()
+        architectures = getattr(model_config, 'architectures', [])
+        architecture_names = [arch.lower() if isinstance(arch, str) else '' for arch in architectures]
+        
+        # Common Seq2Seq model types
+        seq2seq_model_types = {'t5', 'bart', 'mbart', 'pegasus', 'marian', 'blenderbot', 'm2m_100', 'nllb'}
+        seq2seq_architecture_patterns = ['t5', 'bart', 'mbart', 'pegasus', 'marian', 'blenderbot', 'm2m', 'nllb']
+        
+        is_seq2seq = (
+            model_type in seq2seq_model_types or
+            any(pattern in arch for arch in architecture_names for pattern in seq2seq_architecture_patterns)
+        )
+        
+        if is_seq2seq:
+            logger.info(f"Detected Seq2Seq model (model_type: {model_type}, architectures: {architectures})")
+            model_class = AutoModelForSeq2SeqLM
+        else:
+            logger.info(f"Detected CausalLM model (model_type: {model_type}, architectures: {architectures})")
+            model_class = AutoModelForCausalLM
+        
+        # Check for quantization flags
+        quantization_config = None
+        if config.model.load_in_4bit or config.model.load_in_8bit:
+            # Quantization requires CUDA
+            if device.type != "cuda":
+                logger.warning("Quantization requires CUDA. Falling back to CPU without quantization.")
+                device = torch.device("cpu")
+            else:
+                if config.model.load_in_4bit and config.model.load_in_8bit:
+                    logger.warning("Both load_in_4bit and load_in_8bit are set. Using 4-bit quantization.")
+                    config.model.load_in_8bit = False
+                
+                if config.model.load_in_4bit:
+                    logger.info("Initializing BitsAndBytesConfig for 4-bit quantization")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                    )
+                    logger.info("4-bit quantization configuration created successfully")
+                elif config.model.load_in_8bit:
+                    logger.info("Initializing BitsAndBytesConfig for 8-bit quantization")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                    )
+                    logger.info("8-bit quantization configuration created successfully")
+        
+        # Prepare model loading arguments
+        model_kwargs = {
+            "revision": config.model.revision,
+            "trust_remote_code": config.model.trust_remote_code,
+            "low_cpu_mem_usage": True,
+            "config": model_config,  # Use the already loaded config
+        }
+        
+        # Add quantization config if specified
+        if quantization_config is not None:
+            model_kwargs["quantization_config"] = quantization_config
+        else:
+            # Only set torch_dtype if not using quantization
+            model_kwargs["torch_dtype"] = dtype
+        
+        # Load model with the appropriate class
+        logger.debug(f"Loading model with {model_class.__name__}...")
+        model = model_class.from_pretrained(
+            config.model.hf_id,
+            **model_kwargs,
+        )
+        
+        # Log successful quantization if applied
+        if quantization_config is not None:
+            if config.model.load_in_4bit:
+                logger.info("Model loaded successfully with 4-bit quantization")
+            elif config.model.load_in_8bit:
+                logger.info("Model loaded successfully with 8-bit quantization")
+        
+        # Move to device (only if not using quantization, as quantization handles device placement)
+        if quantization_config is None:
+            model = model.to(device)
         model.eval()
         
         # Set attention implementation to 'eager' if needed for attention outputs
@@ -134,8 +218,7 @@ def load_model(config: Config) -> ModelBundle:
             logger.warning(f"Could not set attention implementation to 'eager': {e}")
             # Continue anyway - some models might not support this or might already work
         
-        # Extract metadata
-        model_config = model.config
+        # Extract metadata (use model.config which is already loaded)
         num_layers = getattr(model_config, 'num_hidden_layers', None) or \
                     getattr(model_config, 'n_layer', None) or \
                     getattr(model_config, 'num_layers', 0)
@@ -172,6 +255,7 @@ def load_model(config: Config) -> ModelBundle:
             num_attention_heads=num_attention_heads,
             architecture=architecture,
             revision=revision,
+            model_class=model_class,
         )
         
     except Exception as e:
