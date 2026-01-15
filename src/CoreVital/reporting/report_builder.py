@@ -13,6 +13,8 @@
 #                Improved attention summary error handling with better logging
 #                Added null checks for attention tensor processing
 #   2026-01-15: Added quantization info extraction from config to report model.quantization field
+#   2026-01-15: Added Seq2Seq report building - compute encoder_hidden_states summaries,
+#                include encoder_attention and cross_attention in layer summaries
 # ============================================================================
 
 import uuid
@@ -25,6 +27,7 @@ from CoreVital.instrumentation.summaries import (
     compute_hidden_summary,
     compute_attention_summary,
     compute_logits_summary,
+    compute_encoder_hidden_states_summaries,
 )
 from CoreVital.reporting.schema import (
     GeneratedInfo,
@@ -112,6 +115,22 @@ class ReportBuilder:
         # Build timeline
         timeline = self._build_timeline(results)
         
+        # Build encoder hidden states summaries (for Seq2Seq models)
+        encoder_hidden_states_summaries = None
+        if results.encoder_hidden_states is not None:
+            try:
+                encoder_summaries_dicts = compute_encoder_hidden_states_summaries(
+                    results.encoder_hidden_states,
+                    self.config.summaries.hidden,
+                )
+                encoder_hidden_states_summaries = [
+                    HiddenSummary(**summary_dict) if summary_dict else HiddenSummary()
+                    for summary_dict in encoder_summaries_dicts
+                ]
+                logger.info(f"Computed {len(encoder_hidden_states_summaries)} encoder hidden state summaries")
+            except Exception as e:
+                logger.warning(f"Failed to compute encoder hidden states summaries: {e}")
+        
         # Build summary
         summary = Summary(
             prompt_tokens=len(results.prompt_token_ids),
@@ -137,6 +156,7 @@ class ReportBuilder:
             timeline=timeline,
             summary=summary,
             warnings=warnings,
+            encoder_hidden_states=encoder_hidden_states_summaries,
         )
         
         logger.info(f"Report built: {len(timeline)} timeline steps")
@@ -248,6 +268,8 @@ class ReportBuilder:
                     step_data.hidden_states,
                     step_data.attentions,
                     results.model_bundle.num_layers,
+                    encoder_attentions=results.encoder_attentions,
+                    cross_attentions=step_data.cross_attentions,
                 )
             
             timeline_step = TimelineStep(
@@ -267,6 +289,8 @@ class ReportBuilder:
         hidden_states: Optional[List[torch.Tensor]],
         attentions: Optional[List[torch.Tensor]],
         num_layers: int,
+        encoder_attentions: Optional[List[torch.Tensor]] = None,
+        cross_attentions: Optional[List[torch.Tensor]] = None,
     ) -> List[LayerSummary]:
         """Build layer summaries from hidden states and attentions."""
         layers = []
@@ -285,7 +309,7 @@ class ReportBuilder:
                     )
                     hidden_summary = HiddenSummary(**hidden_dict)
                     
-                    # Compute attention summary
+                    # Compute decoder self-attention summary
                     attention_summary = AttentionSummary()
                     if attentions is not None and layer_idx < len(attentions):
                         try:
@@ -306,10 +330,45 @@ class ReportBuilder:
                             import traceback
                             logger.debug(traceback.format_exc())
                     
+                    # Compute encoder attention summary (encoder self-attention for corresponding encoder layer)
+                    encoder_attention_summary = None
+                    if encoder_attentions is not None and layer_idx < len(encoder_attentions):
+                        try:
+                            enc_attn_tensor = encoder_attentions[layer_idx]
+                            if enc_attn_tensor is not None:
+                                # Handle tuple structure if present
+                                if isinstance(enc_attn_tensor, (tuple, list)) and len(enc_attn_tensor) > 0:
+                                    enc_attn_tensor = enc_attn_tensor[0]
+                                enc_attn_dict = compute_attention_summary(
+                                    enc_attn_tensor,
+                                    self.config.summaries.attention,
+                                )
+                                if enc_attn_dict:
+                                    encoder_attention_summary = AttentionSummary(**enc_attn_dict)
+                        except Exception as e:
+                            logger.debug(f"Failed to compute encoder attention summary for layer {layer_idx}: {e}")
+                    
+                    # Compute cross-attention summary (decoder attending to encoder)
+                    cross_attention_summary = None
+                    if cross_attentions is not None and layer_idx < len(cross_attentions):
+                        try:
+                            cross_attn_tensor = cross_attentions[layer_idx]
+                            if cross_attn_tensor is not None:
+                                cross_attn_dict = compute_attention_summary(
+                                    cross_attn_tensor,
+                                    self.config.summaries.attention,
+                                )
+                                if cross_attn_dict:
+                                    cross_attention_summary = AttentionSummary(**cross_attn_dict)
+                        except Exception as e:
+                            logger.debug(f"Failed to compute cross-attention summary for layer {layer_idx}: {e}")
+                    
                     layer_summary = LayerSummary(
                         layer_index=layer_idx,
                         hidden_summary=hidden_summary,
                         attention_summary=attention_summary,
+                        encoder_attention=encoder_attention_summary,
+                        cross_attention=cross_attention_summary,
                     )
                     layers.append(layer_summary)
                     

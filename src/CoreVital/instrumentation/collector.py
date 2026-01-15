@@ -15,6 +15,8 @@
 #   2026-01-15: Added manual generation for Seq2Seq models (T5, BART, etc.)
 #                Seq2Seq models don't return hidden_states/attentions via generate(),
 #                so we manually step through the decoder to capture these outputs
+#   2026-01-15: Added deep Seq2Seq instrumentation - extract encoder_hidden_states, encoder_attentions,
+#                and cross_attentions from decoder outputs at each generation step
 # ============================================================================
 
 from dataclasses import dataclass, field
@@ -47,6 +49,7 @@ class StepData:
     logits: Optional[torch.Tensor] = None
     hidden_states: Optional[List[torch.Tensor]] = None
     attentions: Optional[List[torch.Tensor]] = None
+    cross_attentions: Optional[List[torch.Tensor]] = None  # For Seq2Seq models
 
 
 @dataclass
@@ -60,6 +63,9 @@ class InstrumentationResults:
     timeline: List[StepData] = field(default_factory=list)
     elapsed_ms: int = 0
     warnings: List[Dict[str, str]] = field(default_factory=list)
+    # Seq2Seq-specific fields
+    encoder_hidden_states: Optional[List[torch.Tensor]] = None
+    encoder_attentions: Optional[List[torch.Tensor]] = None
 
 
 class InstrumentationCollector:
@@ -175,12 +181,17 @@ class InstrumentationCollector:
             
             # Process timeline
             # Handle both standard generate() output and manual Seq2Seq output
+            encoder_hidden_states = None
+            encoder_attentions = None
             if isinstance(outputs, dict) and "output_obj" in outputs:
                 # Manual Seq2Seq generation output
+                encoder_hidden_states = outputs.get("encoder_hidden_states")
+                encoder_attentions = outputs.get("encoder_attentions")
                 timeline = self._process_timeline(
                     outputs["output_obj"],
                     prompt_token_ids,
                     generated_token_ids,
+                    cross_attentions=outputs.get("cross_attentions"),
                 )
             else:
                 # Standard generate() output
@@ -206,6 +217,8 @@ class InstrumentationCollector:
                 timeline=timeline,
                 elapsed_ms=elapsed_ms,
                 warnings=warnings,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attentions=encoder_attentions,
             )
             
         except Exception as e:
@@ -249,6 +262,18 @@ class InstrumentationCollector:
             return_dict=True,
         )
         
+        # Extract encoder hidden states and attentions (computed once, fixed for the entire run)
+        encoder_hidden_states = None
+        encoder_attentions = None
+        if hasattr(encoder_outputs, 'hidden_states') and encoder_outputs.hidden_states is not None:
+            # Skip the first element (embedding) and take layer outputs
+            encoder_hidden_states = encoder_outputs.hidden_states[1:] if len(encoder_outputs.hidden_states) > 1 else []
+            logger.debug(f"Extracted {len(encoder_hidden_states)} encoder hidden state layers")
+        
+        if hasattr(encoder_outputs, 'attentions') and encoder_outputs.attentions is not None:
+            encoder_attentions = encoder_outputs.attentions
+            logger.debug(f"Extracted {len(encoder_attentions)} encoder attention layers")
+        
         # Prepare decoder inputs
         # For T5, decoder_start_token_id is typically pad_token_id
         decoder_start_token_id = getattr(model.config, 'decoder_start_token_id', None)
@@ -266,7 +291,8 @@ class InstrumentationCollector:
         # Storage for outputs
         all_scores = []
         all_hidden_states = []
-        all_attentions = []
+        all_attentions = []  # Decoder self-attentions
+        all_cross_attentions = []  # Cross-attentions (decoder attending to encoder)
         generated_token_ids = []
         
         max_new_tokens = self.config.generation.max_new_tokens
@@ -320,7 +346,7 @@ class InstrumentationCollector:
                 all_hidden_states.append(None)
                 logger.debug(f"No decoder_hidden_states available at step {step}")
             
-            # Extract attentions
+            # Extract decoder self-attentions
             # decoder_outputs has decoder_attentions (self-attention) and cross_attentions (encoder-decoder)
             # For T5: decoder_attentions is a tuple of tuples, one per layer
             # Each layer has: (self_attn_tensor,) where tensor is (batch_size, num_heads, seq_len, seq_len)
@@ -342,7 +368,29 @@ class InstrumentationCollector:
                 all_attentions.append(tuple(step_attentions))
             else:
                 all_attentions.append(None)
-                logger.debug(f"No attentions extracted at step {step}")
+                logger.debug(f"No decoder attentions extracted at step {step}")
+            
+            # Extract cross-attentions (decoder attending to encoder)
+            # cross_attentions shape: (batch_size, num_heads, target_seq_len, source_seq_len)
+            # where target_seq_len is decoder sequence length and source_seq_len is encoder sequence length
+            step_cross_attentions = []
+            if hasattr(decoder_outputs, 'cross_attentions') and decoder_outputs.cross_attentions is not None:
+                for layer_idx, cross_attn_tensor in enumerate(decoder_outputs.cross_attentions):
+                    if cross_attn_tensor is not None:
+                        # Extract the last position for the current step: [:, :, -1, :]
+                        # Shape becomes (batch_size, num_heads, source_seq_len)
+                        # But we keep it as (batch_size, num_heads, 1, source_seq_len) for consistency
+                        if cross_attn_tensor.dim() == 4:
+                            last_pos_cross = cross_attn_tensor[:, :, -1:, :]  # Keep target_len=1 dimension
+                            step_cross_attentions.append(last_pos_cross)
+                        else:
+                            step_cross_attentions.append(cross_attn_tensor)
+            
+            if step_cross_attentions:
+                all_cross_attentions.append(tuple(step_cross_attentions))
+            else:
+                all_cross_attentions.append(None)
+                logger.debug(f"No cross-attentions extracted at step {step}")
             
             # Sample next token
             if do_sample:
@@ -398,9 +446,13 @@ class InstrumentationCollector:
         output_obj.sequences = torch.tensor([prompt_token_ids + generated_token_ids], device=device)
         
         # Return both the object and a dict for compatibility
+        # Include encoder outputs and cross-attentions for Seq2Seq models
         return {
             "output_obj": output_obj,
             "generated_token_ids": generated_token_ids,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_attentions": encoder_attentions,
+            "cross_attentions": tuple(all_cross_attentions) if all_cross_attentions else None,
         }
     
     def _process_timeline(
@@ -408,6 +460,7 @@ class InstrumentationCollector:
         outputs: Any,
         prompt_token_ids: List[int],
         generated_token_ids: List[int],
+        cross_attentions: Optional[Any] = None,
     ) -> List[StepData]:
         """
         Process model outputs into timeline of steps.
@@ -461,6 +514,7 @@ class InstrumentationCollector:
                 logits=None,
                 hidden_states=None,
                 attentions=None,
+                cross_attentions=None,
             )
             
             # Extract logits (scores) if available
@@ -507,6 +561,20 @@ class InstrumentationCollector:
                 logger.warning(f"Could not extract attentions for step {step_idx}: {e}")
                 import traceback
                 logger.debug(traceback.format_exc())
+            
+            # Extract cross-attentions if available (for Seq2Seq models)
+            if cross_attentions is not None:
+                try:
+                    if isinstance(cross_attentions, (tuple, list)) and len(cross_attentions) > step_idx:
+                        step_cross_attn = cross_attentions[step_idx]
+                        if step_cross_attn is not None:
+                            if isinstance(step_cross_attn, (tuple, list)):
+                                step_data.cross_attentions = list(step_cross_attn)
+                            else:
+                                step_data.cross_attentions = [step_cross_attn]
+                            logger.debug(f"Extracted {len(step_data.cross_attentions) if step_data.cross_attentions else 0} cross-attention tensors for step {step_idx}")
+                except (IndexError, AttributeError, TypeError) as e:
+                    logger.debug(f"Could not extract cross-attentions for step {step_idx}: {e}")
             
             timeline.append(step_data)
         

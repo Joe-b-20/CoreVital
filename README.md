@@ -112,7 +112,9 @@ Each run produces a JSON trace file in `./runs/` with this structure:
         {
           "layer_index": 0,
           "hidden_summary": { "mean": 0.001, "std": 0.98, ... },
-          "attention_summary": { "entropy_mean": 2.31, ... }
+          "attention_summary": { "entropy_mean": 2.31, ... },
+          "encoder_attention": { "entropy_mean": 1.85, ... },  // Seq2Seq only
+          "cross_attention": { "entropy_mean": 0.92, ... }     // Seq2Seq only
         }
       ],
       "extensions": {}
@@ -124,7 +126,11 @@ Each run produces a JSON trace file in `./runs/` with this structure:
     "total_steps": 60,
     "elapsed_ms": 1234
   },
-  "warnings": []
+  "warnings": [],
+  "encoder_hidden_states": [  // Seq2Seq only
+    { "mean": 0.5, "std": 1.2, ... },  // One per encoder layer
+    ...
+  ]
 }
 ```
 
@@ -134,7 +140,10 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 - **generated**: Contains the generated output text, number of tokens and token IDs
 - **timeline**: Per-token trace covering both prompt and generated tokens
 - **hidden_summary**: Mean, std, L2 norm, max abs value, and random projection sketch
-- **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max)
+- **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max) - decoder self-attention for Seq2Seq models
+- **encoder_attention**: (Seq2Seq only) Encoder self-attention statistics, showing how the encoder processes the input sequence
+- **cross_attention**: (Seq2Seq only) Cross-attention statistics, showing how the decoder attends to encoder outputs at each generation step
+- **encoder_hidden_states**: (Seq2Seq only) Fixed encoder hidden state summaries (one per encoder layer), computed once at the start of generation
 - **logits_summary**: Entropy, top-1/top-2 margin, and top-k token probabilities
 - **model.revision**: Model commit hash/revision extracted from model config
 - **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null)
@@ -143,7 +152,10 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 ### Model Compatibility Notes
 
 - **Causal Language Models (GPT-2, LLaMA, etc.)**: Fully supported with automatic detection. The tool automatically switches attention implementation from SDPA to 'eager' for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
-- **Sequence-to-Sequence Models (T5, BART, etc.)**: Fully supported with automatic detection. The tool uses manual generation to capture hidden states and attentions, as Seq2Seq models don't return these via the standard `generate()` method. Models are automatically detected using `AutoConfig.from_pretrained()`.
+- **Sequence-to-Sequence Models (T5, BART, etc.)**: Fully supported with automatic detection and deep instrumentation. The tool uses manual generation to capture hidden states and attentions, as Seq2Seq models don't return these via the standard `generate()` method. For Seq2Seq models, the tool captures:
+  - **Encoder outputs**: Encoder hidden states and encoder self-attention (computed once, fixed for the entire run)
+  - **Decoder outputs**: Decoder hidden states and decoder self-attention (computed at each generation step)
+  - **Cross-attention**: How the decoder attends to encoder outputs at each generation step, showing how the model "listens" to the encoded input
 - **Other Models**: Models using eager attention by default will work without modification. Models that don't support attention output will log warnings.
 - **Quantization**: 4-bit and 8-bit quantization via bitsandbytes is supported for models that are compatible. Quantization requires CUDA and will automatically fall back to CPU without quantization if CUDA is unavailable. The quantization status is reflected in the output JSON report.
 
@@ -211,6 +223,7 @@ pytest --cov=CoreVital tests/
 - ✅ Model revision extraction from config
 - ✅ Dynamic model loading with automatic Seq2Seq detection (T5, BART, etc.)
 - ✅ Manual generation for Seq2Seq models to capture hidden states and attentions
+- ✅ Deep Seq2Seq instrumentation: encoder hidden states, encoder attention, and cross-attention metrics
 - ✅ 4-bit and 8-bit quantization support via bitsandbytes
 
 **Future Phases** (Design only):
