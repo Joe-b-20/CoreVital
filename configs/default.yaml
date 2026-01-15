@@ -1,0 +1,66 @@
+# ============================================================================
+# CoreVital - Default Configuration
+# 
+# Purpose: Default configuration for all monitoring runs
+# Inputs: None (base configuration)
+# Outputs: Configuration loaded by config.py
+# Dependencies: None
+# Usage: Override via CLI arguments or environment variables
+# 
+# Changelog:
+#   2026-01-13: Initial configuration for Phase-0
+# ============================================================================
+
+model:
+  hf_id: "gpt2"
+  revision: null
+  trust_remote_code: false
+  dtype: "auto"  # auto, float32, float16, bfloat16
+
+device:
+  requested: "auto"  # auto, cpu, cuda
+
+generation:
+  max_new_tokens: 20
+  do_sample: true
+  temperature: 0.8
+  top_k: 50
+  top_p: 0.95
+  seed: 42
+
+summaries:
+  hidden:
+    enabled: true
+    stats:
+      - mean
+      - std
+      - l2_norm_mean
+      - max_abs
+    sketch:
+      method: "randproj"
+      dim: 32
+      seed: 0
+  
+  attention:
+    enabled: true
+    stats:
+      - entropy_mean
+      - entropy_min
+      - concentration_max
+  
+  logits:
+    enabled: true
+    stats:
+      - entropy
+      - top1_top2_margin
+      - topk_probs
+    topk: 5
+
+sink:
+  type: "local_file"  # local_file, http
+  output_dir: "runs"
+  remote_url: null
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

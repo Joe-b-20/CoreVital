@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CoreVital"
+version = "0.1.0"
+description = "Instrumentation and monitoring toolkit for Large Language Model inference health"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "JB", email = "joebachir20@gmail.com"}
+]
+keywords = ["llm", "monitoring", "transformers", "instrumentation", "health"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+CoreVital = "CoreVital.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Joe-b-20/CoreVital"
+Repository = "https://github.com/Joe-b-20/CoreVital"
+Issues = "https://github.com/Joe-b-20/CoreVital/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

@@ -1,0 +1,47 @@
+# --- Python Standard ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- IDEs & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# --- Project Specific Output ---
+runs/
+logs/
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- LLM & Data Weights (IMPORTANT) ---
+# Prevents accidentally committing multi-gigabyte model weights
+models/
+.cache/huggingface/
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+
+# --- Environment Secrets ---
+.env
+.secrets
