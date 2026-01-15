@@ -12,6 +12,7 @@
 #   2026-01-14: Fixed model revision extraction - use revision from ModelBundle if available
 #                Improved attention summary error handling with better logging
 #                Added null checks for attention tensor processing
+#   2026-01-15: Added quantization info extraction from config to report model.quantization field
 # ============================================================================
 
 import uuid
@@ -150,6 +151,20 @@ class ReportBuilder:
         # Use revision from bundle if available, otherwise fall back to config
         revision = bundle.revision if bundle.revision else self.config.model.revision
         
+        # Build quantization info from config
+        quantization_enabled = self.config.model.load_in_4bit or self.config.model.load_in_8bit
+        quantization_method = None
+        if quantization_enabled:
+            if self.config.model.load_in_4bit:
+                quantization_method = "4-bit"
+            elif self.config.model.load_in_8bit:
+                quantization_method = "8-bit"
+        
+        quantization_info = QuantizationInfo(
+            enabled=quantization_enabled,
+            method=quantization_method,
+        )
+        
         return ModelInfo(
             hf_id=self.config.model.hf_id,
             revision=revision,
@@ -160,7 +175,7 @@ class ReportBuilder:
             tokenizer_hf_id=self.config.model.hf_id,
             dtype=dtype_str,
             device=str(bundle.device),
-            quantization=QuantizationInfo(enabled=False, method=None),
+            quantization=quantization_info,
         )
     
     def _build_run_config(self, trace_id: str) -> RunConfig:

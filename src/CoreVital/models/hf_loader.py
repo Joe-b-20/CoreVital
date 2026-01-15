@@ -16,6 +16,8 @@
 #   2026-01-15: Added dynamic model loading support using AutoConfig.from_pretrained()
 #                Automatically detects Seq2Seq models (T5, BART, etc.) and uses AutoModelForSeq2SeqLM
 #                Otherwise uses AutoModelForCausalLM. Model class type stored in ModelBundle.model_class
+#   2026-01-15: Added 4-bit and 8-bit quantization support using bitsandbytes library
+#                Supports load_in_4bit and load_in_8bit flags via config and CLI
 # ============================================================================
 
 from dataclasses import dataclass
@@ -28,6 +30,7 @@ from transformers import (
     AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizer,
+    BitsAndBytesConfig,
 )
 
 from CoreVital.config import Config
@@ -132,19 +135,63 @@ def load_model(config: Config) -> ModelBundle:
             logger.info(f"Detected CausalLM model (model_type: {model_type}, architectures: {architectures})")
             model_class = AutoModelForCausalLM
         
+        # Check for quantization flags
+        quantization_config = None
+        if config.model.load_in_4bit or config.model.load_in_8bit:
+            # Quantization requires CUDA
+            if device.type != "cuda":
+                logger.warning("Quantization requires CUDA. Falling back to CPU without quantization.")
+                device = torch.device("cpu")
+            else:
+                if config.model.load_in_4bit and config.model.load_in_8bit:
+                    logger.warning("Both load_in_4bit and load_in_8bit are set. Using 4-bit quantization.")
+                    config.model.load_in_8bit = False
+                
+                if config.model.load_in_4bit:
+                    logger.info("Initializing BitsAndBytesConfig for 4-bit quantization")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                    )
+                    logger.info("4-bit quantization configuration created successfully")
+                elif config.model.load_in_8bit:
+                    logger.info("Initializing BitsAndBytesConfig for 8-bit quantization")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                    )
+                    logger.info("8-bit quantization configuration created successfully")
+        
+        # Prepare model loading arguments
+        model_kwargs = {
+            "revision": config.model.revision,
+            "trust_remote_code": config.model.trust_remote_code,
+            "low_cpu_mem_usage": True,
+            "config": model_config,  # Use the already loaded config
+        }
+        
+        # Add quantization config if specified
+        if quantization_config is not None:
+            model_kwargs["quantization_config"] = quantization_config
+        else:
+            # Only set torch_dtype if not using quantization
+            model_kwargs["torch_dtype"] = dtype
+        
         # Load model with the appropriate class
         logger.debug(f"Loading model with {model_class.__name__}...")
         model = model_class.from_pretrained(
             config.model.hf_id,
-            revision=config.model.revision,
-            trust_remote_code=config.model.trust_remote_code,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True,
-            config=model_config,  # Use the already loaded config
+            **model_kwargs,
         )
         
-        # Move to device
-        model = model.to(device)
+        # Log successful quantization if applied
+        if quantization_config is not None:
+            if config.model.load_in_4bit:
+                logger.info("Model loaded successfully with 4-bit quantization")
+            elif config.model.load_in_8bit:
+                logger.info("Model loaded successfully with 8-bit quantization")
+        
+        # Move to device (only if not using quantization, as quantization handles device placement)
+        if quantization_config is None:
+            model = model.to(device)
         model.eval()
         
         # Set attention implementation to 'eager' if needed for attention outputs

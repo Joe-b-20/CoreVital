@@ -9,6 +9,7 @@
 #
 # Changelog:
 #   2026-01-13: Initial configuration system for Phase-0
+#   2026-01-15: Added load_in_4bit and load_in_8bit flags to ModelConfig for quantization support
 # ============================================================================
 
 import os
@@ -24,6 +25,8 @@ class ModelConfig(BaseModel):
     revision: Optional[str] = None
     trust_remote_code: bool = False
     dtype: str = "auto"  # auto, float32, float16, bfloat16
+    load_in_4bit: bool = False
+    load_in_8bit: bool = False
 
 
 class DeviceConfig(BaseModel):

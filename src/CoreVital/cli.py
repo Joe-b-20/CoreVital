@@ -9,6 +9,7 @@
 #
 # Changelog:
 #   2026-01-13: Initial CLI with 'run' command for Phase-0
+#   2026-01-15: Added --quantize-4 and --quantize-8 flags for quantization support
 # ============================================================================
 
 import argparse
@@ -126,6 +127,16 @@ def create_parser() -> argparse.ArgumentParser:
         help="Path to custom config YAML file",
     )
     run_parser.add_argument(
+        "--quantize-4",
+        action="store_true",
+        help="Load model with 4-bit quantization using bitsandbytes",
+    )
+    run_parser.add_argument(
+        "--quantize-8",
+        action="store_true",
+        help="Load model with 8-bit quantization using bitsandbytes",
+    )
+    run_parser.add_argument(
         "--log_level",
         type=str,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -158,6 +169,8 @@ def run_command(args: argparse.Namespace) -> int:
         config.generation.temperature = args.temperature
         config.generation.top_k = args.top_k
         config.generation.top_p = args.top_p
+        config.model.load_in_4bit = args.quantize_4
+        config.model.load_in_8bit = args.quantize_8
         
         if args.out:
             config.sink.output_dir = args.out

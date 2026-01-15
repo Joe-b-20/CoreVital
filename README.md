@@ -11,6 +11,7 @@ An open-source Python toolkit for monitoring the internal health of Large Langua
 -  **Extensible Persistence**: Pluggable Sink interface (LocalFileSink included, HTTPSink stub)
 -  **Configurable**: YAML configuration with environment variable overrides
 -  **CPU/CUDA Support**: Automatic device detection or manual override
+-  **Quantization Support**: 4-bit and 8-bit quantization via bitsandbytes for memory-efficient inference
 -  **Structured Artifacts**: JSON trace files with schema version for future compatibility
 
 ## Quick Start
@@ -41,6 +42,22 @@ python -m CoreVital.cli run \
   --max_new_tokens 20 \
   --device auto
 
+# Run with 4-bit quantization (requires CUDA)
+python -m CoreVital.cli run \
+  --model gpt2 \
+  --prompt "Explain why the sky is blue" \
+  --max_new_tokens 50 \
+  --device cuda \
+  --quantize-4
+
+# Run with 8-bit quantization (requires CUDA)
+python -m CoreVital.cli run \
+  --model gpt2 \
+  --prompt "Explain why the sky is blue" \
+  --max_new_tokens 50 \
+  --device cuda \
+  --quantize-8
+
 # Output will be saved to ./runs/ directory
 ```
 
@@ -57,9 +74,13 @@ Options:
   --temperature FLOAT       Sampling temperature [default: 0.8]
   --top_k INT              Top-k sampling [default: 50]
   --top_p FLOAT            Top-p sampling [default: 0.95]
+  --quantize-4              Load model with 4-bit quantization (requires CUDA)
+  --quantize-8              Load model with 8-bit quantization (requires CUDA)
   --out PATH               Output path (directory or file)
   --remote_sink TEXT       Remote sink: none|http [default: none]
   --remote_url TEXT        Remote sink URL
+  --config PATH            Path to custom config YAML file
+  --log_level TEXT         Logging level: DEBUG|INFO|WARNING|ERROR [default: INFO]
 ```
 
 ## Output Format
@@ -116,6 +137,7 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 - **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max)
 - **logits_summary**: Entropy, top-1/top-2 margin, and top-k token probabilities
 - **model.revision**: Model commit hash/revision extracted from model config
+- **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null)
 - **extensions**: Reserved for future phases (risk scores, layer blame, etc.)
 
 ### Model Compatibility Notes
@@ -123,6 +145,7 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 - **Causal Language Models (GPT-2, LLaMA, etc.)**: Fully supported with automatic detection. The tool automatically switches attention implementation from SDPA to 'eager' for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
 - **Sequence-to-Sequence Models (T5, BART, etc.)**: Fully supported with automatic detection. The tool uses manual generation to capture hidden states and attentions, as Seq2Seq models don't return these via the standard `generate()` method. Models are automatically detected using `AutoConfig.from_pretrained()`.
 - **Other Models**: Models using eager attention by default will work without modification. Models that don't support attention output will log warnings.
+- **Quantization**: 4-bit and 8-bit quantization via bitsandbytes is supported for models that are compatible. Quantization requires CUDA and will automatically fall back to CPU without quantization if CUDA is unavailable. The quantization status is reflected in the output JSON report.
 
 ## Architecture
 
@@ -188,6 +211,7 @@ pytest --cov=CoreVital tests/
 - ✅ Model revision extraction from config
 - ✅ Dynamic model loading with automatic Seq2Seq detection (T5, BART, etc.)
 - ✅ Manual generation for Seq2Seq models to capture hidden states and attentions
+- ✅ 4-bit and 8-bit quantization support via bitsandbytes
 
 **Future Phases** (Design only):
 - Phase-1: Internal metrics
@@ -206,6 +230,8 @@ pytest --cov=CoreVital tests/
 - Transformers (Hugging Face)
 - PyYAML
 - Pydantic
+- bitsandbytes (for quantization support)
+- accelerate (required by bitsandbytes)
 - pytest (for testing)
 
 ## License
