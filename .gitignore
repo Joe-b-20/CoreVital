@@ -34,7 +34,6 @@ htmlcov/
 
 # --- LLM & Data Weights (IMPORTANT) ---
 # Prevents accidentally committing multi-gigabyte model weights
-models/
 .cache/huggingface/
 *.bin
 *.pt
