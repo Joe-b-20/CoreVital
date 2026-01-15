@@ -27,11 +27,18 @@ pip install -e .
 
 ### Basic Usage
 ```bash
-# Run monitoring on GPT-2 with a simple prompt
+# Run monitoring on GPT-2 (CausalLM) with a simple prompt
 python -m CoreVital.cli run \
   --model gpt2 \
   --prompt "Explain why the sky is blue" \
   --max_new_tokens 50 \
+  --device auto
+
+# Run monitoring on T5 (Seq2Seq) model
+python -m CoreVital.cli run \
+  --model google/flan-t5-small \
+  --prompt "My code works and I have no idea why, which is infinitely more terrifying than when it doesn't work and I have no idea why." \
+  --max_new_tokens 20 \
   --device auto
 
 # Output will be saved to ./runs/ directory
@@ -113,7 +120,8 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 
 ### Model Compatibility Notes
 
-- **Llama Models**: The tool automatically switches attention implementation from SDPA to 'eager' to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
+- **Causal Language Models (GPT-2, LLaMA, etc.)**: Fully supported with automatic detection. The tool automatically switches attention implementation from SDPA to 'eager' for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
+- **Sequence-to-Sequence Models (T5, BART, etc.)**: Fully supported with automatic detection. The tool uses manual generation to capture hidden states and attentions, as Seq2Seq models don't return these via the standard `generate()` method. Models are automatically detected using `AutoConfig.from_pretrained()`.
 - **Other Models**: Models using eager attention by default will work without modification. Models that don't support attention output will log warnings.
 
 ## Architecture
@@ -178,6 +186,8 @@ pytest --cov=CoreVital tests/
 - ✅ LocalFileSink implementation
 - ✅ Automatic attention implementation handling (SDPA → eager for attention outputs)
 - ✅ Model revision extraction from config
+- ✅ Dynamic model loading with automatic Seq2Seq detection (T5, BART, etc.)
+- ✅ Manual generation for Seq2Seq models to capture hidden states and attentions
 
 **Future Phases** (Design only):
 - Phase-1: Internal metrics
