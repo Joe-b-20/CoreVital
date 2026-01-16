@@ -196,8 +196,38 @@ pytest tests/
 # Run smoke test only
 pytest tests/test_smoke_gpt2_cpu.py -v
 
+# Run mock instrumentation tests (fast, no model loading)
+pytest tests/test_mock_instrumentation.py -v
+
 # Run with coverage
 pytest --cov=CoreVital tests/
+```
+
+### Mock Testing Suite
+
+The project includes a comprehensive mock testing suite that allows testing instrumentation logic without loading heavy models. This enables fast, lightweight testing of the instrumentation pipeline.
+
+**Mock Fixtures** (`tests/conftest.py`):
+- `mock_model_bundle`: Provides a mock `ModelBundle` with configurable model and tokenizer
+- Supports both CausalLM and Seq2Seq architectures via parametrization
+- Returns properly shaped tensors for all outputs (hidden states, attentions, cross-attentions)
+
+**Mock Tests** (`tests/test_mock_instrumentation.py`):
+- Tests `InstrumentationCollector` with mock models
+- Tests `ReportBuilder` produces valid JSON reports
+- Verifies tensor shapes for both Causal and Seq2Seq models
+- Full pipeline integration tests
+
+Usage:
+```bash
+# Test CausalLM mocks
+pytest tests/test_mock_instrumentation.py::TestMockCausalLMInstrumentation -v
+
+# Test Seq2Seq mocks
+pytest tests/test_mock_instrumentation.py::TestMockSeq2SeqInstrumentation -v
+
+# Test full pipeline
+pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 ```
 
 ### Project Structure
@@ -225,6 +255,7 @@ pytest --cov=CoreVital tests/
 - ✅ Manual generation for Seq2Seq models to capture hidden states and attentions
 - ✅ Deep Seq2Seq instrumentation: encoder hidden states, encoder attention, and cross-attention metrics
 - ✅ 4-bit and 8-bit quantization support via bitsandbytes
+- ✅ Mock testing suite for fast instrumentation testing without model loading
 
 **Future Phases** (Design only):
 - Phase-1: Internal metrics
