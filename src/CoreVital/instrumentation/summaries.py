@@ -14,24 +14,30 @@
 #                Fixed logits summary to properly handle topk extraction
 #   2026-01-15: Enhanced attention summary to support cross-attention tensors (different source/target lengths)
 #                Added compute_encoder_hidden_states_summaries helper for Seq2Seq models
+#   2026-01-21: Phase-0.5 hardening - replaced magic number with MIN_TOPK_FOR_ENTROPY constant
 # ============================================================================
 
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import torch
 import torch.nn.functional as F
 import numpy as np
 
-from CoreVital.config import Config, HiddenSummariesConfig, AttentionSummariesConfig, LogitsSummariesConfig
 from CoreVital.errors import SummaryComputationError
 from CoreVital.logging_utils import get_logger
+
+if TYPE_CHECKING:
+    from CoreVital.config import HiddenSummariesConfig, AttentionSummariesConfig, LogitsSummariesConfig
 
 
 logger = get_logger(__name__)
 
+# Constants
+MIN_TOPK_FOR_ENTROPY = 50  # Minimum top-k for good entropy estimate
+
 
 def compute_hidden_summary(
     hidden_state: torch.Tensor,
-    config: HiddenSummariesConfig,
+    config: "HiddenSummariesConfig",
 ) -> Dict[str, Any]:
     """
     Compute summary statistics for hidden state tensor.
@@ -94,7 +100,7 @@ def compute_hidden_summary(
 
 def compute_attention_summary(
     attention: Any,  # Changed from torch.Tensor to Any for safe checking
-    config: AttentionSummariesConfig,
+    config: "AttentionSummariesConfig",
 ) -> Dict[str, Any]:
     """
     Compute summary statistics for attention tensor.
@@ -208,7 +214,7 @@ def compute_attention_summary(
 def compute_logits_summary(
     logits: torch.Tensor,
     tokenizer: Any,
-    config: LogitsSummariesConfig,
+    config: "LogitsSummariesConfig",
 ) -> Dict[str, Any]:
     """
     Compute summary statistics for logits tensor.
@@ -241,7 +247,7 @@ def compute_logits_summary(
         
         # Compute probabilities
         # For efficiency, only compute over top-k
-        topk_k = max(config.topk, 50)  # At least 50 for good entropy estimate
+        topk_k = max(config.topk, MIN_TOPK_FOR_ENTROPY)  # At least MIN_TOPK_FOR_ENTROPY for good entropy estimate
         topk_values, topk_indices = torch.topk(logits, k=min(topk_k, len(logits)))
         
         # Compute softmax over top-k (approximation for large vocabs)
@@ -286,7 +292,7 @@ def compute_logits_summary(
 
 def compute_encoder_hidden_states_summaries(
     encoder_hidden_states: List[torch.Tensor],
-    config: HiddenSummariesConfig,
+    config: "HiddenSummariesConfig",
 ) -> List[Dict[str, Any]]:
     """
     Compute summaries for encoder hidden states (one per encoder layer).

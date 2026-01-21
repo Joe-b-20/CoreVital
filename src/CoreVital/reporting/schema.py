@@ -11,6 +11,8 @@
 #   2026-01-13: Initial schema for Phase-0
 #   2026-01-15: Added Seq2Seq support - encoder_attention and cross_attention to LayerSummary,
 #                encoder_hidden_states to Report
+#   2026-01-21: Phase-0.5 hardening - added extensions field to Report, TimelineStep, and
+#                LayerSummary; added encoder_layers field to Report for proper Seq2Seq support
 # ============================================================================
 
 from typing import List, Optional, Dict, Any
@@ -148,6 +150,7 @@ class LayerSummary(BaseModel):
     attention_summary: AttentionSummary = Field(default_factory=AttentionSummary)
     encoder_attention: Optional[AttentionSummary] = None
     cross_attention: Optional[AttentionSummary] = None
+    extensions: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TokenInfo(BaseModel):
@@ -204,3 +207,5 @@ class Report(BaseModel):
     summary: Summary
     warnings: List[Warning] = Field(default_factory=list)
     encoder_hidden_states: Optional[List[HiddenSummary]] = None
+    encoder_layers: Optional[List[LayerSummary]] = None
+    extensions: Dict[str, Any] = Field(default_factory=dict)

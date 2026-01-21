@@ -15,6 +15,9 @@
 #   2026-01-15: Added quantization info extraction from config to report model.quantization field
 #   2026-01-15: Added Seq2Seq report building - compute encoder_hidden_states summaries,
 #                include encoder_attention and cross_attention in layer summaries
+#   2026-01-21: Phase-0.5 hardening - removed encoder_attention by index from decoder layers,
+#                build proper encoder_layers from encoder pass; added extensions to all layers;
+#                standardized logging to DEBUG level
 # ============================================================================
 
 import uuid
@@ -22,7 +25,7 @@ from typing import List, Optional
 import torch
 
 from CoreVital.config import Config
-from CoreVital.instrumentation.collector import InstrumentationResults, StepData
+from CoreVital.instrumentation.collector import InstrumentationResults
 from CoreVital.instrumentation.summaries import (
     compute_hidden_summary,
     compute_attention_summary,
@@ -30,29 +33,27 @@ from CoreVital.instrumentation.summaries import (
     compute_encoder_hidden_states_summaries,
 )
 from CoreVital.reporting.schema import (
-    GeneratedInfo,
-    Report,
-    ModelInfo,
-    QuantizationInfo,
-    RunConfig,
-    GenerationConfig,
-    SketchConfig,
-    HiddenConfig,
     AttentionConfig,
+    AttentionSummary,
+    GeneratedInfo,
+    GenerationConfig,
+    HiddenConfig,
+    HiddenSummary,
     LogitsConfig,
-    SummariesConfig,
-    SinkConfig,
-    PromptInfo,
-
-    TimelineStep,
-    TokenInfo,
     LogitsSummary,
     LayerSummary,
-    HiddenSummary,
-    AttentionSummary,
+    ModelInfo,
+    PromptInfo,
+    QuantizationInfo,
+    Report,
+    RunConfig,
+    SinkConfig,
+    SketchConfig,
     Summary,
+    SummariesConfig,
+    TimelineStep,
+    TokenInfo,
     Warning,
-    TopKItem,
 )
 from CoreVital.utils.time import get_utc_timestamp
 from CoreVital.logging_utils import get_logger
@@ -86,7 +87,7 @@ class ReportBuilder:
         Returns:
             Complete Report object
         """
-        logger.info("Building report...")
+        logger.debug("Building report...")
         
         # Generate trace ID
         trace_id = str(uuid.uuid4())
@@ -127,9 +128,24 @@ class ReportBuilder:
                     HiddenSummary(**summary_dict) if summary_dict else HiddenSummary()
                     for summary_dict in encoder_summaries_dicts
                 ]
-                logger.info(f"Computed {len(encoder_hidden_states_summaries)} encoder hidden state summaries")
+                logger.debug(f"Computed {len(encoder_hidden_states_summaries)} encoder hidden state summaries")
             except Exception as e:
                 logger.warning(f"Failed to compute encoder hidden states summaries: {e}")
+        
+        # Build encoder layers (for Seq2Seq models)
+        # encoder_layers represents the encoder pass computed ONCE
+        encoder_layers = None
+        if results.encoder_hidden_states is not None or results.encoder_attentions is not None:
+            try:
+                encoder_layers = self._build_encoder_layers(
+                    results.encoder_hidden_states,
+                    results.encoder_attentions,
+                    results.model_bundle.num_layers,
+                )
+                if encoder_layers:
+                    logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
+            except Exception as e:
+                logger.warning(f"Failed to compute encoder layers: {e}")
         
         # Build summary
         summary = Summary(
@@ -157,9 +173,10 @@ class ReportBuilder:
             summary=summary,
             warnings=warnings,
             encoder_hidden_states=encoder_hidden_states_summaries,
+            encoder_layers=encoder_layers,
         )
         
-        logger.info(f"Report built: {len(timeline)} timeline steps")
+        logger.debug(f"Report built: {len(timeline)} timeline steps")
         return report
     
     def _build_model_info(self, results: InstrumentationResults) -> ModelInfo:
@@ -268,7 +285,6 @@ class ReportBuilder:
                     step_data.hidden_states,
                     step_data.attentions,
                     results.model_bundle.num_layers,
-                    encoder_attentions=results.encoder_attentions,
                     cross_attentions=step_data.cross_attentions,
                 )
             
@@ -289,7 +305,6 @@ class ReportBuilder:
         hidden_states: Optional[List[torch.Tensor]],
         attentions: Optional[List[torch.Tensor]],
         num_layers: int,
-        encoder_attentions: Optional[List[torch.Tensor]] = None,
         cross_attentions: Optional[List[torch.Tensor]] = None,
     ) -> List[LayerSummary]:
         """Build layer summaries from hidden states and attentions."""
@@ -330,24 +345,6 @@ class ReportBuilder:
                             import traceback
                             logger.debug(traceback.format_exc())
                     
-                    # Compute encoder attention summary (encoder self-attention for corresponding encoder layer)
-                    encoder_attention_summary = None
-                    if encoder_attentions is not None and layer_idx < len(encoder_attentions):
-                        try:
-                            enc_attn_tensor = encoder_attentions[layer_idx]
-                            if enc_attn_tensor is not None:
-                                # Handle tuple structure if present
-                                if isinstance(enc_attn_tensor, (tuple, list)) and len(enc_attn_tensor) > 0:
-                                    enc_attn_tensor = enc_attn_tensor[0]
-                                enc_attn_dict = compute_attention_summary(
-                                    enc_attn_tensor,
-                                    self.config.summaries.attention,
-                                )
-                                if enc_attn_dict:
-                                    encoder_attention_summary = AttentionSummary(**enc_attn_dict)
-                        except Exception as e:
-                            logger.debug(f"Failed to compute encoder attention summary for layer {layer_idx}: {e}")
-                    
                     # Compute cross-attention summary (decoder attending to encoder)
                     cross_attention_summary = None
                     if cross_attentions is not None and layer_idx < len(cross_attentions):
@@ -367,8 +364,9 @@ class ReportBuilder:
                         layer_index=layer_idx,
                         hidden_summary=hidden_summary,
                         attention_summary=attention_summary,
-                        encoder_attention=encoder_attention_summary,
+                        encoder_attention=None,  # Removed: encoder attention is now in encoder_layers
                         cross_attention=cross_attention_summary,
+                        extensions={},  # Phase-0.5: extensions field for future use
                     )
                     layers.append(layer_summary)
                     
@@ -376,6 +374,89 @@ class ReportBuilder:
                     logger.warning(f"Failed to process layer {layer_idx}: {e}")
         
         return layers
+    
+    def _build_encoder_layers(
+        self,
+        encoder_hidden_states: Optional[List[torch.Tensor]],
+        encoder_attentions: Optional[List[torch.Tensor]],
+        num_layers: int,
+    ) -> Optional[List[LayerSummary]]:
+        """
+        Build encoder layer summaries from encoder hidden states and attentions.
+        
+        Args:
+            encoder_hidden_states: List of encoder hidden state tensors (one per layer)
+            encoder_attentions: List of encoder attention tensors (one per layer)
+            num_layers: Number of layers
+            
+        Returns:
+            List of LayerSummary objects for encoder layers, or None if no encoder data
+        """
+        if encoder_hidden_states is None and encoder_attentions is None:
+            return None
+        
+        encoder_layers = []
+        max_layers = num_layers
+        
+        # Determine number of layers from available data
+        if encoder_hidden_states is not None and len(encoder_hidden_states) > 0:
+            max_layers = min(max_layers, len(encoder_hidden_states))
+        if encoder_attentions is not None and len(encoder_attentions) > 0:
+            max_layers = min(max_layers, len(encoder_attentions))
+        
+        # If we have no valid layers, return None
+        if max_layers == 0:
+            logger.debug("No encoder layers to process (empty encoder_hidden_states and encoder_attentions)")
+            return None
+        
+        for layer_idx in range(max_layers):
+            try:
+                # Compute hidden summary
+                hidden_summary = HiddenSummary()
+                if encoder_hidden_states is not None and layer_idx < len(encoder_hidden_states):
+                    try:
+                        hidden_tensor = encoder_hidden_states[layer_idx]
+                        if hidden_tensor is not None:
+                            hidden_dict = compute_hidden_summary(
+                                hidden_tensor,
+                                self.config.summaries.hidden,
+                            )
+                            hidden_summary = HiddenSummary(**hidden_dict)
+                    except Exception as e:
+                        logger.debug(f"Failed to compute encoder hidden summary for layer {layer_idx}: {e}")
+                
+                # Compute encoder attention summary
+                encoder_attention_summary = None
+                if encoder_attentions is not None and layer_idx < len(encoder_attentions):
+                    try:
+                        enc_attn_tensor = encoder_attentions[layer_idx]
+                        if enc_attn_tensor is not None:
+                            # Handle tuple structure if present
+                            if isinstance(enc_attn_tensor, (tuple, list)) and len(enc_attn_tensor) > 0:
+                                enc_attn_tensor = enc_attn_tensor[0]
+                            enc_attn_dict = compute_attention_summary(
+                                enc_attn_tensor,
+                                self.config.summaries.attention,
+                            )
+                            if enc_attn_dict:
+                                encoder_attention_summary = AttentionSummary(**enc_attn_dict)
+                    except Exception as e:
+                        logger.debug(f"Failed to compute encoder attention summary for layer {layer_idx}: {e}")
+                
+                layer_summary = LayerSummary(
+                    layer_index=layer_idx,
+                    hidden_summary=hidden_summary,
+                    attention_summary=encoder_attention_summary if encoder_attention_summary else AttentionSummary(),
+                    encoder_attention=None,  # Not applicable for encoder layers
+                    cross_attention=None,  # Not applicable for encoder layers
+                    extensions={},  # Phase-0.5: extensions field for future use
+                )
+                encoder_layers.append(layer_summary)
+                
+            except Exception as e:
+                logger.warning(f"Failed to process encoder layer {layer_idx}: {e}")
+        
+        return encoder_layers if encoder_layers else None
 
 
 # ============================================================================

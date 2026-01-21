@@ -18,6 +18,8 @@
 #                Otherwise uses AutoModelForCausalLM. Model class type stored in ModelBundle.model_class
 #   2026-01-15: Added 4-bit and 8-bit quantization support using bitsandbytes library
 #                Supports load_in_4bit and load_in_8bit flags via config and CLI
+#   2026-01-21: Phase-0.5 hardening - improved quantization check to use model.config.quantization_config;
+#                enhanced attention implementation logging; standardized logging to INFO for model loading
 # ============================================================================
 
 from dataclasses import dataclass
@@ -95,7 +97,7 @@ def load_model(config: Config) -> ModelBundle:
         logger.info(f"Model dtype: {dtype}")
         
         # Load tokenizer
-        logger.debug("Loading tokenizer...")
+        logger.info("Loading tokenizer...")
         tokenizer = AutoTokenizer.from_pretrained(
             config.model.hf_id,
             revision=config.model.revision,
@@ -107,7 +109,7 @@ def load_model(config: Config) -> ModelBundle:
             tokenizer.pad_token = tokenizer.eos_token
         
         # Inspect model type to determine which model class to use
-        logger.debug("Inspecting model architecture...")
+        logger.info("Inspecting model architecture...")
         model_config = AutoConfig.from_pretrained(
             config.model.hf_id,
             revision=config.model.revision,
@@ -176,7 +178,7 @@ def load_model(config: Config) -> ModelBundle:
             model_kwargs["torch_dtype"] = dtype
         
         # Load model with the appropriate class
-        logger.debug(f"Loading model with {model_class.__name__}...")
+        logger.info(f"Loading model with {model_class.__name__}...")
         model = model_class.from_pretrained(
             config.model.hf_id,
             **model_kwargs,
@@ -188,6 +190,20 @@ def load_model(config: Config) -> ModelBundle:
                 logger.info("Model loaded successfully with 4-bit quantization")
             elif config.model.load_in_8bit:
                 logger.info("Model loaded successfully with 8-bit quantization")
+            
+            # Quantization check: verify quantization was actually applied
+            # Note: BitsAndBytes stores params in special format but dtype still shows float16/float32
+            # Check for quantization config attribute instead
+            if hasattr(model, 'config') and hasattr(model.config, 'quantization_config'):
+                logger.info(f"Quantization config verified: {model.config.quantization_config}")
+            else:
+                # Fallback: check parameter dtype (may give false warnings with BitsAndBytes)
+                actual_dtype = next(model.parameters()).dtype
+                if actual_dtype in (torch.float16, torch.float32):
+                    logger.warning(
+                        f"Quantization requested but model dtype is {actual_dtype}. "
+                        "Note: BitsAndBytes quantization may still be active despite float16/32 dtype."
+                    )
         
         # Move to device (only if not using quantization, as quantization handles device placement)
         if quantization_config is None:
@@ -196,7 +212,7 @@ def load_model(config: Config) -> ModelBundle:
         
         # Set attention implementation to 'eager' if needed for attention outputs
         # Some models (like Llama) use SDPA by default which doesn't support output_attentions
-        # We need 'eager' attention to capture attention weights during generation
+        # We need 'eager' or 'flex_attention' to capture attention weights during generation
         try:
             if hasattr(model, 'set_attn_implementation'):
                 # Try to get current implementation from config
@@ -205,15 +221,25 @@ def load_model(config: Config) -> ModelBundle:
                 if current_attn is None:
                     current_attn = getattr(model.config, 'attn_implementation', None)
                 
+                # Compatible implementations: eager, flex_attention
+                compatible_implementations = ['eager', 'flex_attention']
+                
                 # Only change if it's not already one of the compatible implementations
-                if current_attn not in ['eager', 'eager_paged', 'flex_attention']:
+                if current_attn not in compatible_implementations:
                     logger.info(f"Setting attention implementation to 'eager' (current: {current_attn or 'default'})")
                     model.set_attn_implementation('eager')
-                    logger.debug("Attention implementation set to 'eager' for attention output support")
+                    # Log the final attention implementation
+                    final_attn = getattr(model.config, '_attn_implementation', None) or \
+                                getattr(model.config, 'attn_implementation', 'eager')
+                    logger.info(f"Attention implementation now set to: {final_attn}")
                 else:
-                    logger.debug(f"Attention implementation already compatible: {current_attn}")
+                    logger.info(f"Attention implementation is compatible: {current_attn}")
             else:
-                logger.debug("Model does not support set_attn_implementation method")
+                # No explicit method, try to get the current implementation anyway
+                current_attn = getattr(model.config, '_attn_implementation', None) or \
+                              getattr(model.config, 'attn_implementation', None)
+                if current_attn:
+                    logger.info(f"Current attention implementation: {current_attn}")
         except Exception as e:
             logger.warning(f"Could not set attention implementation to 'eager': {e}")
             # Continue anyway - some models might not support this or might already work

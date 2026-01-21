@@ -113,11 +113,12 @@ Each run produces a JSON trace file in `./runs/` with this structure:
           "layer_index": 0,
           "hidden_summary": { "mean": 0.001, "std": 0.98, ... },
           "attention_summary": { "entropy_mean": 2.31, ... },
-          "encoder_attention": { "entropy_mean": 1.85, ... },  // Seq2Seq only
-          "cross_attention": { "entropy_mean": 0.92, ... }     // Seq2Seq only
+          "encoder_attention": null,  // Removed in Phase-0.5: now in encoder_layers
+          "cross_attention": { "entropy_mean": 0.92, ... },  // Seq2Seq only
+          "extensions": {}  // Phase-0.5: for future metric expansion
         }
       ],
-      "extensions": {}
+      "extensions": {}  // Phase-0.5: for future metric expansion
     }
   ],
   "summary": {
@@ -127,10 +128,22 @@ Each run produces a JSON trace file in `./runs/` with this structure:
     "elapsed_ms": 1234
   },
   "warnings": [],
-  "encoder_hidden_states": [  // Seq2Seq only
+  "encoder_hidden_states": [  // Seq2Seq only (deprecated: use encoder_layers)
     { "mean": 0.5, "std": 1.2, ... },  // One per encoder layer
     ...
-  ]
+  ],
+  "encoder_layers": [  // Phase-0.5: Seq2Seq only, computed once
+    {
+      "layer_index": 0,
+      "hidden_summary": { "mean": 0.5, "std": 1.2, ... },
+      "attention_summary": { "entropy_mean": 2.85, ... },  // Encoder self-attention
+      "encoder_attention": null,
+      "cross_attention": null,
+      "extensions": {}
+    },
+    ...
+  ],
+  "extensions": {}  // Phase-0.5: for future metric expansion
 }
 ```
 
@@ -141,9 +154,9 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 - **timeline**: Per-token trace covering both prompt and generated tokens
 - **hidden_summary**: Mean, std, L2 norm, max abs value, and random projection sketch
 - **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max) - decoder self-attention for Seq2Seq models
-- **encoder_attention**: (Seq2Seq only) Encoder self-attention statistics, showing how the encoder processes the input sequence
-- **cross_attention**: (Seq2Seq only) Cross-attention statistics, showing how the decoder attends to encoder outputs at each generation step
-- **encoder_hidden_states**: (Seq2Seq only) Fixed encoder hidden state summaries (one per encoder layer), computed once at the start of generation
+- **encoder_layers**: (Phase-0.5, Seq2Seq only) Encoder layer summaries computed once at the start of generation. Each layer includes hidden_summary and attention_summary (encoder self-attention). Replaces the ambiguous encoder_attention field in timeline layers.
+- **cross_attention**: (Seq2Seq only) Cross-attention statistics showing how the decoder attends to encoder outputs at each generation step
+- **encoder_hidden_states**: (Seq2Seq only, deprecated) Use encoder_layers instead for full encoder layer details
 - **logits_summary**: Entropy, top-1/top-2 margin, and top-k token probabilities
 - **model.revision**: Model commit hash/revision extracted from model config
 - **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null)
@@ -244,7 +257,16 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-**Phase-0** (Current): HF instrumentation + JSON trace + Sink interface
+**Phase-0.5** (Current): Hardening & Future-Proofing
+- ✅ Extensions field on Report, TimelineStep, and LayerSummary for future metric expansion
+- ✅ Separated encoder_layers (computed once) from decoder timeline for Seq2Seq models
+- ✅ Robust Seq2Seq detection with Mock object handling for testing
+- ✅ Improved quantization validation and logging
+- ✅ Memory optimizations (decoder self-attention slicing)
+- ✅ Standardized logging levels (INFO for model loading, DEBUG for tensor extraction)
+- ✅ Comprehensive persistence and validation tests
+
+**Phase-0** (Complete): HF instrumentation + JSON trace + Sink interface
 - ✅ Capture hidden states, attention, logits
 - ✅ Compute lightweight summaries
 - ✅ JSON artifact generation
