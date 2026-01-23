@@ -11,6 +11,10 @@
 #   2026-01-13: Initial schema for Phase-0
 #   2026-01-15: Added Seq2Seq support - encoder_attention and cross_attention to LayerSummary,
 #                encoder_hidden_states to Report
+#   2026-01-21: Phase-0.5 hardening - added extensions field to Report, TimelineStep, and
+#                LayerSummary; added encoder_layers field to Report for proper Seq2Seq support
+#   2026-01-23: Added comprehensive docstrings clarifying field usage, especially why
+#                encoder_attention is always null (deprecated) and how attention fields are used
 # ============================================================================
 
 from typing import List, Optional, Dict, Any
@@ -142,12 +146,68 @@ class AttentionSummary(BaseModel):
 
 
 class LayerSummary(BaseModel):
-    """Per-layer summary."""
-    layer_index: int
-    hidden_summary: HiddenSummary = Field(default_factory=HiddenSummary)
-    attention_summary: AttentionSummary = Field(default_factory=AttentionSummary)
-    encoder_attention: Optional[AttentionSummary] = None
-    cross_attention: Optional[AttentionSummary] = None
+    """
+    Per-layer summary for decoder layers (in timeline) or encoder layers (in encoder_layers).
+    
+    This class represents summaries for a single transformer layer. The same structure is used
+    for both decoder layers (in the timeline) and encoder layers (in encoder_layers for Seq2Seq models).
+    
+    Field Usage:
+    ------------
+    - hidden_summary: Summary statistics for the layer's hidden states
+    
+    - attention_summary: Summary statistics for SELF-ATTENTION. 
+      * For decoder layers (in timeline): This is decoder self-attention
+      * For encoder layers (in encoder_layers): This is encoder self-attention
+      * This field ALWAYS contains the self-attention summary, regardless of model type
+    
+    - encoder_attention: DEPRECATED - Always null. This field was originally intended to hold
+      encoder self-attention, but that information is now in attention_summary when this
+      LayerSummary is part of encoder_layers. Kept for backward compatibility.
+    
+    - cross_attention: Only used in decoder layers (in timeline) for Seq2Seq models.
+      Contains summary statistics for decoder-to-encoder cross-attention (decoder attending
+      to encoder outputs). Always null for CausalLM models and for encoder layers.
+    
+    - extensions: Phase-0.5 field for future metric expansion. Custom key-value pairs.
+    
+    Examples:
+    --------
+    For CausalLM models:
+    - timeline[].layers[]: decoder layers with attention_summary (decoder self-attention)
+    - encoder_layers: null
+    
+    For Seq2Seq models:
+    - timeline[].layers[]: decoder layers with attention_summary (decoder self-attention)
+      and cross_attention (decoder-to-encoder attention)
+    - encoder_layers[]: encoder layers with attention_summary (encoder self-attention)
+    """
+    layer_index: int = Field(description="Zero-based index of the layer within its context (decoder or encoder)")
+    hidden_summary: HiddenSummary = Field(
+        default_factory=HiddenSummary,
+        description="Summary statistics for the layer's hidden states (mean, std, norms, etc.)"
+    )
+    attention_summary: AttentionSummary = Field(
+        default_factory=AttentionSummary,
+        description="Summary statistics for SELF-ATTENTION. For decoder layers (in timeline), "
+                   "this is decoder self-attention. For encoder layers (in encoder_layers), "
+                   "this is encoder self-attention."
+    )
+    encoder_attention: Optional[AttentionSummary] = Field(
+        default=None,
+        description="DEPRECATED - Always null. Encoder self-attention is now in attention_summary "
+                   "when this LayerSummary is part of encoder_layers. Kept for backward compatibility."
+    )
+    cross_attention: Optional[AttentionSummary] = Field(
+        default=None,
+        description="Summary statistics for decoder-to-encoder cross-attention. "
+                   "Only used in decoder layers (in timeline) for Seq2Seq models. "
+                   "Always null for CausalLM models and for encoder layers."
+    )
+    extensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Phase-0.5 field for future metric expansion. Custom key-value pairs."
+    )
 
 
 class TokenInfo(BaseModel):
@@ -181,7 +241,25 @@ class Warning(BaseModel):
 
 
 class Report(BaseModel):
-    """Complete monitoring report."""
+    """
+    Complete monitoring report.
+    
+    This is the top-level report structure containing all instrumentation data from a model run.
+    The structure varies slightly between CausalLM and Seq2Seq models.
+    
+    Seq2Seq-Specific Fields:
+    -------------------------
+    - encoder_hidden_states: DEPRECATED - List of HiddenSummary objects, one per encoder layer.
+      This field is kept for backward compatibility. New code should use encoder_layers instead,
+      which provides more comprehensive encoder information including attention summaries.
+    
+    - encoder_layers: Phase-0.5 field - List of LayerSummary objects, one per encoder layer.
+      Each LayerSummary contains hidden_summary and attention_summary (encoder self-attention).
+      This is the preferred way to access encoder information. Always null for CausalLM models.
+    
+    For CausalLM models: Both encoder_hidden_states and encoder_layers are null.
+    For Seq2Seq models: Both fields are populated (encoder_layers is preferred).
+    """
     # Tell Pydantic to use the V2 configuration style
     model_config = ConfigDict(
         json_schema_extra = {
@@ -200,7 +278,25 @@ class Report(BaseModel):
     run_config: RunConfig
     prompt: PromptInfo
     generated: GeneratedInfo
-    timeline: List[TimelineStep] = Field(default_factory=list)
+    timeline: List[TimelineStep] = Field(
+        default_factory=list,
+        description="Timeline of generation steps. Each step contains decoder layer summaries."
+    )
     summary: Summary
     warnings: List[Warning] = Field(default_factory=list)
-    encoder_hidden_states: Optional[List[HiddenSummary]] = None
+    encoder_hidden_states: Optional[List[HiddenSummary]] = Field(
+        default=None,
+        description="DEPRECATED - List of HiddenSummary objects, one per encoder layer (Seq2Seq only). "
+                   "Kept for backward compatibility. Use encoder_layers instead for comprehensive "
+                   "encoder information including attention summaries. Always null for CausalLM models."
+    )
+    encoder_layers: Optional[List[LayerSummary]] = Field(
+        default=None,
+        description="Phase-0.5 field - List of LayerSummary objects, one per encoder layer (Seq2Seq only). "
+                   "Each LayerSummary contains hidden_summary and attention_summary (encoder self-attention). "
+                   "This is the preferred way to access encoder information. Always null for CausalLM models."
+    )
+    extensions: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Phase-0.5 field for future metric expansion. Custom key-value pairs."
+    )

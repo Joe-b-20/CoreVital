@@ -17,23 +17,20 @@
 #                so we manually step through the decoder to capture these outputs
 #   2026-01-15: Added deep Seq2Seq instrumentation - extract encoder_hidden_states, encoder_attentions,
 #                and cross_attentions from decoder outputs at each generation step
+#   2026-01-21: Phase-0.5 hardening - robust Seq2Seq detection with Mock object handling;
+#                memory optimization: slice decoder self-attention to last query token;
+#                standardized logging to DEBUG for tensor operations
 # ============================================================================
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 import time
 import torch
 
 from CoreVital.config import Config
 from CoreVital.models.hf_loader import load_model, ModelBundle
-from CoreVital.instrumentation.summaries import (
-    compute_hidden_summary,
-    compute_attention_summary,
-    compute_logits_summary,
-)
 from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
-from transformers import AutoModelForSeq2SeqLM
 
 
 logger = get_logger(__name__)
@@ -111,7 +108,7 @@ class InstrumentationCollector:
                     torch.cuda.manual_seed_all(self.config.generation.seed)
             
             # Tokenize prompt
-            logger.info("Tokenizing prompt...")
+            logger.debug("Tokenizing prompt...")
             inputs = self.model_bundle.tokenizer(
                 prompt,
                 return_tensors="pt",
@@ -119,13 +116,44 @@ class InstrumentationCollector:
             ).to(self.model_bundle.device)
             
             prompt_token_ids = inputs.input_ids[0].tolist()
-            logger.info(f"Prompt tokens: {len(prompt_token_ids)}")
+            logger.debug(f"Prompt tokens: {len(prompt_token_ids)}")
             
             # Check if this is a Seq2Seq model
             # Seq2Seq models don't return hidden_states/attentions via generate()
             # so we need to use manual generation
-            is_seq2seq = (self.model_bundle.model_class == AutoModelForSeq2SeqLM or
-                         isinstance(self.model_bundle.model, AutoModelForSeq2SeqLM))
+            model = self.model_bundle.model
+            
+            # Robust Seq2Seq detection: prefer model.config.is_encoder_decoder
+            # Important: getattr on Mock returns Mock, so check explicitly for True
+            is_encoder_decoder_attr = getattr(model.config, 'is_encoder_decoder', False)
+            is_seq2seq = is_encoder_decoder_attr is True or (
+                isinstance(is_encoder_decoder_attr, bool) and is_encoder_decoder_attr
+            )
+            
+            # Fallback: check for encoder/decoder attributes that are NOT from Mock
+            if not is_seq2seq:
+                # Only check if encoder/decoder exist and are real (not Mock/MagicMock)
+                try:
+                    from unittest.mock import Mock, MagicMock
+                    encoder_attr = getattr(model, 'encoder', None)
+                    decoder_attr = getattr(model, 'decoder', None)
+                    
+                    has_real_encoder = (
+                        encoder_attr is not None and 
+                        not isinstance(encoder_attr, (Mock, MagicMock)) and
+                        callable(encoder_attr)
+                    )
+                    has_real_decoder = (
+                        decoder_attr is not None and 
+                        not isinstance(decoder_attr, (Mock, MagicMock)) and
+                        callable(decoder_attr)
+                    )
+                    is_seq2seq = has_real_encoder and has_real_decoder
+                except ImportError:
+                    # unittest.mock not available, use simpler check
+                    has_encoder = hasattr(model, 'encoder') and callable(getattr(model, 'encoder', None))
+                    has_decoder = hasattr(model, 'decoder') and callable(getattr(model, 'decoder', None))
+                    is_seq2seq = has_encoder and has_decoder
             
             # Run generation with instrumentation
             logger.info("Starting instrumented generation...")
@@ -176,8 +204,8 @@ class InstrumentationCollector:
                 clean_up_tokenization_spaces=True
             )
             
-            logger.info(f"Generated tokens: {len(generated_token_ids)}")
-            #logger.info(f"Generated text: {generated_text}")
+            logger.debug(f"Generated tokens: {len(generated_token_ids)}")
+            logger.debug(f"Generated text: {generated_text}")
             
             # Process timeline
             # Handle both standard generate() output and manual Seq2Seq output
@@ -187,6 +215,11 @@ class InstrumentationCollector:
                 # Manual Seq2Seq generation output
                 encoder_hidden_states = outputs.get("encoder_hidden_states")
                 encoder_attentions = outputs.get("encoder_attentions")
+                # Convert tuples to lists for consistency with type hints
+                if encoder_hidden_states is not None and isinstance(encoder_hidden_states, tuple):
+                    encoder_hidden_states = list(encoder_hidden_states)
+                if encoder_attentions is not None and isinstance(encoder_attentions, tuple):
+                    encoder_attentions = list(encoder_attentions)
                 timeline = self._process_timeline(
                     outputs["output_obj"],
                     prompt_token_ids,
@@ -267,11 +300,14 @@ class InstrumentationCollector:
         encoder_attentions = None
         if hasattr(encoder_outputs, 'hidden_states') and encoder_outputs.hidden_states is not None:
             # Skip the first element (embedding) and take layer outputs
-            encoder_hidden_states = encoder_outputs.hidden_states[1:] if len(encoder_outputs.hidden_states) > 1 else []
+            # Convert tuple to list for consistency with type hints
+            hidden_states_tuple = encoder_outputs.hidden_states[1:] if len(encoder_outputs.hidden_states) > 1 else []
+            encoder_hidden_states = list(hidden_states_tuple) if isinstance(hidden_states_tuple, tuple) else hidden_states_tuple
             logger.debug(f"Extracted {len(encoder_hidden_states)} encoder hidden state layers")
         
         if hasattr(encoder_outputs, 'attentions') and encoder_outputs.attentions is not None:
-            encoder_attentions = encoder_outputs.attentions
+            # Convert tuple to list for consistency with type hints
+            encoder_attentions = list(encoder_outputs.attentions) if isinstance(encoder_outputs.attentions, tuple) else encoder_outputs.attentions
             logger.debug(f"Extracted {len(encoder_attentions)} encoder attention layers")
         
         # Prepare decoder inputs
@@ -350,6 +386,7 @@ class InstrumentationCollector:
             # decoder_outputs has decoder_attentions (self-attention) and cross_attentions (encoder-decoder)
             # For T5: decoder_attentions is a tuple of tuples, one per layer
             # Each layer has: (self_attn_tensor,) where tensor is (batch_size, num_heads, seq_len, seq_len)
+            # Memory optimization: slice to last query token before storage
             step_attentions = []
             if hasattr(decoder_outputs, 'decoder_attentions') and decoder_outputs.decoder_attentions is not None:
                 for layer_idx, layer_attn_tuple in enumerate(decoder_outputs.decoder_attentions):
@@ -360,9 +397,16 @@ class InstrumentationCollector:
                             # Take the self-attention tensor
                             attn_tensor = layer_attn_tuple[0]
                             if attn_tensor is not None:
+                                # Slice to last query token: [:, :, -1:, :] -> (batch_size, num_heads, 1, seq_len)
+                                if attn_tensor.dim() == 4:
+                                    attn_tensor = attn_tensor[:, :, -1:, :]  # Keep target_len=1 dimension
                                 step_attentions.append(attn_tensor)
                         elif isinstance(layer_attn_tuple, torch.Tensor):
-                            step_attentions.append(layer_attn_tuple)
+                            attn_tensor = layer_attn_tuple
+                            # Slice to last query token for memory optimization
+                            if attn_tensor.dim() == 4:
+                                attn_tensor = attn_tensor[:, :, -1:, :]
+                            step_attentions.append(attn_tensor)
             
             if step_attentions:
                 all_attentions.append(tuple(step_attentions))

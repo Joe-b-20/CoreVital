@@ -9,6 +9,7 @@
 #
 # Changelog:
 #   2026-01-16: Initial mock model bundle fixture for testing instrumentation
+#   2026-01-21: Phase-0.5 hardening - added is_encoder_decoder=True to MockSeq2SeqModel config
 # ============================================================================
 
 import pytest
@@ -111,6 +112,7 @@ def mock_model_bundle(request):
                 self.config = Mock()
                 self.config.decoder_start_token_id = 0
                 self.config.eos_token_id = 2
+                self.config.is_encoder_decoder = True  # Explicitly mark as seq2seq
                 # Don't set __class__ as it causes issues with attribute access
                 # Instead, we'll rely on isinstance checks in the collector
             

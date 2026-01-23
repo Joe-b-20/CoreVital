@@ -9,6 +9,7 @@
 #
 # Changelog:
 #   2026-01-16: Initial mock instrumentation tests
+#   2026-01-23: Phase-0.5 - Added tests for extensions fields and encoder_layers
 # ============================================================================
 
 import json
@@ -379,3 +380,185 @@ class TestMockInstrumentationIntegration:
         # Verify Seq2Seq-specific fields
         assert "encoder_hidden_states" in data
         assert len(data["encoder_hidden_states"]) == mock_model_bundle.num_layers
+
+
+# ============================================================================
+# Phase-0.5 Tests: Extensions and encoder_layers
+# ============================================================================
+
+class TestPhase05Features:
+    """Test Phase-0.5 features: extensions fields and encoder_layers."""
+    
+    def test_extensions_in_causal_report(self, mock_model_bundle):
+        """Test that extensions field is present in generated CausalLM reports."""
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Test")
+        
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Test")
+        
+        # Verify extensions field exists and defaults to empty dict
+        assert hasattr(report, "extensions")
+        assert isinstance(report.extensions, dict)
+        
+        # Verify timeline steps have extensions
+        if len(report.timeline) > 0:
+            assert hasattr(report.timeline[0], "extensions")
+            assert isinstance(report.timeline[0].extensions, dict)
+            
+            # Verify layer summaries have extensions
+            if len(report.timeline[0].layers) > 0:
+                assert hasattr(report.timeline[0].layers[0], "extensions")
+                assert isinstance(report.timeline[0].layers[0].extensions, dict)
+    
+    @pytest.mark.parametrize('mock_model_bundle', ['seq2seq'], indirect=True)
+    def test_extensions_in_seq2seq_report(self, mock_model_bundle):
+        """Test that extensions field is present in generated Seq2Seq reports."""
+        config = Config()
+        config.model.hf_id = "mock-seq2seq"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Translate: Test")
+        
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Translate: Test")
+        
+        # Verify extensions field exists
+        assert hasattr(report, "extensions")
+        assert isinstance(report.extensions, dict)
+        
+        # Verify timeline steps have extensions
+        if len(report.timeline) > 0:
+            assert hasattr(report.timeline[0], "extensions")
+            assert isinstance(report.timeline[0].extensions, dict)
+    
+    def test_encoder_layers_null_for_causal(self, mock_model_bundle):
+        """Test that encoder_layers is null for CausalLM models."""
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Test")
+        
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Test")
+        
+        # CausalLM models should have encoder_layers as None
+        assert report.encoder_layers is None
+        
+        # Serialize to JSON and verify
+        json_str = serialize_report_to_json(report)
+        json_data = json.loads(json_str)
+        
+        assert "encoder_layers" in json_data
+        assert json_data["encoder_layers"] is None
+    
+    @pytest.mark.parametrize('mock_model_bundle', ['seq2seq'], indirect=True)
+    def test_encoder_layers_populated_for_seq2seq(self, mock_model_bundle):
+        """Test that encoder_layers is populated for Seq2Seq models."""
+        config = Config()
+        config.model.hf_id = "mock-seq2seq"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Translate: Test")
+        
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Translate: Test")
+        
+        # Seq2Seq models should have encoder_layers populated
+        assert report.encoder_layers is not None
+        assert isinstance(report.encoder_layers, list)
+        assert len(report.encoder_layers) == mock_model_bundle.num_layers
+        
+        # Verify encoder layer structure
+        for i, encoder_layer in enumerate(report.encoder_layers):
+            assert encoder_layer.layer_index == i
+            assert hasattr(encoder_layer, "hidden_summary")
+            assert hasattr(encoder_layer, "attention_summary")
+            assert hasattr(encoder_layer, "extensions")
+            assert isinstance(encoder_layer.extensions, dict)
+    
+    @pytest.mark.parametrize('mock_model_bundle', ['seq2seq'], indirect=True)
+    def test_both_encoder_layers_and_encoder_hidden_states(self, mock_model_bundle):
+        """Test that both encoder_layers (new) and encoder_hidden_states (deprecated) work for Seq2Seq."""
+        config = Config()
+        config.model.hf_id = "mock-seq2seq"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Translate: Test")
+        
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Translate: Test")
+        
+        # Both fields should be present for Seq2Seq
+        assert report.encoder_layers is not None
+        assert report.encoder_hidden_states is not None
+        
+        # Verify both are populated
+        assert len(report.encoder_layers) == mock_model_bundle.num_layers
+        assert len(report.encoder_hidden_states) == mock_model_bundle.num_layers
+        
+        # Serialize to JSON and verify both are present
+        json_str = serialize_report_to_json(report)
+        json_data = json.loads(json_str)
+        
+        assert "encoder_layers" in json_data
+        assert "encoder_hidden_states" in json_data
+        assert len(json_data["encoder_layers"]) == mock_model_bundle.num_layers
+        assert len(json_data["encoder_hidden_states"]) == mock_model_bundle.num_layers
+    
+    def test_extensions_serialization_in_json(self, mock_model_bundle):
+        """Test that extensions fields serialize correctly in JSON output."""
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Test")
+        
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Test")
+        
+        # Serialize to JSON
+        json_str = serialize_report_to_json(report)
+        json_data = json.loads(json_str)
+        
+        # Verify extensions field is in JSON at report level
+        assert "extensions" in json_data
+        assert isinstance(json_data["extensions"], dict)
+        
+        # Verify extensions in timeline steps
+        if len(json_data["timeline"]) > 0:
+            assert "extensions" in json_data["timeline"][0]
+            assert isinstance(json_data["timeline"][0]["extensions"], dict)
+            
+            # Verify extensions in layer summaries
+            if "layers" in json_data["timeline"][0] and len(json_data["timeline"][0]["layers"]) > 0:
+                assert "extensions" in json_data["timeline"][0]["layers"][0]
+                assert isinstance(json_data["timeline"][0]["layers"][0]["extensions"], dict)

@@ -112,12 +112,13 @@ Each run produces a JSON trace file in `./runs/` with this structure:
         {
           "layer_index": 0,
           "hidden_summary": { "mean": 0.001, "std": 0.98, ... },
-          "attention_summary": { "entropy_mean": 2.31, ... },
-          "encoder_attention": { "entropy_mean": 1.85, ... },  // Seq2Seq only
-          "cross_attention": { "entropy_mean": 0.92, ... }     // Seq2Seq only
+          "attention_summary": { "entropy_mean": 2.31, ... },  // Self-attention (decoder for timeline layers)
+          "encoder_attention": null,  // DEPRECATED - Always null. Encoder self-attention is in encoder_layers[].attention_summary
+          "cross_attention": { "entropy_mean": 0.92, ... },  // Seq2Seq only: decoder-to-encoder attention
+          "extensions": {}  // Phase-0.5: for future metric expansion
         }
       ],
-      "extensions": {}
+      "extensions": {}  // Phase-0.5: for future metric expansion
     }
   ],
   "summary": {
@@ -127,10 +128,22 @@ Each run produces a JSON trace file in `./runs/` with this structure:
     "elapsed_ms": 1234
   },
   "warnings": [],
-  "encoder_hidden_states": [  // Seq2Seq only
+  "encoder_hidden_states": [  // Seq2Seq only (deprecated: use encoder_layers)
     { "mean": 0.5, "std": 1.2, ... },  // One per encoder layer
     ...
-  ]
+  ],
+  "encoder_layers": [  // Phase-0.5: Seq2Seq only, computed once
+    {
+      "layer_index": 0,
+      "hidden_summary": { "mean": 0.5, "std": 1.2, ... },
+      "attention_summary": { "entropy_mean": 2.85, ... },  // Encoder self-attention
+      "encoder_attention": null,  // DEPRECATED - Always null. Encoder self-attention is in attention_summary
+      "cross_attention": null,  // Not applicable for encoder layers
+      "extensions": {}
+    },
+    ...
+  ],
+  "extensions": {}  // Phase-0.5: for future metric expansion
 }
 ```
 
@@ -138,16 +151,20 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 
 - **prompt**: Contains the input prompt text, number of tokens and token IDs
 - **generated**: Contains the generated output text, number of tokens and token IDs
-- **timeline**: Per-token trace covering both prompt and generated tokens
+- **timeline**: Per-token trace covering both prompt and generated tokens. Each step contains decoder layer summaries.
 - **hidden_summary**: Mean, std, L2 norm, max abs value, and random projection sketch
-- **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max) - decoder self-attention for Seq2Seq models
-- **encoder_attention**: (Seq2Seq only) Encoder self-attention statistics, showing how the encoder processes the input sequence
-- **cross_attention**: (Seq2Seq only) Cross-attention statistics, showing how the decoder attends to encoder outputs at each generation step
-- **encoder_hidden_states**: (Seq2Seq only) Fixed encoder hidden state summaries (one per encoder layer), computed once at the start of generation
+- **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max). 
+  - For decoder layers (in timeline): Contains decoder self-attention
+  - For encoder layers (in encoder_layers): Contains encoder self-attention
+  - This field ALWAYS contains self-attention, regardless of model type
+- **encoder_attention**: DEPRECATED - Always null. This field was originally intended to hold encoder self-attention, but that information is now in `attention_summary` when the LayerSummary is part of `encoder_layers`. Kept for backward compatibility.
+- **cross_attention**: (Seq2Seq only) Cross-attention statistics showing how the decoder attends to encoder outputs at each generation step. Only used in decoder layers (in timeline). Always null for CausalLM models and for encoder layers.
+- **encoder_layers**: (Phase-0.5, Seq2Seq only) Encoder layer summaries computed once at the start of generation. Each layer includes `hidden_summary` and `attention_summary` (encoder self-attention). This is the preferred way to access encoder information. Always null for CausalLM models.
+- **encoder_hidden_states**: (Seq2Seq only, deprecated) List of HiddenSummary objects, one per encoder layer. Kept for backward compatibility. Use `encoder_layers` instead for comprehensive encoder information including attention summaries.
 - **logits_summary**: Entropy, top-1/top-2 margin, and top-k token probabilities
 - **model.revision**: Model commit hash/revision extracted from model config
-- **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null)
-- **extensions**: Reserved for future phases (risk scores, layer blame, etc.)
+- **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null). The dtype field now correctly shows quantized dtypes (int8, uint8) instead of float16 for quantized models.
+- **extensions**: Phase-0.5 field for future metric expansion. Custom key-value pairs available at Report, TimelineStep, and LayerSummary levels.
 
 ### Model Compatibility Notes
 
@@ -244,7 +261,19 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-**Phase-0** (Current): HF instrumentation + JSON trace + Sink interface
+**Phase-0.5** (Current): Hardening & Future-Proofing
+- ✅ Extensions field on Report, TimelineStep, and LayerSummary for future metric expansion
+- ✅ Separated encoder_layers (computed once) from decoder timeline for Seq2Seq models
+- ✅ Robust Seq2Seq detection with Mock object handling for testing
+- ✅ Improved quantization validation and logging
+- ✅ Fixed dtype detection for quantized models (now shows int8/uint8 instead of float16)
+- ✅ Memory optimizations (decoder self-attention slicing)
+- ✅ Standardized logging levels (INFO for model loading, DEBUG for tensor extraction)
+- ✅ Comprehensive persistence and validation tests
+- ✅ Comprehensive test coverage for Phase-0.5 features (extensions, encoder_layers)
+- ✅ Added clarifying docstrings explaining field usage and why encoder_attention is always null
+
+**Phase-0** (Complete): HF instrumentation + JSON trace + Sink interface
 - ✅ Capture hidden states, attention, logits
 - ✅ Compute lightweight summaries
 - ✅ JSON artifact generation
