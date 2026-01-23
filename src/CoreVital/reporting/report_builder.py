@@ -364,7 +364,7 @@ class ReportBuilder:
                         layer_index=layer_idx,
                         hidden_summary=hidden_summary,
                         attention_summary=attention_summary,
-                        encoder_attention=None,  # Removed: encoder attention is now in encoder_layers
+                        encoder_attention=None,  # DEPRECATED - Always null. Encoder self-attention is in encoder_layers[].attention_summary
                         cross_attention=cross_attention_summary,
                         extensions={},  # Phase-0.5: extensions field for future use
                     )
@@ -447,7 +447,7 @@ class ReportBuilder:
                     layer_index=layer_idx,
                     hidden_summary=hidden_summary,
                     attention_summary=encoder_attention_summary if encoder_attention_summary else AttentionSummary(),
-                    encoder_attention=None,  # Not applicable for encoder layers
+                    encoder_attention=None,  # DEPRECATED - Always null. Encoder self-attention is in attention_summary
                     cross_attention=None,  # Not applicable for encoder layers
                     extensions={},  # Phase-0.5: extensions field for future use
                 )

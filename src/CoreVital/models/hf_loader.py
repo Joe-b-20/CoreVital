@@ -20,6 +20,8 @@
 #                Supports load_in_4bit and load_in_8bit flags via config and CLI
 #   2026-01-21: Phase-0.5 hardening - improved quantization check to use model.config.quantization_config;
 #                enhanced attention implementation logging; standardized logging to INFO for model loading
+#   2026-01-23: Fixed dtype detection for quantized models - now detects actual quantized dtype (int8/uint8)
+#                after model loading instead of using pre-load dtype, ensuring JSON output shows correct dtype
 # ============================================================================
 
 from dataclasses import dataclass
@@ -267,6 +269,14 @@ def load_model(config: Config) -> ModelBundle:
                 # Try to get from tokenizer config
                 revision = getattr(tokenizer, '_commit_hash', None)
         
+        # Detect actual dtype after model loading (important for quantized models)
+        # Quantization changes the dtype AFTER loading, so we need to check the actual parameter dtypes
+        if quantization_config is not None:
+            actual_dtype = _detect_quantized_dtype(model, config.model.load_in_4bit, config.model.load_in_8bit)
+            if actual_dtype is not None:
+                dtype = actual_dtype
+                logger.info(f"Detected quantized dtype: {dtype}")
+        
         logger.info(f"Model loaded: {num_layers} layers, hidden_size={hidden_size}")
         if revision:
             logger.debug(f"Model revision: {revision}")
@@ -339,6 +349,80 @@ def _resolve_dtype(dtype_str: str, device: torch.device) -> torch.dtype:
     else:
         logger.warning(f"Unknown dtype '{dtype_str}', using float32")
         return torch.float32
+
+
+def _detect_quantized_dtype(model: PreTrainedModel, is_4bit: bool, is_8bit: bool) -> Optional[torch.dtype]:
+    """
+    Detect the actual dtype of quantized model parameters.
+    
+    For quantized models, the actual parameter dtypes differ from the base dtype.
+    This function inspects the model parameters to determine the quantized dtype.
+    
+    Args:
+        model: Loaded model (potentially quantized)
+        is_4bit: Whether 4-bit quantization was requested
+        is_8bit: Whether 8-bit quantization was requested
+        
+    Returns:
+        The detected quantized dtype (int8, uint8, etc.) or None if not quantized
+    """
+    try:
+        # Check if quantization was actually applied
+        if hasattr(model, 'config') and hasattr(model.config, 'quantization_config'):
+            quant_config = model.config.quantization_config
+            
+            # Check quantization method from config
+            if hasattr(quant_config, 'quantization_method'):
+                method = quant_config.quantization_method
+                if method == "bitsandbytes":
+                    # For bitsandbytes, inspect actual parameter dtypes
+                    # Look for quantized parameters (typically weight matrices in linear layers)
+                    quantized_dtypes_found = set()
+                    
+                    for name, param in model.named_parameters():
+                        param_dtype = param.dtype
+                        
+                        # Check for quantized dtypes (int8, uint8)
+                        # These are the dtypes used by bitsandbytes for quantized weights
+                        if param_dtype in (torch.int8, torch.uint8):
+                            quantized_dtypes_found.add(param_dtype)
+                    
+                    # If we found quantized dtypes, use them
+                    if quantized_dtypes_found:
+                        # Prefer uint8 for 4-bit, int8 for 8-bit
+                        if is_4bit and torch.uint8 in quantized_dtypes_found:
+                            return torch.uint8
+                        elif is_8bit and torch.int8 in quantized_dtypes_found:
+                            return torch.int8
+                        # Fallback: return the first quantized dtype we found
+                        elif quantized_dtypes_found:
+                            return next(iter(quantized_dtypes_found))
+                    
+                    # If quantization config exists but we didn't find quantized dtypes,
+                    # it might be that the model uses a different quantization scheme
+                    # In this case, fall back to expected dtypes based on quantization type
+                    if is_4bit:
+                        return torch.uint8
+                    elif is_8bit:
+                        return torch.int8
+        
+        # Fallback: if quantization was requested but we can't detect it,
+        # return appropriate dtype based on quantization type
+        if is_4bit:
+            return torch.uint8
+        elif is_8bit:
+            return torch.int8
+        
+        return None
+        
+    except Exception as e:
+        logger.warning(f"Failed to detect quantized dtype: {e}")
+        # Fallback based on quantization type
+        if is_4bit:
+            return torch.uint8
+        elif is_8bit:
+            return torch.int8
+        return None
 
 
 # ============================================================================
