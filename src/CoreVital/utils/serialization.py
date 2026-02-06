@@ -19,20 +19,16 @@ from CoreVital.reporting.schema import Report
 def serialize_report_to_json(report: Report, indent: Optional[int] = 2) -> str:
     """
     Serialize a Report object to JSON string.
-    
+
     Args:
         report: Report to serialize
         indent: JSON indentation (None for compact)
-        
+
     Returns:
         JSON string
     """
-    # Use Pydantic's model_dump to convert to dict
-    report_dict = report.model_dump(mode='json')
-    
-    # Serialize to JSON
+    report_dict = report.model_dump(mode="json")
     json_str = json.dumps(report_dict, indent=indent, ensure_ascii=False)
-    
     return json_str
 
 

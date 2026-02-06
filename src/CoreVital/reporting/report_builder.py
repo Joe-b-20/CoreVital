@@ -18,6 +18,8 @@
 #   2026-01-21: Phase-0.5 hardening - removed encoder_attention by index from decoder layers,
 #                build proper encoder_layers from encoder pass; added extensions to all layers;
 #                standardized logging to DEBUG level
+#   2026-02-04: Phase-0.75 - integrated PerformanceMonitor for child operation timing
+#                within report_build; per-step timing tracked in _build_timeline
 # ============================================================================
 
 import uuid
@@ -87,14 +89,23 @@ class ReportBuilder:
         Returns:
             Complete Report object
         """
+        from contextlib import nullcontext
+        
         logger.debug("Building report...")
+        
+        # Performance monitor for nested tracking
+        monitor = results.monitor
+        def _op(name: str):
+            """Helper to wrap operations in monitor.operation() if enabled."""
+            return monitor.operation(name) if monitor else nullcontext()
         
         # Generate trace ID
         trace_id = str(uuid.uuid4())
         created_at = get_utc_timestamp()
         
-        # Build model info
-        model_info = self._build_model_info(results)
+        # Build model info (tracked as child of report_build - corevital logic)
+        with _op("_build_model_info"):
+            model_info = self._build_model_info(results)
         
         # Build run config
         run_config = self._build_run_config(trace_id)
@@ -113,68 +124,78 @@ class ReportBuilder:
             num_tokens=len(results.generated_token_ids),
         )
         
-        # Build timeline
-        timeline = self._build_timeline(results)
+        # Build timeline (tracked as child of report_build - corevital logic)
+        with _op("_build_timeline"):
+            timeline = self._build_timeline(results)
         
-        # Build encoder hidden states summaries (for Seq2Seq models)
-        encoder_hidden_states_summaries = None
-        if results.encoder_hidden_states is not None:
-            try:
-                encoder_summaries_dicts = compute_encoder_hidden_states_summaries(
-                    results.encoder_hidden_states,
-                    self.config.summaries.hidden,
-                )
-                encoder_hidden_states_summaries = [
-                    HiddenSummary(**summary_dict) if summary_dict else HiddenSummary()
-                    for summary_dict in encoder_summaries_dicts
-                ]
-                logger.debug(f"Computed {len(encoder_hidden_states_summaries)} encoder hidden state summaries")
-            except Exception as e:
-                logger.warning(f"Failed to compute encoder hidden states summaries: {e}")
+        # Build encoder hidden states summaries (for Seq2Seq models) - corevital logic
+        with _op("compute_encoder_hidden_states_summaries"):
+            encoder_hidden_states_summaries = None
+            if results.encoder_hidden_states is not None:
+                try:
+                    encoder_summaries_dicts = compute_encoder_hidden_states_summaries(
+                        results.encoder_hidden_states,
+                        self.config.summaries.hidden,
+                    )
+                    encoder_hidden_states_summaries = [
+                        HiddenSummary(**summary_dict) if summary_dict else HiddenSummary()
+                        for summary_dict in encoder_summaries_dicts
+                    ]
+                    logger.debug(f"Computed {len(encoder_hidden_states_summaries)} encoder hidden state summaries")
+                except Exception as e:
+                    logger.warning(f"Failed to compute encoder hidden states summaries: {e}")
         
         # Build encoder layers (for Seq2Seq models)
-        # encoder_layers represents the encoder pass computed ONCE
-        encoder_layers = None
-        if results.encoder_hidden_states is not None or results.encoder_attentions is not None:
-            try:
-                encoder_layers = self._build_encoder_layers(
-                    results.encoder_hidden_states,
-                    results.encoder_attentions,
-                    results.model_bundle.num_layers,
-                )
-                if encoder_layers:
-                    logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
-            except Exception as e:
-                logger.warning(f"Failed to compute encoder layers: {e}")
+        # encoder_layers represents the encoder pass computed ONCE 
+        #(Tracked as child of report_build)
+        with _op("_build_encoder_layers"):
+            encoder_layers = None
+            if results.encoder_hidden_states is not None or results.encoder_attentions is not None:
+                try:
+                    encoder_layers = self._build_encoder_layers(
+                        results.encoder_hidden_states,
+                        results.encoder_attentions,
+                        results.model_bundle.num_layers,
+                    )
+                    if encoder_layers:
+                        logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
+                except Exception as e:
+                    logger.warning(f"Failed to compute encoder layers: {e}")
         
-        # Build summary
-        summary = Summary(
-            prompt_tokens=len(results.prompt_token_ids),
-            generated_tokens=len(results.generated_token_ids),
-            total_steps=len(results.prompt_token_ids) + len(results.generated_token_ids),
-            elapsed_ms=results.elapsed_ms,
-        )
+        # Build summary (tracked as child of report_build)
+        with _op("build Summary"):
+            summary = Summary(
+                prompt_tokens=len(results.prompt_token_ids),
+                generated_tokens=len(results.generated_token_ids),
+                total_steps=len(results.prompt_token_ids) + len(results.generated_token_ids),
+                elapsed_ms=results.elapsed_ms,
+            )
         
-        # Convert warnings
-        warnings = [
-            Warning(code=w["code"], message=w["message"])
-            for w in results.warnings
-        ]
+        # Convert warnings (tracked as child of report_build)
+        with _op("convert warnings"):
+            warnings = [
+                Warning(code=w["code"], message=w["message"])
+                for w in results.warnings
+            ]
         
-        report = Report(
-            schema_version="0.1.0",
-            trace_id=trace_id,
-            created_at_utc=created_at,
-            model=model_info,
-            run_config=run_config,
-            prompt=prompt_info,
-            generated=generated_info,
-            timeline=timeline,
-            summary=summary,
-            warnings=warnings,
-            encoder_hidden_states=encoder_hidden_states_summaries,
-            encoder_layers=encoder_layers,
-        )
+        # Assemble final Report (tracked as child of report_build)
+        with _op("assemble Report"):
+            report = Report(
+                schema_version="0.1.0",
+                trace_id=trace_id,
+                created_at_utc=created_at,
+                model=model_info,
+                run_config=run_config,
+                prompt=prompt_info,
+                generated=generated_info,
+                timeline=timeline,
+                summary=summary,
+                warnings=warnings,
+                encoder_hidden_states=encoder_hidden_states_summaries,
+                encoder_layers=encoder_layers,
+            )
+
+        # Note: Performance extensions are added by CLI after report_build and sink_write are complete
         
         logger.debug(f"Report built: {len(timeline)} timeline steps")
         return report
@@ -254,10 +275,18 @@ class ReportBuilder:
         )
     
     def _build_timeline(self, results: InstrumentationResults) -> List[TimelineStep]:
-        """Build timeline from instrumentation results."""
+        """Build timeline from instrumentation results.
+        
+        Tracks per-step timing for performance monitoring.
+        """
+        import time
+        
         timeline = []
+        step_times_ms: List[float] = []
         
         for step_data in results.timeline:
+            step_start = time.perf_counter()
+            
             # Token info
             token_info = TokenInfo(
                 token_id=step_data.token_id,
@@ -297,6 +326,20 @@ class ReportBuilder:
             )
             
             timeline.append(timeline_step)
+            step_times_ms.append((time.perf_counter() - step_start) * 1000)
+        
+        # Store per_step stats in the monitor's current operation (_build_timeline itself)
+        monitor = results.monitor
+        if monitor and monitor.stack and step_times_ms:
+            # The current operation on stack IS _build_timeline
+            current_op = monitor.stack[-1]
+            if current_op.operation_name == "_build_timeline":
+                current_op.metadata["per_step"] = {
+                    "count": len(step_times_ms),
+                    "min_ms": min(step_times_ms),
+                    "max_ms": max(step_times_ms),
+                    "avg_ms": sum(step_times_ms) / len(step_times_ms),
+                }
         
         return timeline
     

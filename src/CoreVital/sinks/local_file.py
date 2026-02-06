@@ -9,8 +9,10 @@
 #
 # Changelog:
 #   2026-01-13: Initial LocalFileSink for Phase-0
+#   2026-02-04: Phase-0.75 - added note: performance data is injected by CLI after write
 # ============================================================================
 
+import json
 from pathlib import Path
 from CoreVital.reporting.schema import Report
 from CoreVital.sinks.base import Sink
@@ -60,13 +62,15 @@ class LocalFileSink(Sink):
             filepath = self.output_dir / filename
             
             # Serialize report to JSON
+            # Note: Performance data is added by CLI after sink_write completes
             json_str = serialize_report_to_json(report, indent=2)
-            
+
             # Write to file
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 f.write(json_str)
-            
+
             logger.info(f"Report written to {filepath}")
+
             return str(filepath)
             
         except Exception as e:

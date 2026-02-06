@@ -1,0 +1,136 @@
+%% Operations hierarchy: all nodes and edges verified against cli.py, collector.py, hf_loader.py, report_builder.py, config.py, sinks, utils.serialization
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa'}}}%%
+flowchart TB
+    T[total_wall_time]
+
+    T --> Config[config load]
+    T --> Log[setup_logging]
+    T --> ML[model_load]
+    T --> Seed[torch.manual_seed]
+    T --> Tok[tokenize]
+    T --> Detect[Seq2Seq detection]
+    T --> Inf[model_inference]
+    T --> RB[report_build]
+    T --> SW[sink_write]
+
+    Config --> C1[from_yaml or from_default]
+    Config --> C2[CLI overrides]
+
+    ML --> M1[_resolve_device]
+    ML --> M2[_resolve_dtype]
+    ML --> M3[AutoTokenizer.from_pretrained]
+    ML --> M4[pad_token = eos if None]
+    ML --> M5[AutoConfig.from_pretrained]
+    ML --> M6[model_class Seq2Seq vs CausalLM]
+    ML --> M7[BitsAndBytesConfig if quantize]
+    ML --> M8[model_class.from_pretrained]
+    ML --> M9[model.to device if not quant]
+    ML --> M10[model.eval]
+    ML --> M11[set_attn_implementation eager if SDPA]
+    ML --> M12[extract metadata]
+    ML --> M13[_detect_quantized_dtype if quant]
+
+    Seed --> Seed1[torch.manual_seed seed]
+    Seed --> Seed2[torch.cuda.manual_seed_all if CUDA]
+
+    Tok --> Tok1[tokenizer prompt return_tensors pt]
+    Tok --> Tok2[.to device]
+
+    Inf --> Causal[model.generate CausalLM]
+    Inf --> Seq2Seq[_generate_seq2seq_manual]
+    Inf --> Extract[extract generated tokens]
+    Inf --> Decode[decode generated text]
+    Inf --> Proc[_process_timeline]
+    Inf --> Warn[_collect_warnings]
+
+    Detect --> D1[check model.config.is_encoder_decoder]
+    Detect --> D2[check encoder/decoder attributes]
+
+    Causal --> Cg[output_hidden_states output_attentions output_scores]
+
+    Seq2Seq --> S1[encoder_forward]
+    Seq2Seq --> S2[decoder_loop]
+
+    S2 --> S2prep[prepare decoder_start_token_id decoder_input_ids]
+    S2prep --> S2a[decoder_step x max_new_tokens]
+
+    S1 --> S1a[model.encoder input_ids output_hidden_states output_attentions]
+    S1 --> S1b[extract encoder_hidden_states]
+    S1 --> S1c[extract encoder_attentions]
+
+    S2a --> D3[model forward encoder_outputs decoder_input_ids]
+    S2a --> D4[extract logits next_token_logits]
+    S2a --> D5[extract decoder_hidden_states slice last pos]
+    S2a --> D6[extract decoder_attentions slice last query]
+    S2a --> D7[extract cross_attentions slice last pos]
+    S2a --> D8[sample temperature top_k top_p]
+    S2a --> D9[decoder_input_ids append]
+    S2a --> D10[check EOS break]
+
+    Extract --> Ext1[extract generated_token_ids from outputs]
+
+    Inf --> EncExt[extract encoder outputs if Seq2Seq]
+    EncExt --> Ext2[extract encoder_hidden_states]
+    EncExt --> Ext3[extract encoder_attentions]
+
+    Decode --> Dec1[tokenizer.decode generated_token_ids]
+
+    Proc --> P1[build StepData list from scores hidden_states attentions]
+    Proc --> P2[extract logits per step]
+    Proc --> P3[extract hidden_states per step]
+    Proc --> P4[extract attentions per step]
+    Proc --> P5[extract cross_attentions per step if Seq2Seq]
+
+    Warn --> W1[check has_scores has_hidden has_attention]
+    Warn --> W2[generate warnings if missing]
+
+    RB --> R1[_build_model_info]
+    RB --> R2[_build_run_config]
+    RB --> R3[_build_prompt_info]
+    RB --> R4[_build_generated_info]
+    RB --> R5[_build_timeline]
+    RB --> R6[compute_encoder_hidden_states_summaries]
+    RB --> R7[_build_encoder_layers]
+    RB --> R8[build Summary]
+    RB --> R9[convert warnings]
+    RB --> R10[assemble Report]
+
+    R5 --> S3[_build_timeline]
+
+    S3 --> S3a[for each timeline step]
+    S3a --> H1[compute_logits_summary]
+    S3a --> H2[_build_layer_summaries]
+
+    H2 --> L1[compute_hidden_summary per layer]
+    H2 --> L2[compute_attention_summary per layer]
+    H2 --> L3[compute_attention_summary cross Seq2Seq]
+
+    R6 --> S4a[compute_hidden_summary per encoder layer]
+
+    R7 --> S5a[for each encoder layer]
+    S5a --> E1[compute_hidden_summary]
+    S5a --> E2[compute_attention_summary]
+
+    SW --> JS[json_serialize]
+    SW --> Write[write to sink]
+
+    JS --> J1[report.model_dump mode json]
+    JS --> J2[json.dumps indent ensure_ascii]
+
+    Write --> W3[LocalFileSink: open write file]
+    Write --> W4[HTTPSink: POST request]
+
+    style T fill:#1e40af,stroke:#3b82f6,color:#93c5fd
+    style ML fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style Inf fill:#5b21b6,stroke:#8b5cf6,color:#c4b5fd
+    style RB fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style JS fill:#0e7490,stroke:#06b6d4,color:#67e8f9
+    style SW fill:#0e7490,stroke:#06b6d4,color:#67e8f9
+    style H1 fill:#7c3aed,stroke:#a78bfa
+    style H2 fill:#7c3aed,stroke:#a78bfa
+    style L1 fill:#7c3aed,stroke:#a78bfa
+    style L2 fill:#7c3aed,stroke:#a78bfa
+    style L3 fill:#7c3aed,stroke:#a78bfa
+    style S4a fill:#7c3aed,stroke:#a78bfa
+    style E1 fill:#7c3aed,stroke:#a78bfa
+    style E2 fill:#7c3aed,stroke:#a78bfa

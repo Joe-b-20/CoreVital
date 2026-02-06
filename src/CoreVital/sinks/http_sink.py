@@ -9,6 +9,7 @@
 #
 # Changelog:
 #   2026-01-13: Initial HTTPSink stub for Phase-0
+#   2026-02-04: Phase-0.75 - added note: performance data is injected by CLI after write
 # ============================================================================
 
 from CoreVital.reporting.schema import Report
@@ -54,6 +55,7 @@ class HTTPSink(Sink):
         """
         try:
             # Serialize report
+            # Note: Performance data is added by CLI after sink_write completes
             json_str = serialize_report_to_json(report, indent=None)
             
             # TODO: Implement actual HTTP POST with requests or httpx

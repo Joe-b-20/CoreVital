@@ -1,13 +1,14 @@
 # CoreVital
 
-**Phase-0**: Hugging Face Instrumentation + JSON Trace Artifact + Sink Interface
+**Phase-0.75**: Hugging Face Instrumentation + JSON Trace Artifact + Sink Interface + Performance Monitoring
 
-An open-source Python toolkit for monitoring the internal health of Large Language Models during inference. This Phase-0 implementation provides deep instrumentation of Hugging Face transformers, capturing hidden states, attention patterns, and logit distributions without saving full tensors.
+An open-source Python toolkit for monitoring the internal health of Large Language Models during inference. This implementation provides deep instrumentation of Hugging Face transformers, capturing hidden states, attention patterns, and logit distributions without saving full tensors.
 
 ## Features
 
 -  **Deep Instrumentation**: Capture hidden states, attention patterns, and logits at every generation step
 -  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors
+-  **Performance Monitoring**: Track operation times with `--perf` flag (summary, detailed, or strict mode)
 -  **Extensible Persistence**: Pluggable Sink interface (LocalFileSink included, HTTPSink stub)
 -  **Configurable**: YAML configuration with environment variable overrides
 -  **CPU/CUDA Support**: Automatic device detection or manual override
@@ -58,6 +59,24 @@ python -m CoreVital.cli run \
   --device cuda \
   --quantize-8
 
+# Run with performance monitoring (summary mode)
+python -m CoreVital.cli run \
+  --model gpt2 \
+  --prompt "Hello world" \
+  --perf
+
+# Run with detailed performance breakdown
+python -m CoreVital.cli run \
+  --model gpt2 \
+  --prompt "Hello world" \
+  --perf detailed
+
+# Run with strict mode (includes warmup and baseline measurements)
+python -m CoreVital.cli run \
+  --model gpt2 \
+  --prompt "Hello world" \
+  --perf strict
+
 # Output will be saved to ./runs/ directory
 ```
 
@@ -81,6 +100,7 @@ Options:
   --remote_url TEXT        Remote sink URL
   --config PATH            Path to custom config YAML file
   --log_level TEXT         Logging level: DEBUG|INFO|WARNING|ERROR [default: INFO]
+  --perf [MODE]            Performance monitoring: summary (default), detailed, or strict
 ```
 
 ## Output Format
@@ -166,6 +186,46 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 - **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null). The dtype field now correctly shows quantized dtypes (int8, uint8) instead of float16 for quantized models.
 - **extensions**: Phase-0.5 field for future metric expansion. Custom key-value pairs available at Report, TimelineStep, and LayerSummary levels.
 
+### Performance Monitoring (`--perf`)
+
+The `--perf` flag enables performance monitoring with three modes:
+
+**Summary Mode** (`--perf` or `--perf summary`):
+- Adds `performance` extension to the main trace JSON
+- Shows total wall time and breakdown by parent operations
+- Tracks: config_load, setup_logging, model_load, torch.manual_seed, tokenize, model_inference, report_build, sink_write
+
+**Detailed Mode** (`--perf detailed`):
+- Everything in summary mode, plus:
+- Creates a separate `*_performance_detailed.json` file
+- Shows nested breakdown with child operations and per-step statistics
+- Useful for identifying specific bottlenecks
+
+**Strict Mode** (`--perf strict`):
+- Everything in detailed mode, plus:
+- Runs warmup before measurements to stabilize GPU timing
+- Runs baseline (uninstrumented) inference for comparison
+- Reports original model load time (before caching)
+- Calculates inference overhead and CoreVital overhead percentages
+
+Example performance output in summary:
+```json
+{
+  "extensions": {
+    "performance": {
+      "total_wall_time_ms": 2500.0,
+      "parent_operations": [
+        {"name": "config_load", "ms": 3.0, "pct": 0.12},
+        {"name": "model_load", "ms": 1700.0, "pct": 68.0},
+        {"name": "model_inference", "ms": 700.0, "pct": 28.0}
+      ],
+      "unaccounted_time": {"ms": 2.0, "pct": 0.08},
+      "detailed_file": "runs/trace_abc123_performance_detailed.json"
+    }
+  }
+}
+```
+
 ### Model Compatibility Notes
 
 - **Causal Language Models (GPT-2, LLaMA, etc.)**: Fully supported with automatic detection. The tool automatically switches attention implementation from SDPA to 'eager' for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
@@ -216,6 +276,9 @@ pytest tests/test_smoke_gpt2_cpu.py -v
 # Run mock instrumentation tests (fast, no model loading)
 pytest tests/test_mock_instrumentation.py -v
 
+# Run performance monitoring tests
+pytest tests/test_performance.py -v
+
 # Run with coverage
 pytest --cov=CoreVital tests/
 ```
@@ -251,7 +314,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 - `src/CoreVital/`: Main package
   - `models/`: Model loading and management
-  - `instrumentation/`: Hooks, collectors, and summary computation
+  - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
   - `reporting/`: Schema, validation, and report building
   - `sinks/`: Persistence backends
   - `utils/`: Shared utilities
@@ -261,7 +324,16 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-**Phase-0.5** (Current): Hardening & Future-Proofing
+**Phase-0.75** (Current): Performance Monitoring
+- ✅ `--perf` CLI flag with three modes: summary, detailed, strict
+- ✅ Lightweight operation timing via context managers
+- ✅ Nested operation hierarchy tracking (parent/child relationships)
+- ✅ Per-step statistics for repeated operations (count, min, max, avg)
+- ✅ Strict mode: warmup runs, baseline measurements, overhead calculations
+- ✅ Separate detailed breakdown JSON file
+- ✅ Performance data in `extensions.performance` of main trace
+
+**Phase-0.5** (Complete): Hardening & Future-Proofing
 - ✅ Extensions field on Report, TimelineStep, and LayerSummary for future metric expansion
 - ✅ Separated encoder_layers (computed once) from decoder timeline for Seq2Seq models
 - ✅ Robust Seq2Seq detection with Mock object handling for testing

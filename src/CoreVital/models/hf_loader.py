@@ -22,6 +22,7 @@
 #                enhanced attention implementation logging; standardized logging to INFO for model loading
 #   2026-01-23: Fixed dtype detection for quantized models - now detects actual quantized dtype (int8/uint8)
 #                after model loading instead of using pre-load dtype, ensuring JSON output shows correct dtype
+#   2026-02-04: Phase-0.75 - added optional monitor parameter for child operation timing
 # ============================================================================
 
 from dataclasses import dataclass
@@ -74,12 +75,13 @@ class ModelBundle:
     model_class: Type[PreTrainedModel] = AutoModelForCausalLM
 
 
-def load_model(config: Config) -> ModelBundle:
+def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -> ModelBundle:
     """
     Load a Hugging Face model and tokenizer with specified configuration.
     
     Args:
         config: Configuration object
+        monitor: Optional PerformanceMonitor for timing children operations
         
     Returns:
         ModelBundle with loaded model and metadata
@@ -87,36 +89,52 @@ def load_model(config: Config) -> ModelBundle:
     Raises:
         ModelLoadError: If model loading fails
     """
+    from contextlib import nullcontext
+    from typing import TYPE_CHECKING
+    if TYPE_CHECKING:
+        from CoreVital.instrumentation.performance import PerformanceMonitor
+    
+    def _op(name: str):
+        """Helper to wrap operations with monitor if available."""
+        if monitor:
+            return monitor.operation(name)
+        return nullcontext()
+    
     try:
         logger.info(f"Loading model: {config.model.hf_id}")
         
-        # Determine device
-        device = _resolve_device(config.device.requested)
+        # Determine device (CoreVital logic)
+        with _op("_resolve_device"):
+            device = _resolve_device(config.device.requested)
         logger.info(f"Target device: {device}")
         
-        # Determine dtype
-        dtype = _resolve_dtype(config.model.dtype, device)
+        # Determine dtype (CoreVital logic)
+        with _op("_resolve_dtype"):
+            dtype = _resolve_dtype(config.model.dtype, device)
         logger.info(f"Model dtype: {dtype}")
         
-        # Load tokenizer
+        # Load tokenizer (external HF library call)
         logger.info("Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(
-            config.model.hf_id,
-            revision=config.model.revision,
-            trust_remote_code=config.model.trust_remote_code,
-        )
+        with _op("AutoTokenizer.from_pretrained"):
+            tokenizer = AutoTokenizer.from_pretrained(
+                config.model.hf_id,
+                revision=config.model.revision,
+                trust_remote_code=config.model.trust_remote_code,
+            )
         
-        # Ensure pad token is set
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        # Ensure pad token is set (CoreVital logic)
+        with _op("_set_pad_token"):
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
         
-        # Inspect model type to determine which model class to use
+        # Inspect model type to determine which model class to use (external HF call)
         logger.info("Inspecting model architecture...")
-        model_config = AutoConfig.from_pretrained(
-            config.model.hf_id,
-            revision=config.model.revision,
-            trust_remote_code=config.model.trust_remote_code,
-        )
+        with _op("AutoConfig.from_pretrained"):
+            model_config = AutoConfig.from_pretrained(
+                config.model.hf_id,
+                revision=config.model.revision,
+                trust_remote_code=config.model.trust_remote_code,
+            )
         
         # Determine if this is a Seq2Seq model
         model_type = getattr(model_config, 'model_type', '').lower()
@@ -124,6 +142,11 @@ def load_model(config: Config) -> ModelBundle:
         architecture_names = [arch.lower() if isinstance(arch, str) else '' for arch in architectures]
         
         # Common Seq2Seq model types
+        # I hate hardcoding this but HF doesn't provide a direct flag
+        # I really need to build a proper model registry someday
+        # man life just fucking sucks sometimes..... correction: all the time
+        # looking at this block physically pains me
+        # so HF relly can't provide a simple model_type flag how much could it cost them
         seq2seq_model_types = {'t5', 'bart', 'mbart', 'pegasus', 'marian', 'blenderbot', 'm2m_100', 'nllb'}
         seq2seq_architecture_patterns = ['t5', 'bart', 'mbart', 'pegasus', 'marian', 'blenderbot', 'm2m', 'nllb']
         
@@ -179,12 +202,13 @@ def load_model(config: Config) -> ModelBundle:
             # Only set torch_dtype if not using quantization
             model_kwargs["torch_dtype"] = dtype
         
-        # Load model with the appropriate class
+        # Load model with the appropriate class (external HF library call - the big one!)
         logger.info(f"Loading model with {model_class.__name__}...")
-        model = model_class.from_pretrained(
-            config.model.hf_id,
-            **model_kwargs,
-        )
+        with _op("model_class.from_pretrained"):
+            model = model_class.from_pretrained(
+                config.model.hf_id,
+                **model_kwargs,
+            )
         
         # Log successful quantization if applied
         if quantization_config is not None:
@@ -208,74 +232,80 @@ def load_model(config: Config) -> ModelBundle:
                     )
         
         # Move to device (only if not using quantization, as quantization handles device placement)
-        if quantization_config is None:
-            model = model.to(device)
-        model.eval()
+        # This is mixed: CoreVital decides when, but .to() is PyTorch/HF
+        with _op("model.to_device"):
+            if quantization_config is None:
+                model = model.to(device)
+            model.eval()
         
         # Set attention implementation to 'eager' if needed for attention outputs
         # Some models (like Llama) use SDPA by default which doesn't support output_attentions
         # We need 'eager' or 'flex_attention' to capture attention weights during generation
-        try:
-            if hasattr(model, 'set_attn_implementation'):
-                # Try to get current implementation from config
-                current_attn = getattr(model.config, '_attn_implementation', None)
-                # Also check for attn_implementation attribute directly
-                if current_attn is None:
-                    current_attn = getattr(model.config, 'attn_implementation', None)
-                
-                # Compatible implementations: eager, flex_attention
-                compatible_implementations = ['eager', 'flex_attention']
-                
-                # Only change if it's not already one of the compatible implementations
-                if current_attn not in compatible_implementations:
-                    logger.info(f"Setting attention implementation to 'eager' (current: {current_attn or 'default'})")
-                    model.set_attn_implementation('eager')
-                    # Log the final attention implementation
-                    final_attn = getattr(model.config, '_attn_implementation', None) or \
-                                getattr(model.config, 'attn_implementation', 'eager')
-                    logger.info(f"Attention implementation now set to: {final_attn}")
+        # This is CoreVital-specific configuration
+        with _op("_set_attention_implementation"):
+            try:
+                if hasattr(model, 'set_attn_implementation'):
+                    # Try to get current implementation from config
+                    current_attn = getattr(model.config, '_attn_implementation', None)
+                    # Also check for attn_implementation attribute directly
+                    if current_attn is None:
+                        current_attn = getattr(model.config, 'attn_implementation', None)
+                    
+                    # Compatible implementations: eager, flex_attention
+                    compatible_implementations = ['eager', 'flex_attention']
+                    
+                    # Only change if it's not already one of the compatible implementations
+                    if current_attn not in compatible_implementations:
+                        logger.info(f"Setting attention implementation to 'eager' (current: {current_attn or 'default'})")
+                        model.set_attn_implementation('eager')
+                        # Log the final attention implementation
+                        final_attn = getattr(model.config, '_attn_implementation', None) or \
+                                    getattr(model.config, 'attn_implementation', 'eager')
+                        logger.info(f"Attention implementation now set to: {final_attn}")
+                    else:
+                        logger.info(f"Attention implementation is compatible: {current_attn}")
                 else:
-                    logger.info(f"Attention implementation is compatible: {current_attn}")
-            else:
-                # No explicit method, try to get the current implementation anyway
-                current_attn = getattr(model.config, '_attn_implementation', None) or \
-                              getattr(model.config, 'attn_implementation', None)
-                if current_attn:
-                    logger.info(f"Current attention implementation: {current_attn}")
-        except Exception as e:
-            logger.warning(f"Could not set attention implementation to 'eager': {e}")
-            # Continue anyway - some models might not support this or might already work
+                    # No explicit method, try to get the current implementation anyway
+                    current_attn = getattr(model.config, '_attn_implementation', None) or \
+                                  getattr(model.config, 'attn_implementation', None)
+                    if current_attn:
+                        logger.info(f"Current attention implementation: {current_attn}")
+            except Exception as e:
+                logger.warning(f"Could not set attention implementation to 'eager': {e}")
+                # Continue anyway - some models might not support this or might already work
         
-        # Extract metadata (use model.config which is already loaded)
-        num_layers = getattr(model_config, 'num_hidden_layers', None) or \
-                    getattr(model_config, 'n_layer', None) or \
-                    getattr(model_config, 'num_layers', 0)
-        
-        hidden_size = getattr(model_config, 'hidden_size', None) or \
-                     getattr(model_config, 'n_embd', None) or 0
-        
-        num_attention_heads = getattr(model_config, 'num_attention_heads', None) or \
-                             getattr(model_config, 'n_head', None) or 0
-        
-        architecture = model.__class__.__name__
-        
-        # Try to extract revision from model config
-        # The revision might be stored in _commit_hash or similar attributes
-        revision = config.model.revision
-        if revision is None:
-            # Try to get from model config
-            revision = getattr(model_config, '_commit_hash', None)
+        # Extract metadata (use model.config which is already loaded) - CoreVital logic
+        with _op("_extract_metadata"):
+            num_layers = getattr(model_config, 'num_hidden_layers', None) or \
+                        getattr(model_config, 'n_layer', None) or \
+                        getattr(model_config, 'num_layers', 0)
+            
+            hidden_size = getattr(model_config, 'hidden_size', None) or \
+                         getattr(model_config, 'n_embd', None) or 0
+            
+            num_attention_heads = getattr(model_config, 'num_attention_heads', None) or \
+                                 getattr(model_config, 'n_head', None) or 0
+            
+            architecture = model.__class__.__name__
+            
+            # Try to extract revision from model config
+            # The revision might be stored in _commit_hash or similar attributes
+            revision = config.model.revision
             if revision is None:
-                # Try to get from tokenizer config
-                revision = getattr(tokenizer, '_commit_hash', None)
+                # Try to get from model config
+                revision = getattr(model_config, '_commit_hash', None)
+                if revision is None:
+                    # Try to get from tokenizer config
+                    revision = getattr(tokenizer, '_commit_hash', None)
         
-        # Detect actual dtype after model loading (important for quantized models)
+        # Detect actual dtype after model loading (important for quantized models) - CoreVital logic
         # Quantization changes the dtype AFTER loading, so we need to check the actual parameter dtypes
         if quantization_config is not None:
-            actual_dtype = _detect_quantized_dtype(model, config.model.load_in_4bit, config.model.load_in_8bit)
-            if actual_dtype is not None:
-                dtype = actual_dtype
-                logger.info(f"Detected quantized dtype: {dtype}")
+            with _op("_detect_quantized_dtype"):
+                actual_dtype = _detect_quantized_dtype(model, config.model.load_in_4bit, config.model.load_in_8bit)
+                if actual_dtype is not None:
+                    dtype = actual_dtype
+                    logger.info(f"Detected quantized dtype: {dtype}")
         
         logger.info(f"Model loaded: {num_layers} layers, hidden_size={hidden_size}")
         if revision:
