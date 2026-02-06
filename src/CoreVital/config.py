@@ -10,6 +10,7 @@
 # Changelog:
 #   2026-01-13: Initial configuration system for Phase-0
 #   2026-01-15: Added load_in_4bit and load_in_8bit flags to ModelConfig for quantization support
+#   2026-02-04: Phase-0.75 - added PerformanceConfig for performance monitoring mode
 # ============================================================================
 
 import os
@@ -91,6 +92,12 @@ class LoggingConfig(BaseModel):
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
+class PerformanceConfig(BaseModel):
+    """Performance monitoring configuration."""
+    # Mode: None (disabled) | "summary" | "detailed" | "strict"
+    mode: Optional[str] = None
+
+
 class Config(BaseModel):
     """Root configuration object."""
     model: ModelConfig = Field(default_factory=ModelConfig)
@@ -99,6 +106,7 @@ class Config(BaseModel):
     summaries: SummariesConfig = Field(default_factory=SummariesConfig)
     sink: SinkConfig = Field(default_factory=SinkConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
     
     @classmethod
     def from_yaml(cls, path: str) -> "Config":

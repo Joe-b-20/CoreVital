@@ -10,10 +10,16 @@
 # Changelog:
 #   2026-01-13: Initial CLI with 'run' command for Phase-0
 #   2026-01-15: Added --quantize-4 and --quantize-8 flags for quantization support
+#   2026-02-04: Phase-0.75 - added --perf flag (summary/detailed/strict modes);
+#                performance data injected into report extensions after sink_write;
+#                detailed breakdown written as separate JSON file
 # ============================================================================
 
 import argparse
+import json
 import sys
+from contextlib import nullcontext
+from pathlib import Path
 
 from CoreVital import __version__
 from CoreVital.config import Config
@@ -143,6 +149,16 @@ def create_parser() -> argparse.ArgumentParser:
         default="INFO",
         help="Logging level (default: INFO)",
     )
+    run_parser.add_argument(
+        "--perf",
+        nargs="?",
+        choices=["summary", "detailed", "strict"],
+        const="summary",
+        default=None,
+        dest="perf_mode",
+        metavar="MODE",
+        help="Performance monitoring: summary (default), detailed (+ breakdown file), strict (+ warmup and baseline). Omit to disable.",
+    )
     
     return parser
 
@@ -158,45 +174,65 @@ def run_command(args: argparse.Namespace) -> int:
         Exit code (0 for success, non-zero for failure)
     """
     try:
-        # Load configuration
-        config = Config.from_yaml(args.config) if args.config else Config.from_default()
+        # Performance monitoring: Create monitor early to track all parent operations
+        perf_mode = getattr(args, "perf_mode", None)
+        monitor = None
+        if perf_mode:
+            from CoreVital.instrumentation.performance import PerformanceMonitor
+            monitor = PerformanceMonitor(mode=perf_mode)
+            # Start timing now for ALL modes (before config_load)
+            monitor.mark_run_start()
         
-        # Override with CLI arguments
-        config.model.hf_id = args.model
-        config.device.requested = args.device
-        config.generation.max_new_tokens = args.max_new_tokens
-        config.generation.seed = args.seed
-        config.generation.temperature = args.temperature
-        config.generation.top_k = args.top_k
-        config.generation.top_p = args.top_p
-        config.model.load_in_4bit = args.quantize_4
-        config.model.load_in_8bit = args.quantize_8
+        def _op(name: str):
+            """Helper to wrap parent operations in monitor.operation() if enabled."""
+            return monitor.operation(name) if monitor else nullcontext()
         
-        if args.out:
-            config.sink.output_dir = args.out
+        # === PARENT: config_load ===
+        with _op("config_load"):
+            config = Config.from_yaml(args.config) if args.config else Config.from_default()
+            
+            # Override with CLI arguments
+            config.model.hf_id = args.model
+            config.device.requested = args.device
+            config.generation.max_new_tokens = args.max_new_tokens
+            config.generation.seed = args.seed
+            config.generation.temperature = args.temperature
+            config.generation.top_k = args.top_k
+            config.generation.top_p = args.top_p
+            config.model.load_in_4bit = args.quantize_4
+            config.model.load_in_8bit = args.quantize_8
+            
+            if args.out:
+                config.sink.output_dir = args.out
+            
+            if args.remote_sink != "none":
+                config.sink.type = args.remote_sink
+                config.sink.remote_url = args.remote_url
+            
+            config.logging.level = args.log_level
+            
+            # Store perf mode in config
+            if perf_mode:
+                config.performance.mode = perf_mode
         
-        if args.remote_sink != "none":
-            config.sink.type = args.remote_sink
-            config.sink.remote_url = args.remote_url
-        
-        config.logging.level = args.log_level
-        
-        # Setup logging
-        setup_logging(config.logging.level, config.logging.format)
+        # === PARENT: setup_logging ===
+        with _op("setup_logging"):
+            setup_logging(config.logging.level, config.logging.format)
         
         logger.info(f"Starting CoreVital v{__version__}")
         logger.info(f"Model: {args.model}")
         logger.info(f"Device: {args.device}")
         
-        # Run instrumentation
+        # Run instrumentation (includes model_load, torch.manual_seed, tokenize, model_inference)
         collector = InstrumentationCollector(config)
-        raw_results = collector.run(args.prompt)
+        raw_results = collector.run(args.prompt, monitor=monitor)
         
-        # Build report
+        # === PARENT: report_build ===
         builder = ReportBuilder(config)
-        report = builder.build(raw_results, args.prompt)
+        with _op("report_build"):
+            report = builder.build(raw_results, args.prompt)
         
-        # Persist via sink
+        # === PARENT: sink_write ===
         if config.sink.type == "local_file":
             sink = LocalFileSink(config.sink.output_dir)
         elif config.sink.type == "http":
@@ -206,7 +242,39 @@ def run_command(args: argparse.Namespace) -> int:
         else:
             raise ValueError(f"Unknown sink type: {config.sink.type}")
         
-        output_location = sink.write(report)
+        with _op("sink_write"):
+            output_location = sink.write(report)
+        
+        # === END OF INSTRUMENTED RUN ===
+        if monitor:
+            monitor.mark_run_end()
+            
+            # Build performance summary
+            perf_summary = monitor.build_summary_dict()
+            
+            # For detailed/strict modes, set the detailed file path and build breakdown
+            mode = monitor.mode
+            trace_id = report.trace_id
+            if mode in ("detailed", "strict"):
+                detailed_path = Path(config.sink.output_dir) / f"trace_{trace_id[:8]}_performance_detailed.json"
+                monitor.set_detailed_file(str(detailed_path))
+                perf_summary["detailed_file"] = str(detailed_path)
+                
+                # Build and write detailed breakdown
+                detailed_breakdown = monitor.build_detailed_breakdown()
+                detailed_breakdown["trace_id"] = trace_id[:8]
+                with open(detailed_path, "w") as f:
+                    json.dump(detailed_breakdown, f, indent=2, ensure_ascii=False)
+                logger.info(f"Performance detailed written to {detailed_path}")
+            
+            # Update the main trace file with performance data
+            if config.sink.type == "local_file":
+                with open(output_location, "r") as f:
+                    trace_data = json.load(f)
+                trace_data["extensions"]["performance"] = perf_summary
+                with open(output_location, "w") as f:
+                    json.dump(trace_data, f, indent=2, ensure_ascii=False)
+                logger.info(f"Performance data added to {output_location}")
         
         # Print summary
         print("\n" + "="*60)

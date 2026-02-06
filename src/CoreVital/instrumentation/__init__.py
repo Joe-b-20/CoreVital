@@ -9,8 +9,15 @@
 #
 # Changelog:
 #   2026-01-13: Initial instrumentation package for Phase-0
+#   2026-02-04: Phase-0.75 - exported PerformanceMonitor and OperationTiming
 # ============================================================================
 
 from CoreVital.instrumentation.collector import InstrumentationCollector, InstrumentationResults
+from CoreVital.instrumentation.performance import PerformanceMonitor, OperationTiming
 
-__all__ = ["InstrumentationCollector", "InstrumentationResults"]
+__all__ = [
+    "InstrumentationCollector",
+    "InstrumentationResults",
+    "PerformanceMonitor",
+    "OperationTiming",
+]

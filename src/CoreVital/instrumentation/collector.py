@@ -20,10 +20,17 @@
 #   2026-01-21: Phase-0.5 hardening - robust Seq2Seq detection with Mock object handling;
 #                memory optimization: slice decoder self-attention to last query token;
 #                standardized logging to DEBUG for tensor operations
+#   2026-02-04: Phase-0.75 - added PerformanceMonitor integration via _op() helper;
+#                strict mode: warmup, baseline, and original model load tracking;
+#                all parent and child operations wrapped for timing
+#   2026-02-06: Phase-0.75 - fixed strict mode: seed before baseline for reproducible
+#                token generation; added top_k/top_p to baseline Seq2Seq sampling to
+#                match instrumented path; doubled warmup rounds for cache stabilization
 # ============================================================================
 
+from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import time
 import torch
 
@@ -31,6 +38,9 @@ from CoreVital.config import Config
 from CoreVital.models.hf_loader import load_model, ModelBundle
 from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
+
+if TYPE_CHECKING:
+    from CoreVital.instrumentation.performance import PerformanceMonitor
 
 
 logger = get_logger(__name__)
@@ -63,6 +73,8 @@ class InstrumentationResults:
     # Seq2Seq-specific fields
     encoder_hidden_states: Optional[List[torch.Tensor]] = None
     encoder_attentions: Optional[List[torch.Tensor]] = None
+    # Performance monitoring (optional)
+    monitor: Optional["PerformanceMonitor"] = None
 
 
 class InstrumentationCollector:
@@ -83,12 +95,13 @@ class InstrumentationCollector:
         self.config = config
         self.model_bundle: Optional[ModelBundle] = None
     
-    def run(self, prompt: str) -> InstrumentationResults:
+    def run(self, prompt: str, monitor: Optional["PerformanceMonitor"] = None) -> InstrumentationResults:
         """
         Run instrumented inference on the given prompt.
         
         Args:
             prompt: Input prompt text
+            monitor: Optional PerformanceMonitor passed from CLI
             
         Returns:
             InstrumentationResults with all collected data
@@ -97,34 +110,103 @@ class InstrumentationCollector:
             InstrumentationError: If inference fails
         """
         try:
-            # Load model if not already loaded
-            if self.model_bundle is None:
-                self.model_bundle = load_model(self.config)
+            def _op(name: str):
+                """Helper to wrap operations in monitor.operation() if enabled."""
+                return monitor.operation(name) if monitor else nullcontext()
             
-            # Set random seed for reproducibility
-            if self.config.generation.seed is not None:
-                torch.manual_seed(self.config.generation.seed)
-                if torch.cuda.is_available():
-                    torch.cuda.manual_seed_all(self.config.generation.seed)
+            # === STRICT MODE: Warmup and Baseline BEFORE the main instrumented run ===
+            # Model must be loaded first, then warmup/baseline, then instrumented run
+            is_seq2seq = False  # Will be determined after model load
             
-            # Tokenize prompt
-            logger.debug("Tokenizing prompt...")
-            inputs = self.model_bundle.tokenizer(
-                prompt,
-                return_tensors="pt",
-                padding=False,
-            ).to(self.model_bundle.device)
+            if monitor and monitor.mode == "strict":
+                # Load model (needed for warmup/baseline) and record original load time
+                if self.model_bundle is None:
+                    _model_load_start = time.perf_counter()
+                    self.model_bundle = load_model(self.config, monitor=None)
+                    _original_model_load_ms = (time.perf_counter() - _model_load_start) * 1000
+                    monitor.set_original_model_load_ms(_original_model_load_ms)
+                    logger.debug(f"Perf: original model load time: {_original_model_load_ms:.2f}ms")
+                
+                model = self.model_bundle.model
+                is_encoder_decoder_attr = getattr(model.config, 'is_encoder_decoder', False)
+                is_seq2seq = is_encoder_decoder_attr is True or (
+                    isinstance(is_encoder_decoder_attr, bool) and is_encoder_decoder_attr
+                )
+                if not is_seq2seq:
+                    try:
+                        from unittest.mock import Mock, MagicMock
+                        encoder_attr = getattr(model, 'encoder', None)
+                        decoder_attr = getattr(model, 'decoder', None)
+                        has_real_encoder = (encoder_attr is not None and 
+                            not isinstance(encoder_attr, (Mock, MagicMock)) and callable(encoder_attr))
+                        has_real_decoder = (decoder_attr is not None and 
+                            not isinstance(decoder_attr, (Mock, MagicMock)) and callable(decoder_attr))
+                        is_seq2seq = has_real_encoder and has_real_decoder
+                    except ImportError:
+                        has_encoder = hasattr(model, 'encoder') and callable(getattr(model, 'encoder', None))
+                        has_decoder = hasattr(model, 'decoder') and callable(getattr(model, 'decoder', None))
+                        is_seq2seq = has_encoder and has_decoder
+                
+                # Tokenize for warmup/baseline
+                inputs = self.model_bundle.tokenizer(
+                    prompt, return_tensors="pt", padding=False,
+                ).to(self.model_bundle.device)
+                
+                # === WARMUP: Two dummy runs to stabilize timings (NOT counted in total) ===
+                # Two runs ensure CPU caches, branch predictors, and JIT are fully warm
+                # before we measure baseline. Without this, baseline may appear slower
+                # than the instrumented run due to cache warming effects.
+                logger.debug("Perf: running warmup (2 rounds)...")
+                warmup_start = time.perf_counter()
+                self._run_warmup(inputs, is_seq2seq)
+                self._run_warmup(inputs, is_seq2seq)
+                warmup_ms = (time.perf_counter() - warmup_start) * 1000
+                monitor.set_warmup_ms(warmup_ms)
+                logger.debug(f"Perf: warmup done ({warmup_ms:.2f}ms)")
+                
+                # === BASELINE: Raw inference without instrumentation (NOT counted in total) ===
+                # Seed before baseline so it generates the same tokens as the instrumented run.
+                # Without this, different random sampling could produce different token counts,
+                # making the timing comparison meaningless.
+                if self.config.generation.seed is not None:
+                    torch.manual_seed(self.config.generation.seed)
+                    if torch.cuda.is_available():
+                        torch.cuda.manual_seed_all(self.config.generation.seed)
+                logger.debug("Perf: running baseline...")
+                baseline_ms = self._run_baseline(inputs, is_seq2seq)
+                monitor.set_baseline_ms(baseline_ms)
+                logger.debug(f"Perf: baseline done ({baseline_ms:.2f}ms)")
             
-            prompt_token_ids = inputs.input_ids[0].tolist()
-            logger.debug(f"Prompt tokens: {len(prompt_token_ids)}")
+            # === PARENT: model_load ===
+            # For strict mode, model is already loaded; for other modes, load now
+            with _op("model_load"):
+                if self.model_bundle is None:
+                    self.model_bundle = load_model(self.config, monitor=monitor)
+                # For strict mode with cached model, the operation still tracks but duration is minimal
             
-            # Check if this is a Seq2Seq model
-            # Seq2Seq models don't return hidden_states/attentions via generate()
-            # so we need to use manual generation
+            # === PARENT: torch.manual_seed ===
+            with _op("torch.manual_seed"):
+                if self.config.generation.seed is not None:
+                    torch.manual_seed(self.config.generation.seed)
+                    if torch.cuda.is_available():
+                        torch.cuda.manual_seed_all(self.config.generation.seed)
+            
+            # === PARENT: tokenize ===
+            with _op("tokenize"):
+                logger.debug("Tokenizing prompt...")
+                inputs = self.model_bundle.tokenizer(
+                    prompt,
+                    return_tensors="pt",
+                    padding=False,
+                ).to(self.model_bundle.device)
+                
+                prompt_token_ids = inputs.input_ids[0].tolist()
+                logger.debug(f"Prompt tokens: {len(prompt_token_ids)}")
+            
+            # Check if this is a Seq2Seq model (quick check, not tracked as separate operation)
             model = self.model_bundle.model
             
             # Robust Seq2Seq detection: prefer model.config.is_encoder_decoder
-            # Important: getattr on Mock returns Mock, so check explicitly for True
             is_encoder_decoder_attr = getattr(model.config, 'is_encoder_decoder', False)
             is_seq2seq = is_encoder_decoder_attr is True or (
                 isinstance(is_encoder_decoder_attr, bool) and is_encoder_decoder_attr
@@ -132,7 +214,6 @@ class InstrumentationCollector:
             
             # Fallback: check for encoder/decoder attributes that are NOT from Mock
             if not is_seq2seq:
-                # Only check if encoder/decoder exist and are real (not Mock/MagicMock)
                 try:
                     from unittest.mock import Mock, MagicMock
                     encoder_attr = getattr(model, 'encoder', None)
@@ -150,96 +231,118 @@ class InstrumentationCollector:
                     )
                     is_seq2seq = has_real_encoder and has_real_decoder
                 except ImportError:
-                    # unittest.mock not available, use simpler check
                     has_encoder = hasattr(model, 'encoder') and callable(getattr(model, 'encoder', None))
                     has_decoder = hasattr(model, 'decoder') and callable(getattr(model, 'decoder', None))
                     is_seq2seq = has_encoder and has_decoder
             
-            # Run generation with instrumentation
+            # === PARENT: model_inference ===
+            # Contains: generation + extract_generated_tokens + decode_generated_text + _process_timeline
             logger.info("Starting instrumented generation...")
             start_time = time.time()
             
-            with torch.no_grad():
-                if is_seq2seq:
-                    logger.info("Using manual generation for Seq2Seq model to capture hidden states and attentions")
-                    outputs = self._generate_seq2seq_manual(
-                        inputs,
-                        prompt_token_ids,
+            # Declare variables that will be set inside model_inference
+            generated_token_ids: List[int] = []
+            generated_text: str = ""
+            timeline: List[StepData] = []
+            encoder_hidden_states = None
+            encoder_attentions = None
+            warnings: List[Dict[str, str]] = []
+            
+            with _op("model_inference"):
+                with torch.no_grad():
+                    if is_seq2seq:
+                        logger.info("Using manual generation for Seq2Seq model to capture hidden states and attentions")
+                        # Tracked as a child of model_inference (corevital orchestration)
+                        with _op("_generate_seq2seq_manual"):
+                            outputs = self._generate_seq2seq_manual(
+                                inputs,
+                                prompt_token_ids,
+                                monitor=monitor,
+                            )
+                    else:
+                        # Prepare generation config for CausalLM models
+                        gen_config = {
+                            "max_new_tokens": self.config.generation.max_new_tokens,
+                            "do_sample": self.config.generation.do_sample,
+                            "temperature": self.config.generation.temperature,
+                            "top_k": self.config.generation.top_k,
+                            "top_p": self.config.generation.top_p,
+                            "output_hidden_states": True,
+                            "output_attentions": True,
+                            "output_scores": True,  # Enable logits extraction
+                            "return_dict_in_generate": True,
+                            "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
+                        }
+                        # Tracked as a child of model_inference (external HF call)
+                        with _op("model.generate"):
+                            outputs = self.model_bundle.model.generate(
+                                **inputs,
+                                **gen_config,
+                            )
+                
+                # === CHILD: extract_generated_tokens ===
+                with _op("extract_generated_tokens"):
+                    if is_seq2seq:
+                        generated_token_ids = outputs["generated_token_ids"]
+                        generated_ids = prompt_token_ids + generated_token_ids
+                    else:
+                        # Type narrowing: outputs is GenerateOutput here, not dict
+                        generated_ids = outputs.sequences[0].tolist()  # type: ignore[union-attr]
+                        generated_token_ids = generated_ids[len(prompt_token_ids):]
+                
+                # === CHILD: decode_generated_text ===
+                with _op("decode_generated_text"):
+                    generated_text = self.model_bundle.tokenizer.decode(
+                        generated_token_ids,
+                        skip_special_tokens=True,
+                        clean_up_tokenization_spaces=True
                     )
-                else:
-                    # Prepare generation config for CausalLM models
-                    gen_config = {
-                        "max_new_tokens": self.config.generation.max_new_tokens,
-                        "do_sample": self.config.generation.do_sample,
-                        "temperature": self.config.generation.temperature,
-                        "top_k": self.config.generation.top_k,
-                        "top_p": self.config.generation.top_p,
-                        "output_hidden_states": True,
-                        "output_attentions": True,
-                        "output_scores": True,  # Enable logits extraction
-                        "return_dict_in_generate": True,
-                        "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
-                    }
-                    outputs = self.model_bundle.model.generate(
-                        **inputs,
-                        **gen_config,
-                    )
+                logger.debug(f"Generated tokens: {len(generated_token_ids)}")
+                logger.debug(f"Generated text: {generated_text}")
+                
+                # === CHILD: _process_timeline ===
+                # Handle both standard generate() output and manual Seq2Seq output
+                if isinstance(outputs, dict) and "output_obj" in outputs:
+                    encoder_hidden_states = outputs.get("encoder_hidden_states")
+                    encoder_attentions = outputs.get("encoder_attentions")
+                    if encoder_hidden_states is not None and isinstance(encoder_hidden_states, tuple):
+                        encoder_hidden_states = list(encoder_hidden_states)
+                    if encoder_attentions is not None and isinstance(encoder_attentions, tuple):
+                        encoder_attentions = list(encoder_attentions)
+
+                with _op("_process_timeline"):
+                    if isinstance(outputs, dict) and "output_obj" in outputs:
+                        timeline = self._process_timeline(
+                            outputs["output_obj"],
+                            prompt_token_ids,
+                            generated_token_ids,
+                            cross_attentions=outputs.get("cross_attentions"),
+                        )
+                    else:
+                        timeline = self._process_timeline(
+                            outputs,
+                            prompt_token_ids,
+                            generated_token_ids,
+                        )
+                
+                # === CHILD: _collect_warnings ===
+                with _op("_collect_warnings"):
+                    if isinstance(outputs, dict) and "output_obj" in outputs:
+                        warnings = self._collect_warnings(outputs["output_obj"])
+                    else:
+                        warnings = self._collect_warnings(outputs)
             
             elapsed_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Generation complete in {elapsed_ms}ms")
+
+            # Record instrumented inference time (for strict mode overhead calculation)
+            if monitor:
+                for p in monitor._parent_operations():
+                    if p.operation_name == "model_inference":
+                        monitor.set_instrumented_inference_ms(p.duration_ms)
+                        break
             
-            # Extract generated tokens
-            if is_seq2seq:
-                generated_token_ids = outputs["generated_token_ids"]
-                generated_ids = prompt_token_ids + generated_token_ids
-            else:
-                # Type narrowing: outputs is GenerateOutput here, not dict
-                generated_ids = outputs.sequences[0].tolist()  # type: ignore[union-attr]
-                generated_token_ids = generated_ids[len(prompt_token_ids):]
-            
-            # Decode generated text
-            generated_text = self.model_bundle.tokenizer.decode(
-                generated_token_ids,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=True
-            )
-            
-            logger.debug(f"Generated tokens: {len(generated_token_ids)}")
-            logger.debug(f"Generated text: {generated_text}")
-            
-            # Process timeline
-            # Handle both standard generate() output and manual Seq2Seq output
-            encoder_hidden_states = None
-            encoder_attentions = None
-            if isinstance(outputs, dict) and "output_obj" in outputs:
-                # Manual Seq2Seq generation output
-                encoder_hidden_states = outputs.get("encoder_hidden_states")
-                encoder_attentions = outputs.get("encoder_attentions")
-                # Convert tuples to lists for consistency with type hints
-                if encoder_hidden_states is not None and isinstance(encoder_hidden_states, tuple):
-                    encoder_hidden_states = list(encoder_hidden_states)
-                if encoder_attentions is not None and isinstance(encoder_attentions, tuple):
-                    encoder_attentions = list(encoder_attentions)
-                timeline = self._process_timeline(
-                    outputs["output_obj"],
-                    prompt_token_ids,
-                    generated_token_ids,
-                    cross_attentions=outputs.get("cross_attentions"),
-                )
-            else:
-                # Standard generate() output
-                timeline = self._process_timeline(
-                    outputs,
-                    prompt_token_ids,
-                    generated_token_ids,
-                )
-            
-            # Collect warnings
-            # Handle both standard generate() output and manual Seq2Seq output
-            if isinstance(outputs, dict) and "output_obj" in outputs:
-                warnings = self._collect_warnings(outputs["output_obj"])
-            else:
-                warnings = self._collect_warnings(outputs)
+            # Note: total_wall_time_ms is set by CLI after all operations (including report_build/sink_write)
             
             return InstrumentationResults(
                 model_bundle=self.model_bundle,
@@ -252,6 +355,7 @@ class InstrumentationCollector:
                 warnings=warnings,
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attentions=encoder_attentions,
+                monitor=monitor,
             )
             
         except Exception as e:
@@ -260,11 +364,127 @@ class InstrumentationCollector:
                 "Failed during instrumented inference",
                 details=str(e)
             ) from e
+
+    def _run_warmup(self, inputs: Any, is_seq2seq: bool) -> None:
+        """Run a warmup generation (no instrumentation, results discarded)."""
+        if self.model_bundle is None:
+            return
+        with torch.no_grad():
+            if is_seq2seq:
+                self._run_baseline_seq2seq(inputs)
+            else:
+                self._run_baseline_causal(inputs)
+
+    def _run_baseline(self, inputs: Any, is_seq2seq: bool) -> float:
+        """Run baseline inference (no instrumentation) and return elapsed ms."""
+        if self.model_bundle is None:
+            return 0.0
+        start = time.perf_counter()
+        with torch.no_grad():
+            if is_seq2seq:
+                self._run_baseline_seq2seq(inputs)
+            else:
+                self._run_baseline_causal(inputs)
+        return (time.perf_counter() - start) * 1000
+
+    def _run_baseline_causal(self, inputs: Any) -> None:
+        """Baseline CausalLM generation (no output_hidden_states/attentions/scores)."""
+        if self.model_bundle is None:
+            return
+        gen_config = {
+            "max_new_tokens": self.config.generation.max_new_tokens,
+            "do_sample": self.config.generation.do_sample,
+            "temperature": self.config.generation.temperature,
+            "top_k": self.config.generation.top_k,
+            "top_p": self.config.generation.top_p,
+            "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
+        }
+        self.model_bundle.model.generate(**inputs, **gen_config)
+
+    def _run_baseline_seq2seq(self, inputs: Any) -> None:
+        """
+        Baseline Seq2Seq generation: encoder + decoder loop with no hidden_states/attentions.
+        
+        Sampling logic (temperature, top_k, top_p) must match _generate_seq2seq_manual
+        exactly so that with the same seed, baseline and instrumented runs generate the
+        same tokens. Without this, different token counts make overhead comparison meaningless.
+        """
+        if self.model_bundle is None:
+            return
+        model = self.model_bundle.model
+        tokenizer = self.model_bundle.tokenizer
+        device = self.model_bundle.device
+
+        # Encoder pass (no hidden_states/attentions)
+        encoder_outputs = model.encoder(
+            input_ids=inputs.input_ids,
+            output_hidden_states=False,
+            output_attentions=False,
+            return_dict=True,
+        )
+
+        # Decoder loop
+        decoder_start_token_id = getattr(model.config, 'decoder_start_token_id', None)
+        if decoder_start_token_id is None:
+            decoder_start_token_id = getattr(tokenizer, 'pad_token_id', 0)
+        eos_token_id = getattr(model.config, 'eos_token_id', None)
+        if eos_token_id is None:
+            eos_token_id = getattr(tokenizer, 'eos_token_id', 2)
+
+        decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device)
+        max_new_tokens = self.config.generation.max_new_tokens
+        
+        # Generation parameters (must match _generate_seq2seq_manual)
+        do_sample = self.config.generation.do_sample
+        temperature = self.config.generation.temperature
+        top_k = self.config.generation.top_k
+        top_p = self.config.generation.top_p
+
+        for _ in range(max_new_tokens):
+            decoder_outputs = model(
+                encoder_outputs=encoder_outputs,
+                decoder_input_ids=decoder_input_ids,
+                output_hidden_states=False,
+                output_attentions=False,
+                use_cache=False,
+                return_dict=True,
+            )
+            next_token_logits = decoder_outputs.logits[:, -1, :]
+            # Sample next token (must match _generate_seq2seq_manual exactly)
+            if do_sample:
+                # Apply temperature
+                if temperature != 1.0:
+                    next_token_logits = next_token_logits / temperature
+                
+                # Apply top-k filtering
+                if top_k > 0:
+                    indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
+                    next_token_logits[indices_to_remove] = float('-inf')
+                
+                # Apply top-p (nucleus) filtering
+                if top_p < 1.0:
+                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
+                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                    sorted_indices_to_remove[..., 0] = 0
+                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                    next_token_logits[indices_to_remove] = float('-inf')
+                
+                # Sample from filtered distribution
+                probs = torch.softmax(next_token_logits, dim=-1)
+                next_token_id = torch.multinomial(probs, num_samples=1)
+            else:
+                next_token_id = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+            decoder_input_ids = torch.cat([decoder_input_ids, next_token_id], dim=-1)
+            if next_token_id.item() == eos_token_id:
+                break
     
     def _generate_seq2seq_manual(
         self,
         inputs: Any,
         prompt_token_ids: List[int],
+        monitor: Optional["PerformanceMonitor"] = None,
     ) -> Dict[str, Any]:
         """
         Manual generation for Seq2Seq models to capture hidden states and attentions.
@@ -275,6 +495,7 @@ class InstrumentationCollector:
         Args:
             inputs: Tokenized input from tokenizer
             prompt_token_ids: Prompt token IDs
+            monitor: Optional performance monitor for nested timing
             
         Returns:
             Dictionary with sequences, scores, hidden_states, and attentions
@@ -282,18 +503,25 @@ class InstrumentationCollector:
         if self.model_bundle is None:
             raise InstrumentationError("Model bundle not initialized")
         
+        def _op(name: str):
+            """Helper to wrap operations in monitor.operation() if enabled."""
+            return monitor.operation(name) if monitor else nullcontext()
+        
         model = self.model_bundle.model
         tokenizer = self.model_bundle.tokenizer
         device = self.model_bundle.device
         
         # Encode input with encoder
         logger.debug("Encoding input with encoder...")
-        encoder_outputs = model.encoder(
-            input_ids=inputs.input_ids,
-            output_hidden_states=True,
-            output_attentions=True,
-            return_dict=True,
-        )
+        # tracked as a child operation of model_inference
+        # encoder_forward is child of _generate_seq2seq_manual which is child of model_inference
+        with _op("encoder_forward"):
+            encoder_outputs = model.encoder(
+                input_ids=inputs.input_ids,
+                output_hidden_states=True,
+                output_attentions=True,
+                return_dict=True,
+            )
         
         # Extract encoder hidden states and attentions (computed once, fixed for the entire run)
         encoder_hidden_states = None
@@ -342,7 +570,12 @@ class InstrumentationCollector:
         
         logger.debug(f"Starting manual decoder generation (max_new_tokens={max_new_tokens})...")
         
+        # Track decoder loop timing and per-step times
+        _decoder_loop_start = time.perf_counter()
+        _step_times_ms: List[float] = []
+        
         for step in range(max_new_tokens):
+            _step_start = time.perf_counter()
             # Forward pass through decoder
             # For T5 and other Seq2Seq models, we pass encoder_outputs as a BaseModelOutput
             decoder_outputs = model(
@@ -470,10 +703,40 @@ class InstrumentationCollector:
             # Check for EOS
             if next_token_id == eos_token_id:
                 logger.debug(f"EOS token generated at step {step}")
+                # Record step time before break
+                _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
                 break
             
             # Append to decoder input for next iteration
             decoder_input_ids = torch.cat([decoder_input_ids, next_token], dim=-1)
+            
+            # Record step time
+            _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
+        
+        # Record decoder loop timing with per_step stats
+        _decoder_loop_ms = (time.perf_counter() - _decoder_loop_start) * 1000
+        if monitor and monitor.stack:
+            # Add decoder_loop as child of current operation (model_inference)
+            from CoreVital.instrumentation.performance import OperationTiming
+            
+            # Build per_step stats if we have step times
+            per_step_stats = None
+            if _step_times_ms:
+                per_step_stats = {
+                    "count": len(_step_times_ms),
+                    "min_ms": min(_step_times_ms),
+                    "max_ms": max(_step_times_ms),
+                    "avg_ms": sum(_step_times_ms) / len(_step_times_ms),
+                }
+            
+            decoder_loop_timing = OperationTiming(
+                operation_name="decoder_loop",
+                duration_ms=_decoder_loop_ms,
+            )
+            # Store per_step in metadata
+            if per_step_stats:
+                decoder_loop_timing.metadata["per_step"] = per_step_stats
+            monitor.stack[-1].children.append(decoder_loop_timing)
         
         logger.info(f"Manual generation complete: {len(generated_token_ids)} tokens generated")
         

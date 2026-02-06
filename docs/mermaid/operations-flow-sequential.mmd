@@ -1,0 +1,194 @@
+%% Sequential flow: order verified against run_command -> collector.run -> builder.build -> sink.write
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart LR
+    Start([Start]) --> C1
+
+    subgraph SG0["config_load"]
+        direction LR
+        C1[from_yaml or from_default] --> C2[CLI overrides]
+    end
+
+    C2 --> Log1
+
+    subgraph SG0a["setup_logging"]
+        direction LR
+        Log1[setup_logging level format]
+    end
+
+    Log1 --> Col1
+
+    subgraph SG0b["initialize collector"]
+        direction LR
+        Col1[InstrumentationCollector config]
+    end
+
+    Col1 --> M1
+
+    subgraph SG1["model_load"]
+        direction LR
+        M1[_resolve_device] --> M2[_resolve_dtype] --> M3[AutoTokenizer.from_pretrained] --> M4[pad_token = eos if None] --> M5[AutoConfig.from_pretrained] --> M6[model_class Seq2Seq vs CausalLM] --> M7[BitsAndBytesConfig if quantize] --> M8[model_class.from_pretrained] --> M9[model.to device if not quant] --> M10[model.eval] --> M11[set_attn_implementation eager if SDPA] --> M12[extract metadata] --> M13[_detect_quantized_dtype if quant]
+    end
+
+    M13 --> Seed1
+
+    subgraph SG1a["torch.manual_seed"]
+        direction LR
+        Seed1[torch.manual_seed seed] --> Seed2[torch.cuda.manual_seed_all if CUDA]
+    end
+
+    Seed2 --> Tok1
+
+    subgraph SG2["tokenize"]
+        direction LR
+        Tok1[tokenizer prompt return_tensors pt] --> Tok2[.to device]
+    end
+
+    Tok2 --> Det1
+
+    subgraph SG2a["Seq2Seq detection"]
+        direction LR
+        Det1[check model.config.is_encoder_decoder] --> Det2[check encoder/decoder attributes]
+    end
+
+    Det2 --> I1
+
+    subgraph SG3["model_inference"]
+        direction TB
+        I1{CausalLM or Seq2Seq?}
+        I2[model.generate CausalLM]
+        I3[encoder_forward]
+        I4[decoder_loop x max_new_tokens]
+        I1 -->|CausalLM| I2
+        I1 -->|Seq2Seq| I3
+        I3 --> I4
+    end
+
+    I2 --> Ext1
+    I4 --> Ext1
+
+    subgraph SG3a["extract generated tokens"]
+        direction LR
+        Ext1[extract generated_token_ids from outputs]
+    end
+
+    Ext1 --> Dec1
+
+    subgraph SG3b["decode generated text"]
+        direction LR
+        Dec1[tokenizer.decode generated_token_ids]
+    end
+
+    Dec1 --> Ext2
+    Dec1 --> P1
+
+    subgraph SG3c["extract encoder outputs if Seq2Seq"]
+        direction LR
+        Ext2[extract encoder_hidden_states] --> Ext3[extract encoder_attentions]
+    end
+
+    Ext3 --> P1
+
+    subgraph SG4["_process_timeline"]
+        direction LR
+        P1[build StepData from scores hidden attentions] --> P2[extract logits per step] --> P3[extract hidden_states per step] --> P4[extract attentions per step] --> P5[extract cross_attentions per step if Seq2Seq]
+    end
+
+    P5 --> Warn1
+
+    subgraph SG4a["_collect_warnings"]
+        direction LR
+        Warn1[check has_scores has_hidden has_attention] --> Warn2[generate warnings if missing]
+    end
+
+    Warn2 --> Rep2
+
+    subgraph SG0c["initialize builder"]
+        direction LR
+        Rep2[ReportBuilder config]
+    end
+
+    Rep2 --> R1
+
+    subgraph SG5["report_build"]
+        direction LR
+        R1[generate trace_id] --> R2[_build_model_info] --> R3[_build_run_config] --> R4[_build_prompt_info] --> R5[_build_generated_info] --> R6[_build_timeline]
+        R6 --> R7[compute_encoder_hidden_states_summaries if Seq2Seq]
+        R7 --> R8[_build_encoder_layers if Seq2Seq]
+        R8 --> R9[build Summary]
+        R9 --> R10[convert warnings]
+        R10 --> R11[assemble Report]
+    end
+
+    R11 --> Sink1
+
+    subgraph SG5a["sink initialization"]
+        direction LR
+        Sink1[LocalFileSink or HTTPSink]
+    end
+
+    Sink1 --> J1
+
+    subgraph SG7["sink_write"]
+        direction TB
+        J1[report.model_dump mode json] --> J2[json.dumps indent ensure_ascii]
+        J2 --> SinkType{local_file or http?}
+        SinkType -->|local_file| W1[LocalFileSink: build filepath open write file]
+        SinkType -->|http| W2[HTTPSink: POST body]
+    end
+
+    W1 --> End([End])
+    W2 --> End
+
+    style Start fill:#059669
+    style End fill:#059669
+    style C1 fill:#1e40af
+    style C2 fill:#1e40af
+    style Log1 fill:#1e40af
+    style Col1 fill:#1e40af
+    style Rep2 fill:#92400e
+    style M1 fill:#065f46
+    style M13 fill:#065f46
+    style Seed1 fill:#065f46
+    style Seed2 fill:#065f46
+    style Tok1 fill:#065f46
+    style Tok2 fill:#065f46
+    style Det1 fill:#065f46
+    style Det2 fill:#065f46
+    style I1 fill:#5b21b6
+    style I2 fill:#5b21b6
+    style I3 fill:#5b21b6
+    style I4 fill:#5b21b6
+    style Ext1 fill:#5b21b6
+    style Ext2 fill:#5b21b6
+    style Ext3 fill:#5b21b6
+    style Dec1 fill:#5b21b6
+    style P1 fill:#5b21b6
+    style P5 fill:#5b21b6
+    style Warn1 fill:#5b21b6
+    style Warn2 fill:#5b21b6
+    style R1 fill:#92400e
+    style R11 fill:#92400e
+    style Sink1 fill:#92400e
+    style J1 fill:#0e7490
+    style J2 fill:#0e7490
+    style SinkType fill:#0e7490
+    style W1 fill:#0e7490
+    style W2 fill:#0e7490
+    style SG0 fill:#1e40af15
+    style SG0a fill:#1e40af15
+    style SG0b fill:#1e40af15
+    style SG0c fill:#92400e15
+    style SG1 fill:#065f4615
+    style SG1a fill:#065f4615
+    style SG2 fill:#065f4615
+    style SG2a fill:#065f4615
+    style SG3 fill:#5b21b615
+    style SG3a fill:#5b21b615
+    style SG3b fill:#5b21b615
+    style SG3c fill:#5b21b615
+    style SG4 fill:#5b21b615
+    style SG4a fill:#5b21b615
+    style SG5 fill:#92400e15
+    style SG5a fill:#92400e15
+    style SG7 fill:#0e749015
