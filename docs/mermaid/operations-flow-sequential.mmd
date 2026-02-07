@@ -120,7 +120,15 @@ flowchart LR
         R10 --> R11[assemble Report]
     end
 
-    R11 --> Sink1
+    R11 --> Perf1
+
+    subgraph SG5b["inject performance if --perf"]
+        direction LR
+        Perf1[mark_run_end] --> Perf2[build_summary_dict]
+        Perf2 --> Perf3[report.extensions.performance = summary]
+    end
+
+    Perf3 --> Sink1
 
     subgraph SG5a["sink initialization"]
         direction LR
@@ -169,6 +177,8 @@ flowchart LR
     style Warn2 fill:#5b21b6
     style R1 fill:#92400e
     style R11 fill:#92400e
+    style Perf1 fill:#92400e
+    style Perf3 fill:#92400e
     style Sink1 fill:#92400e
     style J1 fill:#0e7490
     style J2 fill:#0e7490
@@ -191,4 +201,5 @@ flowchart LR
     style SG4a fill:#5b21b615
     style SG5 fill:#92400e15
     style SG5a fill:#92400e15
+    style SG5b fill:#92400e15
     style SG7 fill:#0e749015

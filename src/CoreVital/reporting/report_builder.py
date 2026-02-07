@@ -195,7 +195,7 @@ class ReportBuilder:
                 encoder_layers=encoder_layers,
             )
 
-        # Note: Performance extensions are added by CLI after report_build and sink_write are complete
+        # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
         
         logger.debug(f"Report built: {len(timeline)} timeline steps")
         return report

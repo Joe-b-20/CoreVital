@@ -10,6 +10,7 @@
 # Changelog:
 #   2026-01-13: Initial LocalFileSink for Phase-0
 #   2026-02-04: Phase-0.75 - added note: performance data is injected by CLI after write
+#   2026-02-06: Performance data now arrives inside report.extensions before write()
 # ============================================================================
 
 import json
@@ -61,8 +62,7 @@ class LocalFileSink(Sink):
             filename = f"trace_{trace_id_str[:safe_length]}.json"
             filepath = self.output_dir / filename
             
-            # Serialize report to JSON
-            # Note: Performance data is added by CLI after sink_write completes
+            # Serialize report to JSON (includes extensions.performance if --perf enabled)
             json_str = serialize_report_to_json(report, indent=2)
 
             # Write to file
