@@ -11,7 +11,6 @@ flowchart TB
     T --> Detect[Seq2Seq detection]
     T --> Inf[model_inference]
     T --> RB[report_build]
-    T --> SW[sink_write]
 
     Config --> C1[from_yaml or from_default]
     Config --> C2[CLI overrides]
@@ -111,21 +110,10 @@ flowchart TB
     S5a --> E1[compute_hidden_summary]
     S5a --> E2[compute_attention_summary]
 
-    SW --> JS[json_serialize]
-    SW --> Write[write to sink]
-
-    JS --> J1[report.model_dump mode json]
-    JS --> J2[json.dumps indent ensure_ascii]
-
-    Write --> W3[LocalFileSink: open write file]
-    Write --> W4[HTTPSink: POST request]
-
     style T fill:#1e40af,stroke:#3b82f6,color:#93c5fd
     style ML fill:#065f46,stroke:#10b981,color:#6ee7b7
     style Inf fill:#5b21b6,stroke:#8b5cf6,color:#c4b5fd
     style RB fill:#92400e,stroke:#f59e0b,color:#fde68a
-    style JS fill:#0e7490,stroke:#06b6d4,color:#67e8f9
-    style SW fill:#0e7490,stroke:#06b6d4,color:#67e8f9
     style H1 fill:#7c3aed,stroke:#a78bfa
     style H2 fill:#7c3aed,stroke:#a78bfa
     style L1 fill:#7c3aed,stroke:#a78bfa

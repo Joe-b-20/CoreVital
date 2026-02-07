@@ -11,6 +11,8 @@
 #   2026-02-04: Initial performance monitor for Phase-0.75
 #   2026-02-05: Removed origin labeling, simplified strict mode output
 #               baseline_ms is now the single source for raw inference timing
+#   2026-02-06: sink_write removed from parent_operations (perf data must be
+#               finalized before the write that carries it)
 # ============================================================================
 
 from contextlib import contextmanager

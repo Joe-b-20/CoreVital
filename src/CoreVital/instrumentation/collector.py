@@ -23,6 +23,7 @@
 #   2026-02-04: Phase-0.75 - added PerformanceMonitor integration via _op() helper;
 #                strict mode: warmup, baseline, and original model load tracking;
 #                all parent and child operations wrapped for timing
+#   2026-02-06: Updated note: total_wall_time_ms covers through report_build (not sink_write)
 #   2026-02-06: Phase-0.75 - fixed strict mode: seed before baseline for reproducible
 #                token generation; added top_k/top_p to baseline Seq2Seq sampling to
 #                match instrumented path; doubled warmup rounds for cache stabilization
@@ -342,7 +343,7 @@ class InstrumentationCollector:
                         monitor.set_instrumented_inference_ms(p.duration_ms)
                         break
             
-            # Note: total_wall_time_ms is set by CLI after all operations (including report_build/sink_write)
+            # Note: total_wall_time_ms is set by CLI after all timed operations (through report_build)
             
             return InstrumentationResults(
                 model_bundle=self.model_bundle,

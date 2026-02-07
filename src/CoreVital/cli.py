@@ -13,6 +13,9 @@
 #   2026-02-04: Phase-0.75 - added --perf flag (summary/detailed/strict modes);
 #                performance data injected into report extensions after sink_write;
 #                detailed breakdown written as separate JSON file
+#   2026-02-06: Fixed HTTP sink missing performance data - inject extensions.performance
+#                into Report before sink.write() so both local_file and http sinks
+#                receive complete data; removed post-write read-patch-write hack
 # ============================================================================
 
 import argparse
@@ -232,7 +235,36 @@ def run_command(args: argparse.Namespace) -> int:
         with _op("report_build"):
             report = builder.build(raw_results, args.prompt)
         
-        # === PARENT: sink_write ===
+        # === END OF INSTRUMENTED RUN ===
+        # Finalize performance data BEFORE sink.write() so both local_file and
+        # http sinks receive the complete report including extensions.performance.
+        # sink_write is excluded from parent_operations because the performance
+        # summary must be finalized before the write that carries it.
+        if monitor:
+            monitor.mark_run_end()
+            
+            # Build performance summary
+            perf_summary = monitor.build_summary_dict()
+            
+            # For detailed/strict modes, write the detailed breakdown file
+            mode = monitor.mode
+            trace_id = report.trace_id
+            if mode in ("detailed", "strict"):
+                detailed_path = Path(config.sink.output_dir) / f"trace_{trace_id[:8]}_performance_detailed.json"
+                monitor.set_detailed_file(str(detailed_path))
+                perf_summary["detailed_file"] = str(detailed_path)
+                
+                detailed_breakdown = monitor.build_detailed_breakdown()
+                detailed_breakdown["trace_id"] = trace_id[:8]
+                with open(detailed_path, "w") as f:
+                    json.dump(detailed_breakdown, f, indent=2, ensure_ascii=False)
+                logger.info(f"Performance detailed written to {detailed_path}")
+            
+            # Inject into report so sink.write() serializes the complete data
+            report.extensions["performance"] = perf_summary
+        
+        # === SINK WRITE ===
+        # Not wrapped in _op() - happens after perf data is finalized
         if config.sink.type == "local_file":
             sink = LocalFileSink(config.sink.output_dir)
         elif config.sink.type == "http":
@@ -242,39 +274,7 @@ def run_command(args: argparse.Namespace) -> int:
         else:
             raise ValueError(f"Unknown sink type: {config.sink.type}")
         
-        with _op("sink_write"):
-            output_location = sink.write(report)
-        
-        # === END OF INSTRUMENTED RUN ===
-        if monitor:
-            monitor.mark_run_end()
-            
-            # Build performance summary
-            perf_summary = monitor.build_summary_dict()
-            
-            # For detailed/strict modes, set the detailed file path and build breakdown
-            mode = monitor.mode
-            trace_id = report.trace_id
-            if mode in ("detailed", "strict"):
-                detailed_path = Path(config.sink.output_dir) / f"trace_{trace_id[:8]}_performance_detailed.json"
-                monitor.set_detailed_file(str(detailed_path))
-                perf_summary["detailed_file"] = str(detailed_path)
-                
-                # Build and write detailed breakdown
-                detailed_breakdown = monitor.build_detailed_breakdown()
-                detailed_breakdown["trace_id"] = trace_id[:8]
-                with open(detailed_path, "w") as f:
-                    json.dump(detailed_breakdown, f, indent=2, ensure_ascii=False)
-                logger.info(f"Performance detailed written to {detailed_path}")
-            
-            # Update the main trace file with performance data
-            if config.sink.type == "local_file":
-                with open(output_location, "r") as f:
-                    trace_data = json.load(f)
-                trace_data["extensions"]["performance"] = perf_summary
-                with open(output_location, "w") as f:
-                    json.dump(trace_data, f, indent=2, ensure_ascii=False)
-                logger.info(f"Performance data added to {output_location}")
+        output_location = sink.write(report)
         
         # Print summary
         print("\n" + "="*60)

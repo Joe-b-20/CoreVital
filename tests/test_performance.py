@@ -130,11 +130,11 @@ def test_performance_monitor_build_summary_strict():
         OperationTiming("tokenize", duration_ms=5.0),
         OperationTiming("model_inference", duration_ms=200.0),
         OperationTiming("report_build", duration_ms=50.0),
-        OperationTiming("sink_write", duration_ms=10.0),
     ]
     # Total includes: original_model_load(1500) + warmup(300) + baseline(180) +
-    #   actual parent durations(3+1+1+5+200+50+10=270) + ~5ms inter-operation gaps
-    monitor.set_total_wall_time_ms(2255.0)
+    #   actual parent durations(3+1+1+5+200+50=260) + ~5ms inter-operation gaps
+    # sink_write is excluded (happens after perf data is finalized)
+    monitor.set_total_wall_time_ms(2245.0)
     monitor.set_original_model_load_ms(1500.0)  # Cold load time
     monitor.set_warmup_ms(300.0)
     monitor.set_baseline_ms(180.0)  # baseline_ms is the raw inference time
@@ -153,8 +153,8 @@ def test_performance_monitor_build_summary_strict():
     assert "corevital_overhead_pct" in out
 
     # Verify unaccounted time is small and non-negative (just inter-operation gaps)
-    # sum_parent_ms(with original) = 3+1500+5+200+50+10 = 1768
-    # unaccounted = 2255 - 1768 - 300 - 180 = 7.0
+    # sum_parent_ms(with original) = 3+1+1500+5+200+50 = 1759
+    # unaccounted = 2245 - 1759 - 300 - 180 = 6.0
     unaccounted = out["unaccounted_time"]["ms"]
     assert unaccounted >= 0, f"Unaccounted time should be non-negative, got {unaccounted}"
     assert unaccounted < 50, f"Unaccounted time should be small, got {unaccounted}"

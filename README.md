@@ -193,7 +193,7 @@ The `--perf` flag enables performance monitoring with three modes:
 **Summary Mode** (`--perf` or `--perf summary`):
 - Adds `performance` extension to the main trace JSON
 - Shows total wall time and breakdown by parent operations
-- Tracks: config_load, setup_logging, model_load, torch.manual_seed, tokenize, model_inference, report_build, sink_write
+- Tracks: config_load, setup_logging, model_load, torch.manual_seed, tokenize, model_inference, report_build
 
 **Detailed Mode** (`--perf detailed`):
 - Everything in summary mode, plus:
