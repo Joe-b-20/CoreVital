@@ -13,14 +13,13 @@
 #   2026-02-06: Performance data now arrives inside report.extensions before write()
 # ============================================================================
 
-import json
 from pathlib import Path
+
+from CoreVital.errors import SinkError
+from CoreVital.logging_utils import get_logger
 from CoreVital.reporting.schema import Report
 from CoreVital.sinks.base import Sink
 from CoreVital.utils.serialization import serialize_report_to_json
-from CoreVital.errors import SinkError
-from CoreVital.logging_utils import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -29,28 +28,28 @@ class LocalFileSink(Sink):
     """
     Sink that writes reports to local JSON files.
     """
-    
+
     def __init__(self, output_dir: str = "runs"):
         """
         Initialize local file sink.
-        
+
         Args:
             output_dir: Directory path for output files
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"LocalFileSink initialized: {self.output_dir}")
-    
+
     def write(self, report: Report) -> str:
         """
         Write report to a JSON file.
-        
+
         Args:
             report: Report to write
-            
+
         Returns:
             Path to written file
-            
+
         Raises:
             SinkError: If write fails
         """
@@ -61,7 +60,7 @@ class LocalFileSink(Sink):
             safe_length = min(8, len(trace_id_str))
             filename = f"trace_{trace_id_str[:safe_length]}.json"
             filepath = self.output_dir / filename
-            
+
             # Serialize report to JSON (includes extensions.performance if --perf enabled)
             json_str = serialize_report_to_json(report, indent=2)
 
@@ -72,10 +71,7 @@ class LocalFileSink(Sink):
             logger.info(f"Report written to {filepath}")
 
             return str(filepath)
-            
+
         except Exception as e:
             logger.exception("Failed to write report to file")
-            raise SinkError(
-                f"Failed to write report to {filepath if filepath else 'file'}",
-                details=str(e)
-            ) from e
+            raise SinkError(f"Failed to write report to {filepath if filepath else 'file'}", details=str(e)) from e

@@ -13,7 +13,7 @@
 # ============================================================================
 
 from CoreVital.instrumentation.collector import InstrumentationCollector, InstrumentationResults
-from CoreVital.instrumentation.performance import PerformanceMonitor, OperationTiming
+from CoreVital.instrumentation.performance import OperationTiming, PerformanceMonitor
 
 __all__ = [
     "InstrumentationCollector",

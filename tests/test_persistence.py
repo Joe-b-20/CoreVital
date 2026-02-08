@@ -12,31 +12,30 @@
 # ============================================================================
 
 import json
-import tempfile
-from pathlib import Path
+
 import pytest
 
 from CoreVital.reporting.schema import (
-    Report,
-    ModelInfo,
-    QuantizationInfo,
-    RunConfig,
-    GenerationConfig,
-    SketchConfig,
-    HiddenConfig,
     AttentionConfig,
-    LogitsConfig,
-    SummariesConfig,
-    SinkConfig,
-    PromptInfo,
+    AttentionSummary,
     GeneratedInfo,
+    GenerationConfig,
+    HiddenConfig,
+    HiddenSummary,
+    LayerSummary,
+    LogitsConfig,
+    LogitsSummary,
+    ModelInfo,
+    PromptInfo,
+    QuantizationInfo,
+    Report,
+    RunConfig,
+    SinkConfig,
+    SketchConfig,
+    SummariesConfig,
     Summary,
     TimelineStep,
     TokenInfo,
-    LogitsSummary,
-    LayerSummary,
-    HiddenSummary,
-    AttentionSummary,
 )
 from CoreVital.utils.serialization import serialize_report_to_json
 
@@ -44,7 +43,7 @@ from CoreVital.utils.serialization import serialize_report_to_json
 def create_minimal_report() -> Report:
     """Create a minimal valid report for testing."""
     return Report(
-        schema_version="0.1.0",
+        schema_version="0.2.0",
         trace_id="test-trace-persistence-123",
         created_at_utc="2026-01-16T10:00:00Z",
         model=ModelInfo(
@@ -133,7 +132,7 @@ def create_minimal_report() -> Report:
 def test_report_persistence(tmp_path):
     """
     Test that reports can be saved and loaded correctly.
-    
+
     This test verifies:
     1. Report can be serialized to JSON
     2. JSON can be saved to a temporary file
@@ -142,54 +141,56 @@ def test_report_persistence(tmp_path):
     """
     # Create a minimal report
     report = create_minimal_report()
-    
+
     # Verify extensions field exists on Report
-    assert hasattr(report, 'extensions'), "Report should have extensions field"
+    assert hasattr(report, "extensions"), "Report should have extensions field"
     assert isinstance(report.extensions, dict), "Report.extensions should be a dict"
-    
+
     # Verify extensions field exists on TimelineStep
     assert len(report.timeline) > 0, "Report should have at least one timeline step"
     for step in report.timeline:
-        assert hasattr(step, 'extensions'), "TimelineStep should have extensions field"
+        assert hasattr(step, "extensions"), "TimelineStep should have extensions field"
         assert isinstance(step.extensions, dict), "TimelineStep.extensions should be a dict"
-    
+
     # Serialize to JSON
     json_str = serialize_report_to_json(report)
     assert isinstance(json_str, str), "Serialization should return a string"
-    
+
     # Save to temporary file
     temp_file = tmp_path / "test_report.json"
-    with open(temp_file, 'w') as f:
+    with open(temp_file, "w") as f:
         f.write(json_str)
-    
+
     assert temp_file.exists(), "Temporary file should exist"
-    
+
     # Load JSON from file
-    with open(temp_file, 'r') as f:
+    with open(temp_file, "r") as f:
         loaded_json_str = f.read()
-    
+
     # Validate and load using Report.model_validate_json()
     loaded_report = Report.model_validate_json(loaded_json_str)
-    
+
     # Verify loaded report structure
     assert loaded_report.schema_version == report.schema_version
     assert loaded_report.trace_id == report.trace_id
     assert loaded_report.model.hf_id == report.model.hf_id
-    
+
     # Verify extensions field exists on loaded Report
-    assert hasattr(loaded_report, 'extensions'), "Loaded Report should have extensions field"
+    assert hasattr(loaded_report, "extensions"), "Loaded Report should have extensions field"
     assert isinstance(loaded_report.extensions, dict), "Loaded Report.extensions should be a dict"
-    
+
     # Verify extensions field exists on loaded TimelineStep
-    assert len(loaded_report.timeline) == len(report.timeline), "Loaded report should have same number of timeline steps"
+    assert len(loaded_report.timeline) == len(report.timeline), (
+        "Loaded report should have same number of timeline steps"
+    )
     for step in loaded_report.timeline:
-        assert hasattr(step, 'extensions'), "Loaded TimelineStep should have extensions field"
+        assert hasattr(step, "extensions"), "Loaded TimelineStep should have extensions field"
         assert isinstance(step.extensions, dict), "Loaded TimelineStep.extensions should be a dict"
-    
+
     # Verify the report can be serialized again (round-trip test)
     json_str2 = serialize_report_to_json(loaded_report)
     loaded_report2 = Report.model_validate_json(json_str2)
-    
+
     assert loaded_report2.schema_version == report.schema_version
     assert loaded_report2.trace_id == report.trace_id
 
@@ -197,15 +198,15 @@ def test_report_persistence(tmp_path):
 def test_report_persistence_with_gpt2_cpu(tmp_path):
     """
     Test persistence with a real GPT-2 CPU run.
-    
+
     This test generates a real report using GPT-2 and verifies persistence.
     """
     pytest.importorskip("transformers")
-    
+
     from CoreVital.config import Config
     from CoreVital.instrumentation.collector import InstrumentationCollector
     from CoreVital.reporting.report_builder import ReportBuilder
-    
+
     # Setup config
     config = Config()
     config.model.hf_id = "gpt2"
@@ -213,47 +214,47 @@ def test_report_persistence_with_gpt2_cpu(tmp_path):
     config.generation.max_new_tokens = 3
     config.generation.seed = 42
     config.sink.output_dir = str(tmp_path)
-    
+
     # Run instrumentation
     collector = InstrumentationCollector(config)
     results = collector.run("Hi")
-    
+
     # Build report
     builder = ReportBuilder(config)
     report = builder.build(results, "Hi")
-    
+
     # Verify extensions field exists on Report
-    assert hasattr(report, 'extensions'), "Report should have extensions field"
+    assert hasattr(report, "extensions"), "Report should have extensions field"
     assert isinstance(report.extensions, dict), "Report.extensions should be a dict"
-    
+
     # Verify extensions field exists on TimelineStep
     for step in report.timeline:
-        assert hasattr(step, 'extensions'), "TimelineStep should have extensions field"
+        assert hasattr(step, "extensions"), "TimelineStep should have extensions field"
         assert isinstance(step.extensions, dict), "TimelineStep.extensions should be a dict"
-    
+
     # Serialize to JSON
     json_str = serialize_report_to_json(report)
-    
+
     # Save to temporary file
     temp_file = tmp_path / "gpt2_report.json"
-    with open(temp_file, 'w') as f:
+    with open(temp_file, "w") as f:
         f.write(json_str)
-    
+
     # Load and validate
-    with open(temp_file, 'r') as f:
+    with open(temp_file, "r") as f:
         loaded_json_str = f.read()
-    
+
     loaded_report = Report.model_validate_json(loaded_json_str)
-    
+
     # Verify loaded report
     assert loaded_report.schema_version == report.schema_version
     assert loaded_report.trace_id == report.trace_id
-    assert hasattr(loaded_report, 'extensions')
+    assert hasattr(loaded_report, "extensions")
     assert isinstance(loaded_report.extensions, dict)
-    
+
     # Verify all timeline steps have extensions
     for step in loaded_report.timeline:
-        assert hasattr(step, 'extensions')
+        assert hasattr(step, "extensions")
         assert isinstance(step.extensions, dict)
 
 
@@ -262,14 +263,16 @@ def test_report_validation_fails_on_invalid_schema():
     Test that validation fails if the JSON doesn't match the schema.
     """
     # Create invalid JSON (missing required field)
-    invalid_json = json.dumps({
-        "schema_version": "0.1.0",
-        "trace_id": "test",
-        # Missing created_at_utc and other required fields
-    })
-    
+    invalid_json = json.dumps(
+        {
+            "schema_version": "0.1.0",
+            "trace_id": "test",
+            # Missing created_at_utc and other required fields
+        }
+    )
+
     # Should raise ValidationError
-    with pytest.raises(Exception):  # Pydantic ValidationError
+    with pytest.raises(ValueError):  # Pydantic ValidationError inherits from ValueError
         Report.model_validate_json(invalid_json)
 
 

@@ -1,0 +1,78 @@
+# ============================================================================
+# CoreVital - CI/CD Pipeline
+#
+# Purpose: Run tests, linting, and type checking on every push and PR
+# Triggers: push to any branch, pull requests to main
+#
+# Changelog:
+#   2026-02-07: Initial CI/CD pipeline for pre-phase-1
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint & Format (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Ruff check (lint)
+        run: ruff check src/ tests/
+
+      - name: Ruff format (check)
+        run: ruff format --check src/ tests/
+
+  typecheck:
+    name: Type Check (MyPy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install mypy
+
+      - name: Run MyPy
+        run: mypy src/CoreVital/ --ignore-missing-imports --warn-return-any --warn-unused-configs
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short -m "not gpu"

@@ -11,8 +11,8 @@
 #   2026-01-13: Initial typing utilities for Phase-0
 # ============================================================================
 
-from typing import Union
 from pathlib import Path
+from typing import Union
 
 # Type alias for path-like objects
 PathLike = Union[str, Path]

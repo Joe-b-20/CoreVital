@@ -15,15 +15,16 @@
 #               finalized before the write that carries it)
 # ============================================================================
 
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-import time
 
 
 @dataclass
 class OperationTiming:
     """Timing for a single operation (can have children)."""
+
     operation_name: str
     duration_ms: float = 0.0
     children: List["OperationTiming"] = field(default_factory=list)
@@ -46,7 +47,7 @@ class PerformanceMonitor:
         self.stack: List[OperationTiming] = []
         self.root_timings: List[OperationTiming] = []
         self._run_start_time: Optional[float] = None  # Actual wall clock start
-        self._run_end_time: Optional[float] = None    # Actual wall clock end
+        self._run_end_time: Optional[float] = None  # Actual wall clock end
         self.total_wall_time_ms: float = 0.0
         self.instrumented_inference_ms: Optional[float] = None
         self.detailed_file_path: Optional[str] = None
@@ -68,7 +69,7 @@ class PerformanceMonitor:
     @contextmanager
     def operation(self, name: str, **metadata: Any):
         """Time an operation. Nested calls form a hierarchy.
-        
+
         Args:
             name: Operation name
             **metadata: Additional metadata to store with the timing
@@ -118,10 +119,10 @@ class PerformanceMonitor:
 
     def build_summary_dict(self) -> Dict[str, Any]:
         """Build the object for Report.extensions['performance'].
-        
+
         Note: Origin is NOT included for parent operations in summary.
         Origin is only meaningful for child operations in detailed breakdown.
-        
+
         In strict mode:
         - model_load is replaced with original_model_load_ms (cold load time)
         - total_wall_time_ms already includes pre-run time (model load + warmup + baseline)
@@ -129,7 +130,7 @@ class PerformanceMonitor:
         """
         total = self.total_wall_time_ms or self._sum_parent_ms()
         parents = self._parent_operations()
-        
+
         # In strict mode, we need to replace model_load with original_model_load_ms
         # total_wall_time_ms already includes the pre-run time (no adjustment needed)
         if self.mode == "strict" and self.original_model_load_ms is not None:
@@ -142,12 +143,14 @@ class PerformanceMonitor:
                 else:
                     ms = p.duration_ms
                 sum_parent_ms += ms
-                parent_ops.append({
-                    "name": p.operation_name,
-                    "ms": round(ms, 2),
-                    "pct": round(100.0 * ms / total, 2) if total else 0.0,
-                })
-            
+                parent_ops.append(
+                    {
+                        "name": p.operation_name,
+                        "ms": round(ms, 2),
+                        "pct": round(100.0 * ms / total, 2) if total else 0.0,
+                    }
+                )
+
         else:
             # Non-strict mode: use actual durations
             sum_parent_ms = sum(p.duration_ms for p in parents)
@@ -159,7 +162,7 @@ class PerformanceMonitor:
                 }
                 for p in parents
             ]
-        
+
         # Calculate unaccounted time
         unaccounted_ms = total - sum_parent_ms
         # In strict mode, warmup + baseline are intentional "dead time" not tracked as parents
@@ -174,7 +177,7 @@ class PerformanceMonitor:
             "unaccounted_time": {"ms": round(unaccounted_ms, 2), "pct": round(unaccounted_pct, 2)},
             "detailed_file": self.detailed_file_path,
         }
-        
+
         # Strict mode: include extra metrics
         if self.mode == "strict":
             if self.original_model_load_ms is not None:
@@ -183,11 +186,15 @@ class PerformanceMonitor:
                 out["warmup_ms"] = round(self.warmup_ms, 2)
             if self.baseline_ms is not None:
                 out["baseline_ms"] = round(self.baseline_ms, 2)
-                out["instrumented_inference_ms"] = round(self.instrumented_inference_ms, 2) if self.instrumented_inference_ms is not None else None
+                out["instrumented_inference_ms"] = (
+                    round(self.instrumented_inference_ms, 2) if self.instrumented_inference_ms is not None else None
+                )
                 if self.instrumented_inference_ms is not None:
                     inf_overhead_ms = self.instrumented_inference_ms - self.baseline_ms
                     out["inference_overhead_ms"] = round(inf_overhead_ms, 2)
-                    out["inference_overhead_pct"] = round(100.0 * inf_overhead_ms / self.baseline_ms, 2) if self.baseline_ms else 0.0
+                    out["inference_overhead_pct"] = (
+                        round(100.0 * inf_overhead_ms / self.baseline_ms, 2) if self.baseline_ms else 0.0
+                    )
                 # corevital_overhead = sum(non-model_load, non-tokenize parents) - baseline_ms
                 # Use the adjusted parent values from above
                 corevital_ops_ms = sum_parent_ms
@@ -196,12 +203,14 @@ class PerformanceMonitor:
                         corevital_ops_ms -= op["ms"]
                 corevital_overhead_ms = corevital_ops_ms - self.baseline_ms
                 out["corevital_overhead_ms"] = round(corevital_overhead_ms, 2)
-                out["corevital_overhead_pct"] = round(100.0 * corevital_overhead_ms / self.baseline_ms, 2) if self.baseline_ms else 0.0
+                out["corevital_overhead_pct"] = (
+                    round(100.0 * corevital_overhead_ms / self.baseline_ms, 2) if self.baseline_ms else 0.0
+                )
         return out
 
     def build_detailed_breakdown(self) -> Dict[str, Any]:
         """Build the nested breakdown for the detailed JSON file.
-        
+
         In strict mode, model_load is replaced with original_model_load_ms.
         """
         total = self.total_wall_time_ms or self._sum_parent_ms()
