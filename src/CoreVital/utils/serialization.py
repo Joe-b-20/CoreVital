@@ -11,8 +11,9 @@
 #   2026-01-13: Initial serialization for Phase-0
 # ============================================================================
 
-from typing import Optional
 import json
+from typing import Optional
+
 from CoreVital.reporting.schema import Report
 
 
@@ -35,10 +36,10 @@ def serialize_report_to_json(report: Report, indent: Optional[int] = 2) -> str:
 def deserialize_report_from_json(json_str: str) -> Report:
     """
     Deserialize a Report object from JSON string.
-    
+
     Args:
         json_str: JSON string
-        
+
     Returns:
         Report object
     """

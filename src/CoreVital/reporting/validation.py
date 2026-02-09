@@ -11,10 +11,9 @@
 #   2026-01-13: Initial validation for Phase-0
 # ============================================================================
 
-from CoreVital.reporting.schema import Report
 from CoreVital.errors import ValidationError
 from CoreVital.logging_utils import get_logger
-
+from CoreVital.reporting.schema import Report
 
 logger = get_logger(__name__)
 
@@ -22,47 +21,48 @@ logger = get_logger(__name__)
 def validate_report(report: Report) -> bool:
     """
     Validate a Report object.
-    
+
     Args:
         report: Report to validate
-        
+
     Returns:
         True if valid
-        
+
     Raises:
         ValidationError: If validation fails
     """
     errors = []
-    
+
     # Check schema version
-    if report.schema_version != "0.1.0":
+    supported_versions = {"0.1.0", "0.2.0"}
+    if report.schema_version not in supported_versions:
         errors.append(f"Invalid schema_version: {report.schema_version}")
-    
+
     # Check required fields
     if not report.trace_id:
         errors.append("Missing trace_id")
-    
+
     if not report.created_at_utc:
         errors.append("Missing created_at_utc")
-    
+
     # Check model info
     if not report.model.hf_id:
         errors.append("Missing model.hf_id")
-    
+
     if report.model.num_layers <= 0:
         errors.append(f"Invalid num_layers: {report.model.num_layers}")
-    
+
     # Check prompt
     if not report.prompt.text:
         errors.append("Missing prompt.text")
-    
+
     if len(report.prompt.token_ids) != report.prompt.num_tokens:
         errors.append("Prompt token_ids length mismatch")
-    
+
     # Check timeline
     if len(report.timeline) == 0:
         logger.warning("Timeline is empty (may be valid for errors)")
-    
+
     # Check summary consistency
     expected_total = report.summary.prompt_tokens + report.summary.generated_tokens
     if report.summary.total_steps != expected_total:
@@ -78,10 +78,10 @@ def validate_report(report: Report) -> bool:
             f"prompt_tokens + generated_tokens ({expected_total}); "
             "this can be expected when extra processing steps are included"
         )
-    
+
     if errors:
         error_msg = "Report validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
         raise ValidationError(error_msg)
-    
+
     logger.debug("Report validation passed")
     return True

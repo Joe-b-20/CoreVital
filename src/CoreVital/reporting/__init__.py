@@ -11,8 +11,8 @@
 #   2026-01-13: Initial reporting package for Phase-0
 # ============================================================================
 
-from CoreVital.reporting.schema import Report
 from CoreVital.reporting.report_builder import ReportBuilder
+from CoreVital.reporting.schema import Report
 from CoreVital.reporting.validation import validate_report
 
 __all__ = ["Report", "ReportBuilder", "validate_report"]

@@ -20,20 +20,26 @@
 #                standardized logging to DEBUG level
 #   2026-02-04: Phase-0.75 - integrated PerformanceMonitor for child operation timing
 #                within report_build; per-step timing tracked in _build_timeline
+#   2026-02-07: Pre-phase-1 cleanup:
+#                - Removed encoder_hidden_states (deprecated) from report assembly
+#                - Removed encoder_attention=None from layer summaries
+#                - Use ModelBundle.dtype_str for quantized models
+#                - Schema version 0.1.0 → 0.2.0
 # ============================================================================
 
 import uuid
 from typing import List, Optional
+
 import torch
 
 from CoreVital.config import Config
 from CoreVital.instrumentation.collector import InstrumentationResults
 from CoreVital.instrumentation.summaries import (
-    compute_hidden_summary,
     compute_attention_summary,
+    compute_hidden_summary,
     compute_logits_summary,
-    compute_encoder_hidden_states_summaries,
 )
+from CoreVital.logging_utils import get_logger
 from CoreVital.reporting.schema import (
     AttentionConfig,
     AttentionSummary,
@@ -41,9 +47,9 @@ from CoreVital.reporting.schema import (
     GenerationConfig,
     HiddenConfig,
     HiddenSummary,
+    LayerSummary,
     LogitsConfig,
     LogitsSummary,
-    LayerSummary,
     ModelInfo,
     PromptInfo,
     QuantizationInfo,
@@ -51,15 +57,13 @@ from CoreVital.reporting.schema import (
     RunConfig,
     SinkConfig,
     SketchConfig,
-    Summary,
     SummariesConfig,
+    Summary,
     TimelineStep,
     TokenInfo,
     Warning,
 )
 from CoreVital.utils.time import get_utc_timestamp
-from CoreVital.logging_utils import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -68,86 +72,70 @@ class ReportBuilder:
     """
     Build structured Report objects from instrumentation results.
     """
-    
+
     def __init__(self, config: Config):
         """
         Initialize builder with configuration.
-        
+
         Args:
             config: Configuration object
         """
         self.config = config
-    
+
     def build(self, results: InstrumentationResults, prompt: str) -> Report:
         """
         Build a complete Report from instrumentation results.
-        
+
         Args:
             results: InstrumentationResults from collector
             prompt: Original prompt text
-            
+
         Returns:
             Complete Report object
         """
         from contextlib import nullcontext
-        
+
         logger.debug("Building report...")
-        
+
         # Performance monitor for nested tracking
         monitor = results.monitor
+
         def _op(name: str):
             """Helper to wrap operations in monitor.operation() if enabled."""
             return monitor.operation(name) if monitor else nullcontext()
-        
+
         # Generate trace ID
         trace_id = str(uuid.uuid4())
         created_at = get_utc_timestamp()
-        
+
         # Build model info (tracked as child of report_build - corevital logic)
         with _op("_build_model_info"):
             model_info = self._build_model_info(results)
-        
+
         # Build run config
         run_config = self._build_run_config(trace_id)
-        
+
         # Build prompt info
         prompt_info = PromptInfo(
             text=prompt,
             token_ids=results.prompt_token_ids,
             num_tokens=len(results.prompt_token_ids),
         )
-        
+
         # Build generated info
         generated_info = GeneratedInfo(
             output_text=results.generated_text,
             token_ids=results.generated_token_ids,
             num_tokens=len(results.generated_token_ids),
         )
-        
+
         # Build timeline (tracked as child of report_build - corevital logic)
         with _op("_build_timeline"):
             timeline = self._build_timeline(results)
-        
-        # Build encoder hidden states summaries (for Seq2Seq models) - corevital logic
-        with _op("compute_encoder_hidden_states_summaries"):
-            encoder_hidden_states_summaries = None
-            if results.encoder_hidden_states is not None:
-                try:
-                    encoder_summaries_dicts = compute_encoder_hidden_states_summaries(
-                        results.encoder_hidden_states,
-                        self.config.summaries.hidden,
-                    )
-                    encoder_hidden_states_summaries = [
-                        HiddenSummary(**summary_dict) if summary_dict else HiddenSummary()
-                        for summary_dict in encoder_summaries_dicts
-                    ]
-                    logger.debug(f"Computed {len(encoder_hidden_states_summaries)} encoder hidden state summaries")
-                except Exception as e:
-                    logger.warning(f"Failed to compute encoder hidden states summaries: {e}")
-        
+
         # Build encoder layers (for Seq2Seq models)
-        # encoder_layers represents the encoder pass computed ONCE 
-        #(Tracked as child of report_build)
+        # encoder_layers represents the encoder pass computed ONCE
+        # (Tracked as child of report_build)
         with _op("_build_encoder_layers"):
             encoder_layers = None
             if results.encoder_hidden_states is not None or results.encoder_attentions is not None:
@@ -161,7 +149,7 @@ class ReportBuilder:
                         logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
                 except Exception as e:
                     logger.warning(f"Failed to compute encoder layers: {e}")
-        
+
         # Build summary (tracked as child of report_build)
         with _op("build Summary"):
             summary = Summary(
@@ -170,18 +158,15 @@ class ReportBuilder:
                 total_steps=len(results.prompt_token_ids) + len(results.generated_token_ids),
                 elapsed_ms=results.elapsed_ms,
             )
-        
+
         # Convert warnings (tracked as child of report_build)
         with _op("convert warnings"):
-            warnings = [
-                Warning(code=w["code"], message=w["message"])
-                for w in results.warnings
-            ]
-        
+            warnings = [Warning(code=w["code"], message=w["message"]) for w in results.warnings]
+
         # Assemble final Report (tracked as child of report_build)
         with _op("assemble Report"):
             report = Report(
-                schema_version="0.1.0",
+                schema_version="0.2.0",
                 trace_id=trace_id,
                 created_at_utc=created_at,
                 model=model_info,
@@ -191,24 +176,24 @@ class ReportBuilder:
                 timeline=timeline,
                 summary=summary,
                 warnings=warnings,
-                encoder_hidden_states=encoder_hidden_states_summaries,
                 encoder_layers=encoder_layers,
             )
 
         # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
-        
+
         logger.debug(f"Report built: {len(timeline)} timeline steps")
         return report
-    
+
     def _build_model_info(self, results: InstrumentationResults) -> ModelInfo:
         """Build ModelInfo from results."""
         bundle = results.model_bundle
-        
-        dtype_str = str(bundle.dtype).replace("torch.", "")
-        
+
+        # Use explicit dtype_str if set (e.g. "quantized_unknown"), otherwise derive from torch dtype
+        dtype_str = bundle.dtype_str if bundle.dtype_str is not None else str(bundle.dtype).replace("torch.", "")
+
         # Use revision from bundle if available, otherwise fall back to config
         revision = bundle.revision if bundle.revision else self.config.model.revision
-        
+
         # Build quantization info from config
         quantization_enabled = self.config.model.load_in_4bit or self.config.model.load_in_8bit
         quantization_method = None
@@ -217,12 +202,12 @@ class ReportBuilder:
                 quantization_method = "4-bit"
             elif self.config.model.load_in_8bit:
                 quantization_method = "8-bit"
-        
+
         quantization_info = QuantizationInfo(
             enabled=quantization_enabled,
             method=quantization_method,
         )
-        
+
         return ModelInfo(
             hf_id=self.config.model.hf_id,
             revision=revision,
@@ -235,7 +220,7 @@ class ReportBuilder:
             device=str(bundle.device),
             quantization=quantization_info,
         )
-    
+
     def _build_run_config(self, trace_id: str) -> RunConfig:
         """Build RunConfig from configuration."""
         return RunConfig(
@@ -273,27 +258,27 @@ class ReportBuilder:
                 target=f"{self.config.sink.output_dir}/trace_{trace_id[:8]}.json",
             ),
         )
-    
+
     def _build_timeline(self, results: InstrumentationResults) -> List[TimelineStep]:
         """Build timeline from instrumentation results.
-        
+
         Tracks per-step timing for performance monitoring.
         """
         import time
-        
+
         timeline = []
         step_times_ms: List[float] = []
-        
+
         for step_data in results.timeline:
             step_start = time.perf_counter()
-            
+
             # Token info
             token_info = TokenInfo(
                 token_id=step_data.token_id,
                 token_text=step_data.token_text,
                 is_prompt_token=step_data.is_prompt_token,
             )
-            
+
             # Logits summary
             logits_summary = LogitsSummary()
             if step_data.logits is not None:
@@ -306,7 +291,7 @@ class ReportBuilder:
                     logits_summary = LogitsSummary(**logits_dict)
                 except Exception as e:
                     logger.warning(f"Failed to compute logits summary for step {step_data.step_index}: {e}")
-            
+
             # Layer summaries
             layers = []
             if step_data.hidden_states is not None:
@@ -316,7 +301,7 @@ class ReportBuilder:
                     results.model_bundle.num_layers,
                     cross_attentions=step_data.cross_attentions,
                 )
-            
+
             timeline_step = TimelineStep(
                 step_index=step_data.step_index,
                 token=token_info,
@@ -324,10 +309,10 @@ class ReportBuilder:
                 layers=layers,
                 extensions={},
             )
-            
+
             timeline.append(timeline_step)
             step_times_ms.append((time.perf_counter() - step_start) * 1000)
-        
+
         # Store per_step stats in the monitor's current operation (_build_timeline itself)
         monitor = results.monitor
         if monitor and monitor.stack and step_times_ms:
@@ -340,9 +325,9 @@ class ReportBuilder:
                     "max_ms": max(step_times_ms),
                     "avg_ms": sum(step_times_ms) / len(step_times_ms),
                 }
-        
+
         return timeline
-    
+
     def _build_layer_summaries(
         self,
         hidden_states: Optional[List[torch.Tensor]],
@@ -352,21 +337,21 @@ class ReportBuilder:
     ) -> List[LayerSummary]:
         """Build layer summaries from hidden states and attentions."""
         layers = []
-        
+
         # Handle different output formats from transformers
         # hidden_states can be tuple of tensors, one per layer
         if hidden_states is not None:
             for layer_idx in range(min(len(hidden_states), num_layers)):
                 try:
                     hidden_tensor = hidden_states[layer_idx]
-                    
+
                     # Compute hidden summary
                     hidden_dict = compute_hidden_summary(
                         hidden_tensor,
                         self.config.summaries.hidden,
                     )
                     hidden_summary = HiddenSummary(**hidden_dict)
-                    
+
                     # Compute decoder self-attention summary
                     attention_summary = AttentionSummary()
                     if attentions is not None and layer_idx < len(attentions):
@@ -386,8 +371,9 @@ class ReportBuilder:
                         except Exception as e:
                             logger.warning(f"Failed to compute attention summary for layer {layer_idx}: {e}")
                             import traceback
+
                             logger.debug(traceback.format_exc())
-                    
+
                     # Compute cross-attention summary (decoder attending to encoder)
                     cross_attention_summary = None
                     if cross_attentions is not None and layer_idx < len(cross_attentions):
@@ -402,22 +388,21 @@ class ReportBuilder:
                                     cross_attention_summary = AttentionSummary(**cross_attn_dict)
                         except Exception as e:
                             logger.debug(f"Failed to compute cross-attention summary for layer {layer_idx}: {e}")
-                    
+
                     layer_summary = LayerSummary(
                         layer_index=layer_idx,
                         hidden_summary=hidden_summary,
                         attention_summary=attention_summary,
-                        encoder_attention=None,  # DEPRECATED - Always null. Encoder self-attention is in encoder_layers[].attention_summary
                         cross_attention=cross_attention_summary,
-                        extensions={},  # Phase-0.5: extensions field for future use
+                        extensions={},
                     )
                     layers.append(layer_summary)
-                    
+
                 except Exception as e:
                     logger.warning(f"Failed to process layer {layer_idx}: {e}")
-        
+
         return layers
-    
+
     def _build_encoder_layers(
         self,
         encoder_hidden_states: Optional[List[torch.Tensor]],
@@ -426,32 +411,32 @@ class ReportBuilder:
     ) -> Optional[List[LayerSummary]]:
         """
         Build encoder layer summaries from encoder hidden states and attentions.
-        
+
         Args:
             encoder_hidden_states: List of encoder hidden state tensors (one per layer)
             encoder_attentions: List of encoder attention tensors (one per layer)
             num_layers: Number of layers
-            
+
         Returns:
             List of LayerSummary objects for encoder layers, or None if no encoder data
         """
         if encoder_hidden_states is None and encoder_attentions is None:
             return None
-        
+
         encoder_layers = []
         max_layers = num_layers
-        
+
         # Determine number of layers from available data
         if encoder_hidden_states is not None and len(encoder_hidden_states) > 0:
             max_layers = min(max_layers, len(encoder_hidden_states))
         if encoder_attentions is not None and len(encoder_attentions) > 0:
             max_layers = min(max_layers, len(encoder_attentions))
-        
+
         # If we have no valid layers, return None
         if max_layers == 0:
             logger.debug("No encoder layers to process (empty encoder_hidden_states and encoder_attentions)")
             return None
-        
+
         for layer_idx in range(max_layers):
             try:
                 # Compute hidden summary
@@ -467,7 +452,7 @@ class ReportBuilder:
                             hidden_summary = HiddenSummary(**hidden_dict)
                     except Exception as e:
                         logger.debug(f"Failed to compute encoder hidden summary for layer {layer_idx}: {e}")
-                
+
                 # Compute encoder attention summary
                 encoder_attention_summary = None
                 if encoder_attentions is not None and layer_idx < len(encoder_attentions):
@@ -485,20 +470,19 @@ class ReportBuilder:
                                 encoder_attention_summary = AttentionSummary(**enc_attn_dict)
                     except Exception as e:
                         logger.debug(f"Failed to compute encoder attention summary for layer {layer_idx}: {e}")
-                
+
                 layer_summary = LayerSummary(
                     layer_index=layer_idx,
                     hidden_summary=hidden_summary,
                     attention_summary=encoder_attention_summary if encoder_attention_summary else AttentionSummary(),
-                    encoder_attention=None,  # DEPRECATED - Always null. Encoder self-attention is in attention_summary
                     cross_attention=None,  # Not applicable for encoder layers
-                    extensions={},  # Phase-0.5: extensions field for future use
+                    extensions={},
                 )
                 encoder_layers.append(layer_summary)
-                
+
             except Exception as e:
                 logger.warning(f"Failed to process encoder layer {layer_idx}: {e}")
-        
+
         return encoder_layers if encoder_layers else None
 
 
@@ -506,33 +490,34 @@ class ReportBuilder:
 # Test Harness
 # ============================================================================
 
+
 def _test_report_builder():
     """Test harness for report builder."""
     print("Testing ReportBuilder...")
-    
+
     from CoreVital.config import Config
     from CoreVital.instrumentation.collector import InstrumentationCollector
-    
+
     config = Config()
     config.model.hf_id = "gpt2"
     config.device.requested = "cpu"
     config.generation.max_new_tokens = 3
-    
+
     collector = InstrumentationCollector(config)
     results = collector.run("Hi")
-    
+
     builder = ReportBuilder(config)
     report = builder.build(results, "Hi")
-    
+
     print("✓ Report built:")
     print(f"  Trace ID: {report.trace_id}")
     print(f"  Model: {report.model.hf_id}")
     print(f"  Timeline steps: {len(report.timeline)}")
     print(f"  Warnings: {len(report.warnings)}")
-    
-    assert report.schema_version == "0.1.0"
+
+    assert report.schema_version == "0.2.0"
     assert len(report.timeline) > 0
-    
+
     print("✓ All report builder tests passed!\n")
 
 

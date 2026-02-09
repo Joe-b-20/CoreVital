@@ -1,6 +1,6 @@
 # CoreVital
 
-**Phase-0.75**: Hugging Face Instrumentation + JSON Trace Artifact + Sink Interface + Performance Monitoring
+**Pre-Phase-1**: Hugging Face Instrumentation + JSON Trace Artifact + Sink Interface + Performance Monitoring
 
 An open-source Python toolkit for monitoring the internal health of Large Language Models during inference. This implementation provides deep instrumentation of Hugging Face transformers, capturing hidden states, attention patterns, and logit distributions without saving full tensors.
 
@@ -9,11 +9,13 @@ An open-source Python toolkit for monitoring the internal health of Large Langua
 -  **Deep Instrumentation**: Capture hidden states, attention patterns, and logits at every generation step
 -  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors
 -  **Performance Monitoring**: Track operation times with `--perf` flag (summary, detailed, or strict mode)
--  **Extensible Persistence**: Pluggable Sink interface (LocalFileSink included, HTTPSink stub)
+-  **Model Registry**: Single source of truth for model type detection via `ModelCapabilities`
+-  **Extensible Persistence**: Pluggable Sink interface (LocalFileSink, HTTPSink stub, DatadogSink/PrometheusSink stubs)
+-  **CI/CD**: GitHub Actions workflow with pytest, Ruff linting, and MyPy type checking
 -  **Configurable**: YAML configuration with environment variable overrides
 -  **CPU/CUDA Support**: Automatic device detection or manual override
 -  **Quantization Support**: 4-bit and 8-bit quantization via bitsandbytes for memory-efficient inference
--  **Structured Artifacts**: JSON trace files with schema version for future compatibility
+-  **Structured Artifacts**: JSON trace files with schema version `0.2.0` for future compatibility
 
 ## Quick Start
 
@@ -108,10 +110,16 @@ Options:
 Each run produces a JSON trace file in `./runs/` with this structure:
 ```json
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
   "trace_id": "uuid-here",
   "created_at_utc": "2026-01-11T15:22:08Z",
-  "model": { ... },
+  "model": {
+    "hf_id": "gpt2",
+    "architecture": "GPT2LMHeadModel",
+    "dtype": "float32",
+    "device": "cpu",
+    "quantization": { "enabled": false, "method": null }
+  },
   "run_config": { ... },
   "prompt": {
     "text": "...",
@@ -126,19 +134,18 @@ Each run produces a JSON trace file in `./runs/` with this structure:
   "timeline": [
     {
       "step_index": 0,
-      "token": { "token_id": 123, "token_text": "hello", "is_prompt_token": true },
+      "token": { "token_id": 123, "token_text": "hello", "is_prompt_token": false },
       "logits_summary": { "entropy": 8.12, "top1_top2_margin": 0.34, "topk": [...] },
       "layers": [
         {
           "layer_index": 0,
           "hidden_summary": { "mean": 0.001, "std": 0.98, ... },
-          "attention_summary": { "entropy_mean": 2.31, ... },  // Self-attention (decoder for timeline layers)
-          "encoder_attention": null,  // DEPRECATED - Always null. Encoder self-attention is in encoder_layers[].attention_summary
-          "cross_attention": { "entropy_mean": 0.92, ... },  // Seq2Seq only: decoder-to-encoder attention
-          "extensions": {}  // Phase-0.5: for future metric expansion
+          "attention_summary": { "entropy_mean": 2.31, ... },
+          "cross_attention": { "entropy_mean": 0.92, ... },
+          "extensions": {}
         }
       ],
-      "extensions": {}  // Phase-0.5: for future metric expansion
+      "extensions": {}
     }
   ],
   "summary": {
@@ -148,22 +155,16 @@ Each run produces a JSON trace file in `./runs/` with this structure:
     "elapsed_ms": 1234
   },
   "warnings": [],
-  "encoder_hidden_states": [  // Seq2Seq only (deprecated: use encoder_layers)
-    { "mean": 0.5, "std": 1.2, ... },  // One per encoder layer
-    ...
-  ],
-  "encoder_layers": [  // Phase-0.5: Seq2Seq only, computed once
+  "encoder_layers": [
     {
       "layer_index": 0,
       "hidden_summary": { "mean": 0.5, "std": 1.2, ... },
-      "attention_summary": { "entropy_mean": 2.85, ... },  // Encoder self-attention
-      "encoder_attention": null,  // DEPRECATED - Always null. Encoder self-attention is in attention_summary
-      "cross_attention": null,  // Not applicable for encoder layers
+      "attention_summary": { "entropy_mean": 2.85, ... },
+      "cross_attention": null,
       "extensions": {}
-    },
-    ...
+    }
   ],
-  "extensions": {}  // Phase-0.5: for future metric expansion
+  "extensions": {}
 }
 ```
 
@@ -171,20 +172,19 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 
 - **prompt**: Contains the input prompt text, number of tokens and token IDs
 - **generated**: Contains the generated output text, number of tokens and token IDs
-- **timeline**: Per-token trace covering both prompt and generated tokens. Each step contains decoder layer summaries.
+- **timeline**: Per-token trace covering generated tokens. Each step contains decoder layer summaries.
 - **hidden_summary**: Mean, std, L2 norm, max abs value, and random projection sketch
 - **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max). 
   - For decoder layers (in timeline): Contains decoder self-attention
   - For encoder layers (in encoder_layers): Contains encoder self-attention
   - This field ALWAYS contains self-attention, regardless of model type
-- **encoder_attention**: DEPRECATED - Always null. This field was originally intended to hold encoder self-attention, but that information is now in `attention_summary` when the LayerSummary is part of `encoder_layers`. Kept for backward compatibility.
 - **cross_attention**: (Seq2Seq only) Cross-attention statistics showing how the decoder attends to encoder outputs at each generation step. Only used in decoder layers (in timeline). Always null for CausalLM models and for encoder layers.
-- **encoder_layers**: (Phase-0.5, Seq2Seq only) Encoder layer summaries computed once at the start of generation. Each layer includes `hidden_summary` and `attention_summary` (encoder self-attention). This is the preferred way to access encoder information. Always null for CausalLM models.
-- **encoder_hidden_states**: (Seq2Seq only, deprecated) List of HiddenSummary objects, one per encoder layer. Kept for backward compatibility. Use `encoder_layers` instead for comprehensive encoder information including attention summaries.
+- **encoder_layers**: (Seq2Seq only) Encoder layer summaries computed once at the start of generation. Each layer includes `hidden_summary` and `attention_summary` (encoder self-attention). Always null for CausalLM models.
 - **logits_summary**: Entropy, top-1/top-2 margin, and top-k token probabilities
+- **model.dtype**: Model dtype as string. `Optional[str]` — may be `null` or `"quantized_unknown"` when dtype cannot be definitively detected for quantized models.
 - **model.revision**: Model commit hash/revision extracted from model config
-- **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null). The dtype field now correctly shows quantized dtypes (int8, uint8) instead of float16 for quantized models.
-- **extensions**: Phase-0.5 field for future metric expansion. Custom key-value pairs available at Report, TimelineStep, and LayerSummary levels.
+- **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null). The dtype field shows quantized dtypes (int8, uint8) when detectable, or `"quantized_unknown"` otherwise.
+- **extensions**: Custom key-value pairs available at Report, TimelineStep, and LayerSummary levels for future metric expansion.
 
 ### Performance Monitoring (`--perf`)
 
@@ -253,7 +253,9 @@ class CustomSink(Sink):
 
 Built-in sinks:
 - **LocalFileSink**: Write JSON to local filesystem
-- **HTTPSink**: POST JSON to remote endpoint (stub in Phase-0)
+- **HTTPSink**: POST JSON to remote endpoint (stub)
+- **DatadogSink**: Send metrics to Datadog (stub — planned for phase-2+)
+- **PrometheusSink**: Expose metrics for Prometheus scraping (stub — planned for phase-2+)
 
 ### Configuration
 
@@ -267,8 +269,8 @@ export COREVITAL_SEED=123
 
 ### Running Tests
 ```bash
-# Run all tests
-pytest tests/
+# Run all tests (excluding GPU tests)
+pytest tests/ -v --tb=short -m "not gpu"
 
 # Run smoke test only
 pytest tests/test_smoke_gpt2_cpu.py -v
@@ -282,6 +284,35 @@ pytest tests/test_performance.py -v
 # Run with coverage
 pytest --cov=CoreVital tests/
 ```
+
+### Linting & Formatting (Ruff)
+```bash
+# Check for lint errors
+ruff check src/ tests/
+
+# Auto-fix lint errors
+ruff check src/ tests/ --fix
+
+# Check formatting
+ruff format --check src/ tests/
+
+# Auto-format
+ruff format src/ tests/
+```
+
+Ruff is configured in `pyproject.toml` with rules: `["E", "F", "I", "W", "B"]` (includes flake8-bugbear).
+
+### Type Checking (MyPy)
+```bash
+mypy src/CoreVital/ --ignore-missing-imports --warn-return-any --warn-unused-configs
+```
+
+### CI/CD
+
+GitHub Actions runs on every push and pull request to `main`:
+- **Lint & Format**: Ruff check + format verification
+- **Type Check**: MyPy static analysis
+- **Test**: pytest suite (Python 3.12)
 
 ### Mock Testing Suite
 
@@ -313,18 +344,29 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 ### Project Structure
 
 - `src/CoreVital/`: Main package
-  - `models/`: Model loading and management
+  - `models/`: Model loading, management, and `ModelCapabilities` registry
   - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
-  - `reporting/`: Schema, validation, and report building
-  - `sinks/`: Persistence backends
+  - `reporting/`: Schema (v0.2.0), validation, and report building
+  - `sinks/`: Persistence backends (LocalFile, HTTP, Datadog, Prometheus)
   - `utils/`: Shared utilities
+- `.github/workflows/`: CI/CD pipeline (test.yaml)
 - `configs/`: YAML configuration files
 - `runs/`: Default output directory for trace artifacts
 - `tests/`: Test suite
 
 ## Roadmap
 
-**Phase-0.75** (Current): Performance Monitoring
+**Pre-Phase-1** (Current): Cleanup & Tooling
+- ✅ Schema v0.2.0: removed deprecated fields (`encoder_attention`, `encoder_hidden_states`)
+- ✅ `ModelCapabilities` registry: centralized model type detection, eliminated scattered hardcoded checks
+- ✅ Robust dtype detection: `Optional[str]` with explicit `"quantized_unknown"` fallback
+- ✅ CI/CD: GitHub Actions workflow (pytest, Ruff, MyPy) on every push
+- ✅ Ruff linter configured with rules `["E", "F", "I", "W", "B"]` (includes flake8-bugbear)
+- ✅ MyPy type checking configured
+- ✅ Stub sinks: `DatadogSink` and `PrometheusSink` (implementing `Sink` interface)
+- ✅ Codebase-wide lint and format cleanup
+
+**Phase-0.75** (Complete): Performance Monitoring
 - ✅ `--perf` CLI flag with three modes: summary, detailed, strict
 - ✅ Lightweight operation timing via context managers
 - ✅ Nested operation hierarchy tracking (parent/child relationships)
@@ -343,7 +385,6 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 - ✅ Standardized logging levels (INFO for model loading, DEBUG for tensor extraction)
 - ✅ Comprehensive persistence and validation tests
 - ✅ Comprehensive test coverage for Phase-0.5 features (extensions, encoder_layers)
-- ✅ Added clarifying docstrings explaining field usage and why encoder_attention is always null
 
 **Phase-0** (Complete): HF instrumentation + JSON trace + Sink interface
 - ✅ Capture hidden states, attention, logits
@@ -358,8 +399,8 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 - ✅ 4-bit and 8-bit quantization support via bitsandbytes
 - ✅ Mock testing suite for fast instrumentation testing without model loading
 
-**Future Phases** (Design only):
-- Phase-1: Internal metrics
+**Upcoming Phases**:
+- Phase-1: Internal metrics (prompt telemetry, dashboard, integration sinks)
 - Phase-2: Risk scores + layer blame
 - Phase-3: Prompt fingerprints
 - Phase-4: Failure-horizon prediction
@@ -377,7 +418,11 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 - Pydantic
 - bitsandbytes (for quantization support)
 - accelerate (required by bitsandbytes)
-- pytest (for testing)
+
+**Dev dependencies** (`pip install -e ".[dev]"`):
+- pytest
+- ruff
+- mypy
 
 ## License
 

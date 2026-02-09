@@ -7,24 +7,22 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from CoreVital.instrumentation.performance import OperationTiming, PerformanceMonitor
 from CoreVital.reporting.report_builder import ReportBuilder
 from CoreVital.reporting.schema import (
-    Report,
-    ModelInfo,
-    QuantizationInfo,
-    RunConfig,
-    GenerationConfig,
-    SketchConfig,
-    HiddenConfig,
     AttentionConfig,
-    LogitsConfig,
-    SummariesConfig,
-    SinkConfig,
-    PromptInfo,
     GeneratedInfo,
+    GenerationConfig,
+    HiddenConfig,
+    LogitsConfig,
+    ModelInfo,
+    PromptInfo,
+    QuantizationInfo,
+    Report,
+    RunConfig,
+    SinkConfig,
+    SketchConfig,
+    SummariesConfig,
     Summary,
 )
 from CoreVital.utils.serialization import serialize_report_to_json
@@ -118,7 +116,7 @@ def test_performance_monitor_build_summary_dict_with_detailed_file():
 
 def test_performance_monitor_build_summary_strict():
     """Strict mode adds original_model_load_ms, warmup_ms, baseline_ms, etc.
-    
+
     Realistic values: total_wall_time_ms includes the original model load,
     warmup, baseline, and all parent operations with inter-operation gaps.
     """
@@ -208,7 +206,7 @@ def test_performance_monitor_operation_context():
 
 def test_report_builder_with_monitor_creates_children(mock_config, mock_model_bundle):
     """ReportBuilder adds _build_model_info and _build_timeline as children when monitor is set.
-    
+
     Note: Performance extensions are now added by CLI after report_build completes.
     This test verifies the internal nesting behavior within report_build.
     """
@@ -234,14 +232,14 @@ def test_report_builder_with_monitor_creates_children(mock_config, mock_model_bu
     # Wrap the build call like CLI does
     with monitor.operation("report_build"):
         builder = ReportBuilder(mock_config)
-        report = builder.build(results, "Hi")
+        builder.build(results, "Hi")
 
     # Report won't have performance extensions - that's handled by CLI
     # But verify the monitor captured the nested operations
     assert len(monitor.root_timings) == 1
     report_build_op = monitor.root_timings[0]
     assert report_build_op.operation_name == "report_build"
-    
+
     # Check children were captured
     child_names = [c.operation_name for c in report_build_op.children]
     assert "_build_model_info" in child_names
@@ -258,7 +256,7 @@ def test_performance_summary_can_be_added_to_report_extensions():
     monitor.set_total_wall_time_ms(60.0)
 
     report = _minimal_report()
-    
+
     # Simulate what CLI does: add performance after report is built
     report.extensions["performance"] = monitor.build_summary_dict()
 
@@ -296,7 +294,7 @@ def test_local_sink_writes_main_trace(tmp_path):
     main_path = sink.write(report)
 
     assert Path(main_path).exists()
-    
+
     with open(main_path) as f:
         main_data = json.load(f)
     assert main_data["trace_id"] == "deadbeef-0000-0000-0000-000000000000"

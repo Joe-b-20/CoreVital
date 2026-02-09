@@ -26,13 +26,13 @@ from pathlib import Path
 
 from CoreVital import __version__
 from CoreVital.config import Config
-from CoreVital.instrumentation.collector import InstrumentationCollector
-from CoreVital.logging_utils import setup_logging, get_logger
-from CoreVital.reporting.report_builder import ReportBuilder
-from CoreVital.sinks.local_file import LocalFileSink
-from CoreVital.sinks.http_sink import HTTPSink
 from CoreVital.errors import CoreVitalError
-
+from CoreVital.instrumentation.collector import InstrumentationCollector
+from CoreVital.logging_utils import get_logger, setup_logging
+from CoreVital.reporting.report_builder import ReportBuilder
+from CoreVital.sinks.base import Sink
+from CoreVital.sinks.http_sink import HTTPSink
+from CoreVital.sinks.local_file import LocalFileSink
 
 logger = get_logger(__name__)
 
@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 def create_parser() -> argparse.ArgumentParser:
     """
     Create the argument parser for the CLI.
-    
+
     Returns:
         Configured ArgumentParser instance
     """
@@ -53,9 +53,9 @@ def create_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {__version__}",
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
-    
+
     # Run command
     run_parser = subparsers.add_parser(
         "run",
@@ -160,19 +160,20 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         dest="perf_mode",
         metavar="MODE",
-        help="Performance monitoring: summary (default), detailed (+ breakdown file), strict (+ warmup and baseline). Omit to disable.",
+        help="Performance monitoring: summary (default), detailed (+ breakdown file), "
+        "strict (+ warmup and baseline). Omit to disable.",
     )
-    
+
     return parser
 
 
 def run_command(args: argparse.Namespace) -> int:
     """
     Execute the 'run' command.
-    
+
     Args:
         args: Parsed command-line arguments
-        
+
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
@@ -182,18 +183,19 @@ def run_command(args: argparse.Namespace) -> int:
         monitor = None
         if perf_mode:
             from CoreVital.instrumentation.performance import PerformanceMonitor
+
             monitor = PerformanceMonitor(mode=perf_mode)
             # Start timing now for ALL modes (before config_load)
             monitor.mark_run_start()
-        
+
         def _op(name: str):
             """Helper to wrap parent operations in monitor.operation() if enabled."""
             return monitor.operation(name) if monitor else nullcontext()
-        
+
         # === PARENT: config_load ===
         with _op("config_load"):
             config = Config.from_yaml(args.config) if args.config else Config.from_default()
-            
+
             # Override with CLI arguments
             config.model.hf_id = args.model
             config.device.requested = args.device
@@ -204,37 +206,37 @@ def run_command(args: argparse.Namespace) -> int:
             config.generation.top_p = args.top_p
             config.model.load_in_4bit = args.quantize_4
             config.model.load_in_8bit = args.quantize_8
-            
+
             if args.out:
                 config.sink.output_dir = args.out
-            
+
             if args.remote_sink != "none":
                 config.sink.type = args.remote_sink
                 config.sink.remote_url = args.remote_url
-            
+
             config.logging.level = args.log_level
-            
+
             # Store perf mode in config
             if perf_mode:
                 config.performance.mode = perf_mode
-        
+
         # === PARENT: setup_logging ===
         with _op("setup_logging"):
             setup_logging(config.logging.level, config.logging.format)
-        
+
         logger.info(f"Starting CoreVital v{__version__}")
         logger.info(f"Model: {args.model}")
         logger.info(f"Device: {args.device}")
-        
+
         # Run instrumentation (includes model_load, torch.manual_seed, tokenize, model_inference)
         collector = InstrumentationCollector(config)
         raw_results = collector.run(args.prompt, monitor=monitor)
-        
+
         # === PARENT: report_build ===
         builder = ReportBuilder(config)
         with _op("report_build"):
             report = builder.build(raw_results, args.prompt)
-        
+
         # === END OF INSTRUMENTED RUN ===
         # Finalize performance data BEFORE sink.write() so both local_file and
         # http sinks receive the complete report including extensions.performance.
@@ -242,29 +244,32 @@ def run_command(args: argparse.Namespace) -> int:
         # summary must be finalized before the write that carries it.
         if monitor:
             monitor.mark_run_end()
-            
+
             # Build performance summary
             perf_summary = monitor.build_summary_dict()
-            
+
             # For detailed/strict modes, write the detailed breakdown file
             mode = monitor.mode
             trace_id = report.trace_id
             if mode in ("detailed", "strict"):
-                detailed_path = Path(config.sink.output_dir) / f"trace_{trace_id[:8]}_performance_detailed.json"
+                output_dir = Path(config.sink.output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                detailed_path = output_dir / f"trace_{trace_id[:8]}_performance_detailed.json"
                 monitor.set_detailed_file(str(detailed_path))
                 perf_summary["detailed_file"] = str(detailed_path)
-                
+
                 detailed_breakdown = monitor.build_detailed_breakdown()
                 detailed_breakdown["trace_id"] = trace_id[:8]
                 with open(detailed_path, "w") as f:
                     json.dump(detailed_breakdown, f, indent=2, ensure_ascii=False)
                 logger.info(f"Performance detailed written to {detailed_path}")
-            
+
             # Inject into report so sink.write() serializes the complete data
             report.extensions["performance"] = perf_summary
-        
+
         # === SINK WRITE ===
         # Not wrapped in _op() - happens after perf data is finalized
+        sink: Sink
         if config.sink.type == "local_file":
             sink = LocalFileSink(config.sink.output_dir)
         elif config.sink.type == "http":
@@ -273,27 +278,27 @@ def run_command(args: argparse.Namespace) -> int:
             sink = HTTPSink(config.sink.remote_url)
         else:
             raise ValueError(f"Unknown sink type: {config.sink.type}")
-        
+
         output_location = sink.write(report)
-        
+
         # Print summary
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("✓ Monitoring Complete")
-        print("="*60)
+        print("=" * 60)
         print(f"Model:           {report.model.hf_id}")
         print(f"Total steps:     {report.summary.total_steps}")
         print(f"Elapsed time:    {report.summary.elapsed_ms}ms")
         print(f"Output file:     {output_location}")
-        
+
         if report.warnings:
             print(f"\nWarnings ({len(report.warnings)}):")
             for warning in report.warnings:
                 print(f"  - [{warning.code}] {warning.message}")
-        
-        print("="*60 + "\n")
-        
+
+        print("=" * 60 + "\n")
+
         return 0
-        
+
     except CoreVitalError as e:
         logger.error(f"Monitoring error: {e}")
         print(f"\n✗ Error: {e}\n", file=sys.stderr)
@@ -307,20 +312,20 @@ def run_command(args: argparse.Namespace) -> int:
 def main() -> int:
     """
     Main CLI entry point.
-    
+
     Returns:
         Exit code
     """
     parser = create_parser()
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return 1
-    
+
     if args.command == "run":
         return run_command(args)
-    
+
     parser.print_help()
     return 1
 

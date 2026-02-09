@@ -15,13 +15,15 @@
 
 import os
 from pathlib import Path
-from typing import Optional, List, Any, Dict
-import yaml
+from typing import Any, Dict, List, Optional
+
+import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
 
 class ModelConfig(BaseModel):
     """Model loading configuration."""
+
     hf_id: str = "gpt2"
     revision: Optional[str] = None
     trust_remote_code: bool = False
@@ -32,11 +34,13 @@ class ModelConfig(BaseModel):
 
 class DeviceConfig(BaseModel):
     """Device configuration."""
+
     requested: str = "auto"  # auto, cpu, cuda
 
 
 class GenerationConfig(BaseModel):
     """Generation parameters."""
+
     max_new_tokens: int = 20
     do_sample: bool = True
     temperature: float = 0.8
@@ -47,6 +51,7 @@ class GenerationConfig(BaseModel):
 
 class SketchConfig(BaseModel):
     """Sketch configuration for hidden state summaries."""
+
     method: str = "randproj"
     dim: int = 32
     seed: int = 0
@@ -54,6 +59,7 @@ class SketchConfig(BaseModel):
 
 class HiddenSummariesConfig(BaseModel):
     """Hidden state summary configuration."""
+
     enabled: bool = True
     stats: List[str] = Field(default_factory=lambda: ["mean", "std", "l2_norm_mean", "max_abs"])
     sketch: SketchConfig = Field(default_factory=SketchConfig)
@@ -61,12 +67,14 @@ class HiddenSummariesConfig(BaseModel):
 
 class AttentionSummariesConfig(BaseModel):
     """Attention summary configuration."""
+
     enabled: bool = True
     stats: List[str] = Field(default_factory=lambda: ["entropy_mean", "entropy_min", "concentration_max"])
 
 
 class LogitsSummariesConfig(BaseModel):
     """Logits summary configuration."""
+
     enabled: bool = True
     stats: List[str] = Field(default_factory=lambda: ["entropy", "top1_top2_margin", "topk_probs"])
     topk: int = 5
@@ -74,6 +82,7 @@ class LogitsSummariesConfig(BaseModel):
 
 class SummariesConfig(BaseModel):
     """All summaries configuration."""
+
     hidden: HiddenSummariesConfig = Field(default_factory=HiddenSummariesConfig)
     attention: AttentionSummariesConfig = Field(default_factory=AttentionSummariesConfig)
     logits: LogitsSummariesConfig = Field(default_factory=LogitsSummariesConfig)
@@ -81,6 +90,7 @@ class SummariesConfig(BaseModel):
 
 class SinkConfig(BaseModel):
     """Sink configuration."""
+
     type: str = "local_file"  # local_file, http
     output_dir: str = "runs"
     remote_url: Optional[str] = None
@@ -88,18 +98,21 @@ class SinkConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     """Logging configuration."""
+
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
 class PerformanceConfig(BaseModel):
     """Performance monitoring configuration."""
+
     # Mode: None (disabled) | "summary" | "detailed" | "strict"
     mode: Optional[str] = None
 
 
 class Config(BaseModel):
     """Root configuration object."""
+
     model: ModelConfig = Field(default_factory=ModelConfig)
     device: DeviceConfig = Field(default_factory=DeviceConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
@@ -107,18 +120,18 @@ class Config(BaseModel):
     sink: SinkConfig = Field(default_factory=SinkConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
-    
+
     @classmethod
     def from_yaml(cls, path: str) -> "Config":
         """
         Load configuration from a YAML file with environment variable overrides.
-        
+
         Args:
             path: Path to YAML configuration file
-            
+
         Returns:
             Config instance
-            
+
         Raises:
             FileNotFoundError: If config file doesn't exist
             yaml.YAMLError: If YAML is invalid
@@ -126,56 +139,56 @@ class Config(BaseModel):
         yaml_path = Path(path)
         if not yaml_path.exists():
             raise FileNotFoundError(f"Config file not found: {path}")
-        
-        with open(yaml_path, 'r') as f:
+
+        with open(yaml_path, "r") as f:
             data = yaml.safe_load(f)
-        
+
         # Apply environment variable overrides
         data = cls._apply_env_overrides(data)
-        
+
         return cls(**data)
-    
+
     @classmethod
     def from_default(cls) -> "Config":
         """
         Load configuration from default config file.
-        
+
         Returns:
             Config instance
         """
         # Find default config
         package_root = Path(__file__).parent.parent.parent
         default_config = package_root / "configs" / "default.yaml"
-        
+
         if default_config.exists():
             return cls.from_yaml(str(default_config))
         else:
             # Return with defaults if file doesn't exist
             return cls()
-    
+
     @classmethod
     def _apply_env_overrides(cls, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Apply environment variable overrides to configuration.
-        
+
         Environment variables follow the pattern:
         COREVITAL_<SECTION>_<KEY>=value
-        
+
         Args:
             data: Configuration dictionary
-            
+
         Returns:
             Updated configuration dictionary
         """
         prefix = "COREVITAL_"
-        
+
         for key, value in os.environ.items():
             if not key.startswith(prefix):
                 continue
-            
+
             # Parse env var name
-            parts = key[len(prefix):].lower().split("_")
-            
+            parts = key[len(prefix) :].lower().split("_")
+
             if len(parts) == 2:
                 section, field = parts
                 if section in data and field in data[section]:
@@ -184,17 +197,17 @@ class Config(BaseModel):
                 section, subsection, field = parts
                 if section in data and subsection in data[section]:
                     data[section][subsection][field] = cls._parse_env_value(value)
-        
+
         return data
-    
+
     @staticmethod
     def _parse_env_value(value: str) -> Any:
         """
         Parse environment variable value to appropriate type.
-        
+
         Args:
             value: String value from environment
-            
+
         Returns:
             Parsed value (str, int, float, or bool)
         """
@@ -203,19 +216,19 @@ class Config(BaseModel):
             return True
         if value.lower() in ("false", "no", "0"):
             return False
-        
+
         # Try int
         try:
             return int(value)
         except ValueError:
             pass
-        
+
         # Try float
         try:
             return float(value)
         except ValueError:
             pass
-        
+
         # Return as string
         return value
 
@@ -224,27 +237,28 @@ class Config(BaseModel):
 # Test Harness
 # ============================================================================
 
+
 def _test_config():
     """Test harness for configuration loading."""
     print("Testing Config...")
-    
+
     # Test default config
     config = Config.from_default()
     print(f"✓ Default config loaded: model={config.model.hf_id}")
-    
+
     # Test individual values
     assert config.model.hf_id == "gpt2"
     assert config.generation.max_new_tokens == 20
     assert config.summaries.hidden.enabled is True
     print("✓ Default values correct")
-    
+
     # Test env override
     os.environ["COREVITAL_DEVICE_REQUESTED"] = "cuda"
     config = Config.from_default()
     assert config.device.requested == "cuda"
     print("✓ Environment override works")
     del os.environ["COREVITAL_DEVICE_REQUESTED"]
-    
+
     print("✓ All config tests passed!\n")
 
 

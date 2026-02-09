@@ -29,16 +29,17 @@
 #                match instrumented path; doubled warmup rounds for cache stabilization
 # ============================================================================
 
+import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import time
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+
 import torch
 
 from CoreVital.config import Config
-from CoreVital.models.hf_loader import load_model, ModelBundle
 from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
+from CoreVital.models.hf_loader import ModelBundle, load_model
 
 if TYPE_CHECKING:
     from CoreVital.instrumentation.performance import PerformanceMonitor
@@ -50,6 +51,7 @@ logger = get_logger(__name__)
 @dataclass
 class StepData:
     """Data captured for a single generation step."""
+
     step_index: int
     token_id: int
     token_text: str
@@ -63,6 +65,7 @@ class StepData:
 @dataclass
 class InstrumentationResults:
     """Complete results from an instrumented run."""
+
     model_bundle: ModelBundle
     prompt_text: str
     prompt_token_ids: List[int]
@@ -81,44 +84,45 @@ class InstrumentationResults:
 class InstrumentationCollector:
     """
     Main collector that orchestrates instrumented inference.
-    
+
     This class loads the model, runs generation with full instrumentation,
     and collects all necessary data for report generation.
     """
-    
+
     def __init__(self, config: Config):
         """
         Initialize collector with configuration.
-        
+
         Args:
             config: Configuration object
         """
         self.config = config
         self.model_bundle: Optional[ModelBundle] = None
-    
+
     def run(self, prompt: str, monitor: Optional["PerformanceMonitor"] = None) -> InstrumentationResults:
         """
         Run instrumented inference on the given prompt.
-        
+
         Args:
             prompt: Input prompt text
             monitor: Optional PerformanceMonitor passed from CLI
-            
+
         Returns:
             InstrumentationResults with all collected data
-            
+
         Raises:
             InstrumentationError: If inference fails
         """
         try:
+
             def _op(name: str):
                 """Helper to wrap operations in monitor.operation() if enabled."""
                 return monitor.operation(name) if monitor else nullcontext()
-            
+
             # === STRICT MODE: Warmup and Baseline BEFORE the main instrumented run ===
             # Model must be loaded first, then warmup/baseline, then instrumented run
             is_seq2seq = False  # Will be determined after model load
-            
+
             if monitor and monitor.mode == "strict":
                 # Load model (needed for warmup/baseline) and record original load time
                 if self.model_bundle is None:
@@ -127,32 +131,16 @@ class InstrumentationCollector:
                     _original_model_load_ms = (time.perf_counter() - _model_load_start) * 1000
                     monitor.set_original_model_load_ms(_original_model_load_ms)
                     logger.debug(f"Perf: original model load time: {_original_model_load_ms:.2f}ms")
-                
-                model = self.model_bundle.model
-                is_encoder_decoder_attr = getattr(model.config, 'is_encoder_decoder', False)
-                is_seq2seq = is_encoder_decoder_attr is True or (
-                    isinstance(is_encoder_decoder_attr, bool) and is_encoder_decoder_attr
-                )
-                if not is_seq2seq:
-                    try:
-                        from unittest.mock import Mock, MagicMock
-                        encoder_attr = getattr(model, 'encoder', None)
-                        decoder_attr = getattr(model, 'decoder', None)
-                        has_real_encoder = (encoder_attr is not None and 
-                            not isinstance(encoder_attr, (Mock, MagicMock)) and callable(encoder_attr))
-                        has_real_decoder = (decoder_attr is not None and 
-                            not isinstance(decoder_attr, (Mock, MagicMock)) and callable(decoder_attr))
-                        is_seq2seq = has_real_encoder and has_real_decoder
-                    except ImportError:
-                        has_encoder = hasattr(model, 'encoder') and callable(getattr(model, 'encoder', None))
-                        has_decoder = hasattr(model, 'decoder') and callable(getattr(model, 'decoder', None))
-                        is_seq2seq = has_encoder and has_decoder
-                
+
+                is_seq2seq = self.model_bundle.capabilities.is_seq2seq
+
                 # Tokenize for warmup/baseline
                 inputs = self.model_bundle.tokenizer(
-                    prompt, return_tensors="pt", padding=False,
+                    prompt,
+                    return_tensors="pt",
+                    padding=False,
                 ).to(self.model_bundle.device)
-                
+
                 # === WARMUP: Two dummy runs to stabilize timings (NOT counted in total) ===
                 # Two runs ensure CPU caches, branch predictors, and JIT are fully warm
                 # before we measure baseline. Without this, baseline may appear slower
@@ -164,7 +152,7 @@ class InstrumentationCollector:
                 warmup_ms = (time.perf_counter() - warmup_start) * 1000
                 monitor.set_warmup_ms(warmup_ms)
                 logger.debug(f"Perf: warmup done ({warmup_ms:.2f}ms)")
-                
+
                 # === BASELINE: Raw inference without instrumentation (NOT counted in total) ===
                 # Seed before baseline so it generates the same tokens as the instrumented run.
                 # Without this, different random sampling could produce different token counts,
@@ -177,21 +165,21 @@ class InstrumentationCollector:
                 baseline_ms = self._run_baseline(inputs, is_seq2seq)
                 monitor.set_baseline_ms(baseline_ms)
                 logger.debug(f"Perf: baseline done ({baseline_ms:.2f}ms)")
-            
+
             # === PARENT: model_load ===
             # For strict mode, model is already loaded; for other modes, load now
             with _op("model_load"):
                 if self.model_bundle is None:
                     self.model_bundle = load_model(self.config, monitor=monitor)
                 # For strict mode with cached model, the operation still tracks but duration is minimal
-            
+
             # === PARENT: torch.manual_seed ===
             with _op("torch.manual_seed"):
                 if self.config.generation.seed is not None:
                     torch.manual_seed(self.config.generation.seed)
                     if torch.cuda.is_available():
                         torch.cuda.manual_seed_all(self.config.generation.seed)
-            
+
             # === PARENT: tokenize ===
             with _op("tokenize"):
                 logger.debug("Tokenizing prompt...")
@@ -200,47 +188,18 @@ class InstrumentationCollector:
                     return_tensors="pt",
                     padding=False,
                 ).to(self.model_bundle.device)
-                
+
                 prompt_token_ids = inputs.input_ids[0].tolist()
                 logger.debug(f"Prompt tokens: {len(prompt_token_ids)}")
-            
-            # Check if this is a Seq2Seq model (quick check, not tracked as separate operation)
-            model = self.model_bundle.model
-            
-            # Robust Seq2Seq detection: prefer model.config.is_encoder_decoder
-            is_encoder_decoder_attr = getattr(model.config, 'is_encoder_decoder', False)
-            is_seq2seq = is_encoder_decoder_attr is True or (
-                isinstance(is_encoder_decoder_attr, bool) and is_encoder_decoder_attr
-            )
-            
-            # Fallback: check for encoder/decoder attributes that are NOT from Mock
-            if not is_seq2seq:
-                try:
-                    from unittest.mock import Mock, MagicMock
-                    encoder_attr = getattr(model, 'encoder', None)
-                    decoder_attr = getattr(model, 'decoder', None)
-                    
-                    has_real_encoder = (
-                        encoder_attr is not None and 
-                        not isinstance(encoder_attr, (Mock, MagicMock)) and
-                        callable(encoder_attr)
-                    )
-                    has_real_decoder = (
-                        decoder_attr is not None and 
-                        not isinstance(decoder_attr, (Mock, MagicMock)) and
-                        callable(decoder_attr)
-                    )
-                    is_seq2seq = has_real_encoder and has_real_decoder
-                except ImportError:
-                    has_encoder = hasattr(model, 'encoder') and callable(getattr(model, 'encoder', None))
-                    has_decoder = hasattr(model, 'decoder') and callable(getattr(model, 'decoder', None))
-                    is_seq2seq = has_encoder and has_decoder
-            
+
+            # Model type from capabilities (single source of truth — no detection here)
+            is_seq2seq = self.model_bundle.capabilities.is_seq2seq
+
             # === PARENT: model_inference ===
             # Contains: generation + extract_generated_tokens + decode_generated_text + _process_timeline
             logger.info("Starting instrumented generation...")
             start_time = time.time()
-            
+
             # Declare variables that will be set inside model_inference
             generated_token_ids: List[int] = []
             generated_text: str = ""
@@ -248,7 +207,8 @@ class InstrumentationCollector:
             encoder_hidden_states = None
             encoder_attentions = None
             warnings: List[Dict[str, str]] = []
-            
+            outputs: Any = None
+
             with _op("model_inference"):
                 with torch.no_grad():
                     if is_seq2seq:
@@ -276,31 +236,32 @@ class InstrumentationCollector:
                         }
                         # Tracked as a child of model_inference (external HF call)
                         with _op("model.generate"):
-                            outputs = self.model_bundle.model.generate(
+                            outputs = cast(Any, self.model_bundle.model).generate(
                                 **inputs,
                                 **gen_config,
                             )
-                
+
                 # === CHILD: extract_generated_tokens ===
                 with _op("extract_generated_tokens"):
                     if is_seq2seq:
-                        generated_token_ids = outputs["generated_token_ids"]
+                        generated_token_ids = cast(List[int], outputs["generated_token_ids"])
                         generated_ids = prompt_token_ids + generated_token_ids
                     else:
                         # Type narrowing: outputs is GenerateOutput here, not dict
-                        generated_ids = outputs.sequences[0].tolist()  # type: ignore[union-attr]
-                        generated_token_ids = generated_ids[len(prompt_token_ids):]
-                
+                        generated_ids = cast(Any, outputs).sequences[0].tolist()
+                        generated_token_ids = generated_ids[len(prompt_token_ids) :]
+
                 # === CHILD: decode_generated_text ===
                 with _op("decode_generated_text"):
-                    generated_text = self.model_bundle.tokenizer.decode(
-                        generated_token_ids,
-                        skip_special_tokens=True,
-                        clean_up_tokenization_spaces=True
+                    generated_text = cast(
+                        str,
+                        self.model_bundle.tokenizer.decode(
+                            generated_token_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+                        ),
                     )
                 logger.debug(f"Generated tokens: {len(generated_token_ids)}")
                 logger.debug(f"Generated text: {generated_text}")
-                
+
                 # === CHILD: _process_timeline ===
                 # Handle both standard generate() output and manual Seq2Seq output
                 if isinstance(outputs, dict) and "output_obj" in outputs:
@@ -325,14 +286,14 @@ class InstrumentationCollector:
                             prompt_token_ids,
                             generated_token_ids,
                         )
-                
+
                 # === CHILD: _collect_warnings ===
                 with _op("_collect_warnings"):
                     if isinstance(outputs, dict) and "output_obj" in outputs:
                         warnings = self._collect_warnings(outputs["output_obj"])
                     else:
                         warnings = self._collect_warnings(outputs)
-            
+
             elapsed_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Generation complete in {elapsed_ms}ms")
 
@@ -342,9 +303,9 @@ class InstrumentationCollector:
                     if p.operation_name == "model_inference":
                         monitor.set_instrumented_inference_ms(p.duration_ms)
                         break
-            
+
             # Note: total_wall_time_ms is set by CLI after all timed operations (through report_build)
-            
+
             return InstrumentationResults(
                 model_bundle=self.model_bundle,
                 prompt_text=prompt,
@@ -358,13 +319,10 @@ class InstrumentationCollector:
                 encoder_attentions=encoder_attentions,
                 monitor=monitor,
             )
-            
+
         except Exception as e:
             logger.exception("Instrumentation failed")
-            raise InstrumentationError(
-                "Failed during instrumented inference",
-                details=str(e)
-            ) from e
+            raise InstrumentationError("Failed during instrumented inference", details=str(e)) from e
 
     def _run_warmup(self, inputs: Any, is_seq2seq: bool) -> None:
         """Run a warmup generation (no instrumentation, results discarded)."""
@@ -400,19 +358,19 @@ class InstrumentationCollector:
             "top_p": self.config.generation.top_p,
             "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
         }
-        self.model_bundle.model.generate(**inputs, **gen_config)
+        cast(Any, self.model_bundle.model).generate(**inputs, **gen_config)
 
     def _run_baseline_seq2seq(self, inputs: Any) -> None:
         """
         Baseline Seq2Seq generation: encoder + decoder loop with no hidden_states/attentions.
-        
+
         Sampling logic (temperature, top_k, top_p) must match _generate_seq2seq_manual
         exactly so that with the same seed, baseline and instrumented runs generate the
         same tokens. Without this, different token counts make overhead comparison meaningless.
         """
         if self.model_bundle is None:
             return
-        model = self.model_bundle.model
+        model = cast(Any, self.model_bundle.model)
         tokenizer = self.model_bundle.tokenizer
         device = self.model_bundle.device
 
@@ -425,16 +383,16 @@ class InstrumentationCollector:
         )
 
         # Decoder loop
-        decoder_start_token_id = getattr(model.config, 'decoder_start_token_id', None)
+        decoder_start_token_id = getattr(model.config, "decoder_start_token_id", None)
         if decoder_start_token_id is None:
-            decoder_start_token_id = getattr(tokenizer, 'pad_token_id', 0)
-        eos_token_id = getattr(model.config, 'eos_token_id', None)
+            decoder_start_token_id = getattr(tokenizer, "pad_token_id", 0)
+        eos_token_id = getattr(model.config, "eos_token_id", None)
         if eos_token_id is None:
-            eos_token_id = getattr(tokenizer, 'eos_token_id', 2)
+            eos_token_id = getattr(tokenizer, "eos_token_id", 2)
 
         decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device)
         max_new_tokens = self.config.generation.max_new_tokens
-        
+
         # Generation parameters (must match _generate_seq2seq_manual)
         do_sample = self.config.generation.do_sample
         temperature = self.config.generation.temperature
@@ -456,12 +414,12 @@ class InstrumentationCollector:
                 # Apply temperature
                 if temperature != 1.0:
                     next_token_logits = next_token_logits / temperature
-                
+
                 # Apply top-k filtering
                 if top_k > 0:
                     indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
-                    next_token_logits[indices_to_remove] = float('-inf')
-                
+                    next_token_logits[indices_to_remove] = float("-inf")
+
                 # Apply top-p (nucleus) filtering
                 if top_p < 1.0:
                     sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
@@ -470,8 +428,8 @@ class InstrumentationCollector:
                     sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
                     sorted_indices_to_remove[..., 0] = 0
                     indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    next_token_logits[indices_to_remove] = float('-inf')
-                
+                    next_token_logits[indices_to_remove] = float("-inf")
+
                 # Sample from filtered distribution
                 probs = torch.softmax(next_token_logits, dim=-1)
                 next_token_id = torch.multinomial(probs, num_samples=1)
@@ -480,7 +438,7 @@ class InstrumentationCollector:
             decoder_input_ids = torch.cat([decoder_input_ids, next_token_id], dim=-1)
             if next_token_id.item() == eos_token_id:
                 break
-    
+
     def _generate_seq2seq_manual(
         self,
         inputs: Any,
@@ -489,29 +447,29 @@ class InstrumentationCollector:
     ) -> Dict[str, Any]:
         """
         Manual generation for Seq2Seq models to capture hidden states and attentions.
-        
+
         Seq2Seq models (T5, BART, etc.) don't return hidden_states/attentions via
         generate(), so we need to manually step through the decoder.
-        
+
         Args:
             inputs: Tokenized input from tokenizer
             prompt_token_ids: Prompt token IDs
             monitor: Optional performance monitor for nested timing
-            
+
         Returns:
             Dictionary with sequences, scores, hidden_states, and attentions
         """
         if self.model_bundle is None:
             raise InstrumentationError("Model bundle not initialized")
-        
+
         def _op(name: str):
             """Helper to wrap operations in monitor.operation() if enabled."""
             return monitor.operation(name) if monitor else nullcontext()
-        
-        model = self.model_bundle.model
+
+        model = cast(Any, self.model_bundle.model)
         tokenizer = self.model_bundle.tokenizer
         device = self.model_bundle.device
-        
+
         # Encode input with encoder
         logger.debug("Encoding input with encoder...")
         # tracked as a child operation of model_inference
@@ -523,58 +481,61 @@ class InstrumentationCollector:
                 output_attentions=True,
                 return_dict=True,
             )
-        
+
         # Extract encoder hidden states and attentions (computed once, fixed for the entire run)
         encoder_hidden_states = None
         encoder_attentions = None
-        if hasattr(encoder_outputs, 'hidden_states') and encoder_outputs.hidden_states is not None:
+        if hasattr(encoder_outputs, "hidden_states") and encoder_outputs.hidden_states is not None:
             # Skip the first element (embedding) and take layer outputs
             # Convert tuple to list for consistency with type hints
             hidden_states_tuple = encoder_outputs.hidden_states[1:] if len(encoder_outputs.hidden_states) > 1 else []
-            encoder_hidden_states = list(hidden_states_tuple) if isinstance(hidden_states_tuple, tuple) else hidden_states_tuple
+            encoder_hidden_states = (
+                list(hidden_states_tuple) if isinstance(hidden_states_tuple, tuple) else hidden_states_tuple
+            )
             logger.debug(f"Extracted {len(encoder_hidden_states)} encoder hidden state layers")
-        
-        if hasattr(encoder_outputs, 'attentions') and encoder_outputs.attentions is not None:
+
+        if hasattr(encoder_outputs, "attentions") and encoder_outputs.attentions is not None:
             # Convert tuple to list for consistency with type hints
-            encoder_attentions = list(encoder_outputs.attentions) if isinstance(encoder_outputs.attentions, tuple) else encoder_outputs.attentions
+            encoder_attentions = (
+                list(encoder_outputs.attentions)
+                if isinstance(encoder_outputs.attentions, tuple)
+                else encoder_outputs.attentions
+            )
             logger.debug(f"Extracted {len(encoder_attentions)} encoder attention layers")
-        
+
         # Prepare decoder inputs
         # For T5, decoder_start_token_id is typically pad_token_id
-        decoder_start_token_id = getattr(model.config, 'decoder_start_token_id', None)
+        decoder_start_token_id = getattr(model.config, "decoder_start_token_id", None)
         if decoder_start_token_id is None:
             decoder_start_token_id = tokenizer.pad_token_id
             if decoder_start_token_id is None:
                 decoder_start_token_id = tokenizer.eos_token_id
-        
-        decoder_input_ids = torch.tensor(
-            [[decoder_start_token_id]],
-            device=device,
-            dtype=torch.long
-        )
-        
+
+        decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device, dtype=torch.long)
+
         # Storage for outputs
-        all_scores = []
-        all_hidden_states = []
-        all_attentions = []  # Decoder self-attentions
-        all_cross_attentions = []  # Cross-attentions (decoder attending to encoder)
-        generated_token_ids = []
-        
+        all_scores: List[torch.Tensor] = []
+        all_hidden_states: List[Optional[tuple[torch.Tensor, ...]]] = []
+        all_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []  # Decoder self-attentions
+        # Cross-attentions (decoder attending to encoder)
+        all_cross_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []
+        generated_token_ids: List[int] = []
+
         max_new_tokens = self.config.generation.max_new_tokens
         eos_token_id = tokenizer.eos_token_id or model.config.eos_token_id
-        
+
         # Generation parameters
         do_sample = self.config.generation.do_sample
         temperature = self.config.generation.temperature
         top_k = self.config.generation.top_k
         top_p = self.config.generation.top_p
-        
+
         logger.debug(f"Starting manual decoder generation (max_new_tokens={max_new_tokens})...")
-        
+
         # Track decoder loop timing and per-step times
         _decoder_loop_start = time.perf_counter()
         _step_times_ms: List[float] = []
-        
+
         for step in range(max_new_tokens):
             _step_start = time.perf_counter()
             # Forward pass through decoder
@@ -588,15 +549,15 @@ class InstrumentationCollector:
                 use_cache=False,  # Disable cache to get all hidden states
                 return_dict=True,
             )
-            
+
             # Extract logits for next token prediction
             next_token_logits = decoder_outputs.logits[:, -1, :]  # Shape: (batch_size, vocab_size)
             all_scores.append(next_token_logits)
-            
+
             # Extract hidden states (decoder hidden states)
             # decoder_hidden_states is a tuple: (embedding, layer1, layer2, ..., layerN)
             # Each element is a tensor of shape (batch_size, seq_len, hidden_size)
-            if hasattr(decoder_outputs, 'decoder_hidden_states') and decoder_outputs.decoder_hidden_states is not None:
+            if hasattr(decoder_outputs, "decoder_hidden_states") and decoder_outputs.decoder_hidden_states is not None:
                 step_hidden = []
                 # Skip the first element (embedding) and extract last position from each layer
                 for layer_idx, layer_hidden in enumerate(decoder_outputs.decoder_hidden_states[1:], start=1):
@@ -615,15 +576,15 @@ class InstrumentationCollector:
             else:
                 all_hidden_states.append(None)
                 logger.debug(f"No decoder_hidden_states available at step {step}")
-            
+
             # Extract decoder self-attentions
             # decoder_outputs has decoder_attentions (self-attention) and cross_attentions (encoder-decoder)
             # For T5: decoder_attentions is a tuple of tuples, one per layer
             # Each layer has: (self_attn_tensor,) where tensor is (batch_size, num_heads, seq_len, seq_len)
             # Memory optimization: slice to last query token before storage
             step_attentions = []
-            if hasattr(decoder_outputs, 'decoder_attentions') and decoder_outputs.decoder_attentions is not None:
-                for layer_idx, layer_attn_tuple in enumerate(decoder_outputs.decoder_attentions):
+            if hasattr(decoder_outputs, "decoder_attentions") and decoder_outputs.decoder_attentions is not None:
+                for _layer_idx, layer_attn_tuple in enumerate(decoder_outputs.decoder_attentions):
                     if layer_attn_tuple is not None:
                         # layer_attn_tuple is typically a tuple with one element (self-attention)
                         # or could be a tensor directly
@@ -641,19 +602,19 @@ class InstrumentationCollector:
                             if attn_tensor.dim() == 4:
                                 attn_tensor = attn_tensor[:, :, -1:, :]
                             step_attentions.append(attn_tensor)
-            
+
             if step_attentions:
                 all_attentions.append(tuple(step_attentions))
             else:
                 all_attentions.append(None)
                 logger.debug(f"No decoder attentions extracted at step {step}")
-            
+
             # Extract cross-attentions (decoder attending to encoder)
             # cross_attentions shape: (batch_size, num_heads, target_seq_len, source_seq_len)
             # where target_seq_len is decoder sequence length and source_seq_len is encoder sequence length
             step_cross_attentions = []
-            if hasattr(decoder_outputs, 'cross_attentions') and decoder_outputs.cross_attentions is not None:
-                for layer_idx, cross_attn_tensor in enumerate(decoder_outputs.cross_attentions):
+            if hasattr(decoder_outputs, "cross_attentions") and decoder_outputs.cross_attentions is not None:
+                for _layer_idx, cross_attn_tensor in enumerate(decoder_outputs.cross_attentions):
                     if cross_attn_tensor is not None:
                         # Extract the last position for the current step: [:, :, -1, :]
                         # Shape becomes (batch_size, num_heads, source_seq_len)
@@ -663,24 +624,24 @@ class InstrumentationCollector:
                             step_cross_attentions.append(last_pos_cross)
                         else:
                             step_cross_attentions.append(cross_attn_tensor)
-            
+
             if step_cross_attentions:
                 all_cross_attentions.append(tuple(step_cross_attentions))
             else:
                 all_cross_attentions.append(None)
                 logger.debug(f"No cross-attentions extracted at step {step}")
-            
+
             # Sample next token
             if do_sample:
                 # Apply temperature
                 if temperature != 1.0:
                     next_token_logits = next_token_logits / temperature
-                
+
                 # Apply top-k filtering
                 if top_k > 0:
                     indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
-                    next_token_logits[indices_to_remove] = float('-inf')
-                
+                    next_token_logits[indices_to_remove] = float("-inf")
+
                 # Apply top-p (nucleus) filtering
                 if top_p < 1.0:
                     sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
@@ -689,37 +650,37 @@ class InstrumentationCollector:
                     sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
                     sorted_indices_to_remove[..., 0] = 0
                     indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    next_token_logits[indices_to_remove] = float('-inf')
-                
+                    next_token_logits[indices_to_remove] = float("-inf")
+
                 # Sample from filtered distribution
                 probs = torch.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
             else:
                 # Greedy decoding
                 next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
-            
-            next_token_id = next_token.item()
+
+            next_token_id = int(next_token.item())
             generated_token_ids.append(next_token_id)
-            
+
             # Check for EOS
             if next_token_id == eos_token_id:
                 logger.debug(f"EOS token generated at step {step}")
                 # Record step time before break
                 _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
                 break
-            
+
             # Append to decoder input for next iteration
             decoder_input_ids = torch.cat([decoder_input_ids, next_token], dim=-1)
-            
+
             # Record step time
             _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
-        
+
         # Record decoder loop timing with per_step stats
         _decoder_loop_ms = (time.perf_counter() - _decoder_loop_start) * 1000
         if monitor and monitor.stack:
             # Add decoder_loop as child of current operation (model_inference)
             from CoreVital.instrumentation.performance import OperationTiming
-            
+
             # Build per_step stats if we have step times
             per_step_stats = None
             if _step_times_ms:
@@ -729,7 +690,7 @@ class InstrumentationCollector:
                     "max_ms": max(_step_times_ms),
                     "avg_ms": sum(_step_times_ms) / len(_step_times_ms),
                 }
-            
+
             decoder_loop_timing = OperationTiming(
                 operation_name="decoder_loop",
                 duration_ms=_decoder_loop_ms,
@@ -738,9 +699,9 @@ class InstrumentationCollector:
             if per_step_stats:
                 decoder_loop_timing.metadata["per_step"] = per_step_stats
             monitor.stack[-1].children.append(decoder_loop_timing)
-        
+
         logger.info(f"Manual generation complete: {len(generated_token_ids)} tokens generated")
-        
+
         # Build output structure similar to GenerateDecoderOnlyOutput
         # Create a simple object to hold the outputs
         class Seq2SeqOutput:
@@ -749,10 +710,10 @@ class InstrumentationCollector:
                 self.scores = tuple(all_scores) if all_scores else None
                 self.hidden_states = tuple(all_hidden_states) if all_hidden_states else None
                 self.attentions = tuple(all_attentions) if all_attentions else None
-        
+
         output_obj = Seq2SeqOutput()
         output_obj.sequences = torch.tensor([prompt_token_ids + generated_token_ids], device=device)
-        
+
         # Return both the object and a dict for compatibility
         # Include encoder outputs and cross-attentions for Seq2Seq models
         return {
@@ -762,7 +723,7 @@ class InstrumentationCollector:
             "encoder_attentions": encoder_attentions,
             "cross_attentions": tuple(all_cross_attentions) if all_cross_attentions else None,
         }
-    
+
     def _process_timeline(
         self,
         outputs: Any,
@@ -772,48 +733,47 @@ class InstrumentationCollector:
     ) -> List[StepData]:
         """
         Process model outputs into timeline of steps.
-        
+
         Args:
             outputs: Model generation outputs
             prompt_token_ids: Prompt token IDs
             generated_token_ids: Generated token IDs
-            
+
         Returns:
             List of StepData objects
         """
         if self.model_bundle is None:
             raise InstrumentationError("Model bundle not initialized")
-        
+
         timeline = []
-        all_token_ids = prompt_token_ids + generated_token_ids
-        
+
         # Note: Transformers generation outputs can be complex
         # Structure:
         # - scores: tuple of logits tensors, one per generation step
         # - hidden_states: tuple where each element is a tuple of hidden state tensors (one per layer)
         # - attentions: tuple where each element is a tuple of attention tensors (one per layer)
-        
-        has_scores = hasattr(outputs, 'scores') and outputs.scores is not None
-        has_hidden = hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None
-        has_attention = hasattr(outputs, 'attentions') and outputs.attentions is not None
-        
+
+        has_scores = hasattr(outputs, "scores") and outputs.scores is not None
+        has_hidden = hasattr(outputs, "hidden_states") and outputs.hidden_states is not None
+        has_attention = hasattr(outputs, "attentions") and outputs.attentions is not None
+
         if not has_scores:
             logger.warning("Scores (logits) not available in outputs")
         if not has_hidden:
             logger.warning("Hidden states not available in outputs")
         if not has_attention:
             logger.warning("Attention weights not available in outputs")
-        
+
         # Process each step
         # Note: For generation, we typically only get outputs for generated tokens
         # For prompt tokens, we need to run a separate forward pass if needed
-        
+
         # For Phase-0 simplification: we'll focus on generated tokens
         # Full timeline (including prompt) can be added in future phases
-        
+
         for step_idx, token_id in enumerate(generated_token_ids):
-            token_text = self.model_bundle.tokenizer.decode([token_id])
-            
+            token_text = cast(str, self.model_bundle.tokenizer.decode([token_id]))
+
             step_data = StepData(
                 step_index=len(prompt_token_ids) + step_idx,
                 token_id=token_id,
@@ -824,7 +784,7 @@ class InstrumentationCollector:
                 attentions=None,
                 cross_attentions=None,
             )
-            
+
             # Extract logits (scores) if available
             try:
                 if has_scores and len(outputs.scores) > step_idx:
@@ -832,7 +792,7 @@ class InstrumentationCollector:
                     step_data.logits = outputs.scores[step_idx]
             except (IndexError, AttributeError, TypeError) as e:
                 logger.debug(f"Could not extract logits for step {step_idx}: {e}")
-            
+
             # Extract hidden states if available
             # hidden_states is a tuple where each element corresponds to a generation step
             # Each element is itself a tuple of tensors (one per layer)
@@ -846,7 +806,7 @@ class InstrumentationCollector:
                         step_data.hidden_states = [step_hidden]
             except (IndexError, AttributeError, TypeError) as e:
                 logger.debug(f"Could not extract hidden states for step {step_idx}: {e}")
-            
+
             # Extract attentions if available
             # attentions is a tuple where each element corresponds to a generation step
             # Each element is itself a tuple of tensors (one per layer)
@@ -868,8 +828,9 @@ class InstrumentationCollector:
             except (IndexError, AttributeError, TypeError) as e:
                 logger.warning(f"Could not extract attentions for step {step_idx}: {e}")
                 import traceback
+
                 logger.debug(traceback.format_exc())
-            
+
             # Extract cross-attentions if available (for Seq2Seq models)
             if cross_attentions is not None:
                 try:
@@ -880,49 +841,56 @@ class InstrumentationCollector:
                                 step_data.cross_attentions = list(step_cross_attn)
                             else:
                                 step_data.cross_attentions = [step_cross_attn]
-                            logger.debug(f"Extracted {len(step_data.cross_attentions) if step_data.cross_attentions else 0} cross-attention tensors for step {step_idx}")
+                            cross_attn_count = len(step_data.cross_attentions) if step_data.cross_attentions else 0
+                            logger.debug(f"Extracted {cross_attn_count} cross-attention tensors for step {step_idx}")
                 except (IndexError, AttributeError, TypeError) as e:
                     logger.debug(f"Could not extract cross-attentions for step {step_idx}: {e}")
-            
+
             timeline.append(step_data)
-        
+
         logger.info(f"Processed {len(timeline)} timeline steps")
         return timeline
-    
+
     def _collect_warnings(self, outputs: Any) -> List[Dict[str, str]]:
         """
         Collect warnings based on what data was available.
-        
+
         Args:
             outputs: Model generation outputs
-            
+
         Returns:
             List of warning dictionaries
         """
         warnings = []
-        
-        has_scores = hasattr(outputs, 'scores') and outputs.scores is not None
-        has_hidden = hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None
-        has_attention = hasattr(outputs, 'attentions') and outputs.attentions is not None
-        
+
+        has_scores = hasattr(outputs, "scores") and outputs.scores is not None
+        has_hidden = hasattr(outputs, "hidden_states") and outputs.hidden_states is not None
+        has_attention = hasattr(outputs, "attentions") and outputs.attentions is not None
+
         if not has_scores:
-            warnings.append({
-                "code": "SCORES_NOT_AVAILABLE",
-                "message": "Model did not return scores (logits); logits_summary omitted."
-            })
-        
+            warnings.append(
+                {
+                    "code": "SCORES_NOT_AVAILABLE",
+                    "message": "Model did not return scores (logits); logits_summary omitted.",
+                }
+            )
+
         if not has_attention:
-            warnings.append({
-                "code": "ATTENTION_NOT_AVAILABLE",
-                "message": "Model did not return attentions; attention_summary omitted."
-            })
-        
+            warnings.append(
+                {
+                    "code": "ATTENTION_NOT_AVAILABLE",
+                    "message": "Model did not return attentions; attention_summary omitted.",
+                }
+            )
+
         if not has_hidden:
-            warnings.append({
-                "code": "HIDDEN_STATES_NOT_AVAILABLE",
-                "message": "Model did not return hidden_states; hidden_summary omitted."
-            })
-        
+            warnings.append(
+                {
+                    "code": "HIDDEN_STATES_NOT_AVAILABLE",
+                    "message": "Model did not return hidden_states; hidden_summary omitted.",
+                }
+            )
+
         return warnings
 
 
@@ -930,27 +898,28 @@ class InstrumentationCollector:
 # Test Harness
 # ============================================================================
 
+
 def _test_collector():
     """Test harness for instrumentation collector."""
     print("Testing InstrumentationCollector...")
-    
+
     from CoreVital.config import Config
-    
+
     config = Config()
     config.model.hf_id = "gpt2"
     config.device.requested = "cpu"
     config.generation.max_new_tokens = 5
-    
+
     collector = InstrumentationCollector(config)
     results = collector.run("Hello")
-    
+
     print("✓ Collected results:")
     print(f"  Prompt tokens: {len(results.prompt_token_ids)}")
     print(f"  Generated tokens: {len(results.generated_token_ids)}")
     print(f"  Timeline steps: {len(results.timeline)}")
     print(f"  Elapsed: {results.elapsed_ms}ms")
     print(f"  Warnings: {len(results.warnings)}")
-    
+
     assert len(results.timeline) > 0
     print("✓ All collector tests passed!\n")
 

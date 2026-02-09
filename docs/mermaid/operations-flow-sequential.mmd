@@ -1,4 +1,6 @@
 %% Sequential flow: order verified against run_command -> collector.run -> builder.build -> sink.write
+%% Updated: pre-phase-1 — ModelCapabilities replaces standalone Seq2Seq detection step;
+%%          compute_encoder_hidden_states_summaries removed; sinks include Datadog/Prometheus stubs
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
 
 flowchart LR
@@ -27,7 +29,7 @@ flowchart LR
 
     subgraph SG1["model_load"]
         direction LR
-        M1[_resolve_device] --> M2[_resolve_dtype] --> M3[AutoTokenizer.from_pretrained] --> M4[pad_token = eos if None] --> M5[AutoConfig.from_pretrained] --> M6[model_class Seq2Seq vs CausalLM] --> M7[BitsAndBytesConfig if quantize] --> M8[model_class.from_pretrained] --> M9[model.to device if not quant] --> M10[model.eval] --> M11[set_attn_implementation eager if SDPA] --> M12[extract metadata] --> M13[_detect_quantized_dtype if quant]
+        M1[_resolve_device] --> M2[_resolve_dtype] --> M3[AutoTokenizer.from_pretrained] --> M4[pad_token = eos if None] --> M5[AutoConfig.from_pretrained] --> M6[ModelCapabilities.from_config] --> M6a[model_class from capabilities] --> M7[BitsAndBytesConfig if quantize] --> M8[model_class.from_pretrained] --> M9[model.to device if not quant] --> M10[model.eval] --> M11[set_attn_implementation eager if SDPA] --> M12[extract metadata] --> M13[_detect_quantized_dtype if quant]
     end
 
     M13 --> Seed1
@@ -44,14 +46,7 @@ flowchart LR
         Tok1[tokenizer prompt return_tensors pt] --> Tok2[.to device]
     end
 
-    Tok2 --> Det1
-
-    subgraph SG2a["Seq2Seq detection"]
-        direction LR
-        Det1[check model.config.is_encoder_decoder] --> Det2[check encoder/decoder attributes]
-    end
-
-    Det2 --> I1
+    Tok2 --> I1
 
     subgraph SG3["model_inference"]
         direction TB
@@ -113,11 +108,10 @@ flowchart LR
     subgraph SG5["report_build"]
         direction LR
         R1[generate trace_id] --> R2[_build_model_info] --> R3[_build_run_config] --> R4[_build_prompt_info] --> R5[_build_generated_info] --> R6[_build_timeline]
-        R6 --> R7[compute_encoder_hidden_states_summaries if Seq2Seq]
-        R7 --> R8[_build_encoder_layers if Seq2Seq]
+        R6 --> R8[_build_encoder_layers if Seq2Seq]
         R8 --> R9[build Summary]
         R9 --> R10[convert warnings]
-        R10 --> R11[assemble Report]
+        R10 --> R11[assemble Report v0.2.0]
     end
 
     R11 --> Perf1
@@ -132,7 +126,7 @@ flowchart LR
 
     subgraph SG5a["sink initialization"]
         direction LR
-        Sink1[LocalFileSink or HTTPSink]
+        Sink1[LocalFileSink / HTTPSink / DatadogSink / PrometheusSink]
     end
 
     Sink1 --> J1
@@ -140,13 +134,15 @@ flowchart LR
     subgraph SG7["sink_write"]
         direction TB
         J1[report.model_dump mode json] --> J2[json.dumps indent ensure_ascii]
-        J2 --> SinkType{local_file or http?}
+        J2 --> SinkType{sink type?}
         SinkType -->|local_file| W1[LocalFileSink: build filepath open write file]
         SinkType -->|http| W2[HTTPSink: POST body]
+        SinkType -->|datadog / prometheus| W3[stub: NotImplementedError]
     end
 
     W1 --> End([End])
     W2 --> End
+    W3 --> End
 
     style Start fill:#059669
     style End fill:#059669
@@ -156,13 +152,12 @@ flowchart LR
     style Col1 fill:#1e40af
     style Rep2 fill:#92400e
     style M1 fill:#065f46
+    style M6 fill:#065f46
     style M13 fill:#065f46
     style Seed1 fill:#065f46
     style Seed2 fill:#065f46
     style Tok1 fill:#065f46
     style Tok2 fill:#065f46
-    style Det1 fill:#065f46
-    style Det2 fill:#065f46
     style I1 fill:#5b21b6
     style I2 fill:#5b21b6
     style I3 fill:#5b21b6
@@ -185,6 +180,7 @@ flowchart LR
     style SinkType fill:#0e7490
     style W1 fill:#0e7490
     style W2 fill:#0e7490
+    style W3 fill:#0e7490
     style SG0 fill:#1e40af15
     style SG0a fill:#1e40af15
     style SG0b fill:#1e40af15
@@ -192,7 +188,6 @@ flowchart LR
     style SG1 fill:#065f4615
     style SG1a fill:#065f4615
     style SG2 fill:#065f4615
-    style SG2a fill:#065f4615
     style SG3 fill:#5b21b615
     style SG3a fill:#5b21b615
     style SG3b fill:#5b21b615

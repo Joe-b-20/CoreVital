@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 def get_utc_timestamp() -> str:
     """
     Get current UTC timestamp in ISO-8601 format.
-    
+
     Returns:
         ISO-8601 formatted timestamp string (e.g., "2026-01-11T15:22:08Z")
     """
