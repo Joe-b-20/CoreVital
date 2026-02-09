@@ -517,7 +517,8 @@ class InstrumentationCollector:
         all_scores: List[torch.Tensor] = []
         all_hidden_states: List[Optional[tuple[torch.Tensor, ...]]] = []
         all_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []  # Decoder self-attentions
-        all_cross_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []  # Cross-attentions (decoder attending to encoder)
+        # Cross-attentions (decoder attending to encoder)
+        all_cross_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []
         generated_token_ids: List[int] = []
 
         max_new_tokens = self.config.generation.max_new_tokens

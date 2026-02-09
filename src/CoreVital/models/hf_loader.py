@@ -28,7 +28,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Type, cast
+from typing import TYPE_CHECKING, Any, Optional, Type, cast
 
 import torch
 
@@ -228,7 +228,7 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
         # This is mixed: CoreVital decides when, but .to() is PyTorch/HF
         with _op("model.to_device"):
             if quantization_config is None:
-                model = model.to(device)
+                model = cast(Any, model).to(device)
             model.eval()
 
         # Set attention implementation to 'eager' if needed for attention outputs
