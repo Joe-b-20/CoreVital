@@ -30,6 +30,7 @@ from CoreVital.errors import CoreVitalError
 from CoreVital.instrumentation.collector import InstrumentationCollector
 from CoreVital.logging_utils import get_logger, setup_logging
 from CoreVital.reporting.report_builder import ReportBuilder
+from CoreVital.sinks.base import Sink
 from CoreVital.sinks.http_sink import HTTPSink
 from CoreVital.sinks.local_file import LocalFileSink
 
@@ -268,6 +269,7 @@ def run_command(args: argparse.Namespace) -> int:
 
         # === SINK WRITE ===
         # Not wrapped in _op() - happens after perf data is finalized
+        sink: Sink
         if config.sink.type == "local_file":
             sink = LocalFileSink(config.sink.output_dir)
         elif config.sink.type == "http":

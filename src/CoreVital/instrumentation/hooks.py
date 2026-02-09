@@ -49,7 +49,7 @@ def register_hooks(model: nn.Module) -> Tuple[List[Any], HookStorage]:
         Tuple of (hook_handles, storage)
     """
     storage = HookStorage()
-    handles = []
+    handles: List[Any] = []
 
     logger.debug("Registering forward hooks (backup mechanism)")
 

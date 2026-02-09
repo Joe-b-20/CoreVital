@@ -28,7 +28,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type, cast
 
 import torch
 
@@ -41,7 +41,7 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     PreTrainedModel,
-    PreTrainedTokenizer,
+    PreTrainedTokenizerBase,
 )
 
 from CoreVital.config import Config
@@ -72,7 +72,7 @@ class ModelBundle:
     """
 
     model: PreTrainedModel
-    tokenizer: PreTrainedTokenizer
+    tokenizer: PreTrainedTokenizerBase
     device: torch.device
     dtype: torch.dtype
     dtype_str: Optional[str]  # Human-readable dtype string for schema; None means use str(dtype)
@@ -82,7 +82,7 @@ class ModelBundle:
     architecture: str
     capabilities: ModelCapabilities
     revision: Optional[str] = None
-    model_class: Type[PreTrainedModel] = AutoModelForCausalLM
+    model_class: Type[PreTrainedModel] = cast(Type[PreTrainedModel], AutoModelForCausalLM)
 
 
 def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -> ModelBundle:
@@ -151,9 +151,9 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
         capabilities = ModelCapabilities.from_config(model_config)
 
         if capabilities.is_seq2seq:
-            model_class = AutoModelForSeq2SeqLM
+            model_class = cast(Type[PreTrainedModel], AutoModelForSeq2SeqLM)
         else:
-            model_class = AutoModelForCausalLM
+            model_class = cast(Type[PreTrainedModel], AutoModelForCausalLM)
 
         # Check for quantization flags
         quantization_config = None
@@ -273,16 +273,21 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
 
         # Extract metadata (use model.config which is already loaded) - CoreVital logic
         with _op("_extract_metadata"):
-            num_layers = (
+            num_layers = cast(
+                int,
                 getattr(model_config, "num_hidden_layers", None)
                 or getattr(model_config, "n_layer", None)
-                or getattr(model_config, "num_layers", 0)
+                or getattr(model_config, "num_layers", 0),
             )
 
-            hidden_size = getattr(model_config, "hidden_size", None) or getattr(model_config, "n_embd", None) or 0
+            hidden_size = cast(
+                int,
+                getattr(model_config, "hidden_size", None) or getattr(model_config, "n_embd", None) or 0,
+            )
 
-            num_attention_heads = (
-                getattr(model_config, "num_attention_heads", None) or getattr(model_config, "n_head", None) or 0
+            num_attention_heads = cast(
+                int,
+                getattr(model_config, "num_attention_heads", None) or getattr(model_config, "n_head", None) or 0,
             )
 
             architecture = model.__class__.__name__

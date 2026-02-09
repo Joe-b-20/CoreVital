@@ -18,7 +18,7 @@
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 
 @dataclass
@@ -34,6 +34,12 @@ class OperationTiming:
 
     def add_sample(self, ms: float) -> None:
         self._samples.append(ms)
+
+
+class ParentOperation(TypedDict):
+    name: str
+    ms: float
+    pct: float
 
 
 class PerformanceMonitor:
@@ -133,6 +139,7 @@ class PerformanceMonitor:
 
         # In strict mode, we need to replace model_load with original_model_load_ms
         # total_wall_time_ms already includes the pre-run time (no adjustment needed)
+        parent_ops: List[ParentOperation]
         if self.mode == "strict" and self.original_model_load_ms is not None:
             # Build parent_operations with model_load replaced by original value
             parent_ops = []

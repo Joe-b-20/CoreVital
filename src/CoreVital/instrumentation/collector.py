@@ -32,7 +32,7 @@
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 import torch
 
@@ -207,6 +207,7 @@ class InstrumentationCollector:
             encoder_hidden_states = None
             encoder_attentions = None
             warnings: List[Dict[str, str]] = []
+            outputs: Any = None
 
             with _op("model_inference"):
                 with torch.no_grad():
@@ -235,7 +236,7 @@ class InstrumentationCollector:
                         }
                         # Tracked as a child of model_inference (external HF call)
                         with _op("model.generate"):
-                            outputs = self.model_bundle.model.generate(
+                            outputs = cast(Any, self.model_bundle.model).generate(
                                 **inputs,
                                 **gen_config,
                             )
@@ -243,17 +244,20 @@ class InstrumentationCollector:
                 # === CHILD: extract_generated_tokens ===
                 with _op("extract_generated_tokens"):
                     if is_seq2seq:
-                        generated_token_ids = outputs["generated_token_ids"]
+                        generated_token_ids = cast(List[int], outputs["generated_token_ids"])
                         generated_ids = prompt_token_ids + generated_token_ids
                     else:
                         # Type narrowing: outputs is GenerateOutput here, not dict
-                        generated_ids = outputs.sequences[0].tolist()  # type: ignore[union-attr]
+                        generated_ids = cast(Any, outputs).sequences[0].tolist()
                         generated_token_ids = generated_ids[len(prompt_token_ids) :]
 
                 # === CHILD: decode_generated_text ===
                 with _op("decode_generated_text"):
-                    generated_text = self.model_bundle.tokenizer.decode(
-                        generated_token_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+                    generated_text = cast(
+                        str,
+                        self.model_bundle.tokenizer.decode(
+                            generated_token_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
+                        ),
                     )
                 logger.debug(f"Generated tokens: {len(generated_token_ids)}")
                 logger.debug(f"Generated text: {generated_text}")
@@ -354,7 +358,7 @@ class InstrumentationCollector:
             "top_p": self.config.generation.top_p,
             "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
         }
-        self.model_bundle.model.generate(**inputs, **gen_config)
+        cast(Any, self.model_bundle.model).generate(**inputs, **gen_config)
 
     def _run_baseline_seq2seq(self, inputs: Any) -> None:
         """
@@ -366,7 +370,7 @@ class InstrumentationCollector:
         """
         if self.model_bundle is None:
             return
-        model = self.model_bundle.model
+        model = cast(Any, self.model_bundle.model)
         tokenizer = self.model_bundle.tokenizer
         device = self.model_bundle.device
 
@@ -462,7 +466,7 @@ class InstrumentationCollector:
             """Helper to wrap operations in monitor.operation() if enabled."""
             return monitor.operation(name) if monitor else nullcontext()
 
-        model = self.model_bundle.model
+        model = cast(Any, self.model_bundle.model)
         tokenizer = self.model_bundle.tokenizer
         device = self.model_bundle.device
 
@@ -510,11 +514,11 @@ class InstrumentationCollector:
         decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device, dtype=torch.long)
 
         # Storage for outputs
-        all_scores = []
-        all_hidden_states = []
-        all_attentions = []  # Decoder self-attentions
-        all_cross_attentions = []  # Cross-attentions (decoder attending to encoder)
-        generated_token_ids = []
+        all_scores: List[torch.Tensor] = []
+        all_hidden_states: List[Optional[tuple[torch.Tensor, ...]]] = []
+        all_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []  # Decoder self-attentions
+        all_cross_attentions: List[Optional[tuple[torch.Tensor, ...]]] = []  # Cross-attentions (decoder attending to encoder)
+        generated_token_ids: List[int] = []
 
         max_new_tokens = self.config.generation.max_new_tokens
         eos_token_id = tokenizer.eos_token_id or model.config.eos_token_id
@@ -654,7 +658,7 @@ class InstrumentationCollector:
                 # Greedy decoding
                 next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
 
-            next_token_id = next_token.item()
+            next_token_id = int(next_token.item())
             generated_token_ids.append(next_token_id)
 
             # Check for EOS
@@ -767,7 +771,7 @@ class InstrumentationCollector:
         # Full timeline (including prompt) can be added in future phases
 
         for step_idx, token_id in enumerate(generated_token_ids):
-            token_text = self.model_bundle.tokenizer.decode([token_id])
+            token_text = cast(str, self.model_bundle.tokenizer.decode([token_id]))
 
             step_data = StepData(
                 step_index=len(prompt_token_ids) + step_idx,

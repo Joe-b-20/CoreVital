@@ -64,7 +64,7 @@ def compute_hidden_summary(
         # Move to CPU for computation
         hidden_state = hidden_state.cpu().float()
 
-        summary = {}
+        summary: Dict[str, Any] = {}
 
         if "mean" in config.stats:
             summary["mean"] = float(hidden_state.mean().item())
@@ -172,7 +172,7 @@ def compute_attention_summary(
             logger.debug("Attention weights not normalized, applying softmax")
             attention = F.softmax(attention, dim=-1)
 
-        summary = {}
+        summary: Dict[str, Any] = {}
         # Compute entropy per head
         # Entropy of attention distribution over keys for each query
         if "entropy_mean" in config.stats or "entropy_min" in config.stats:
@@ -238,7 +238,7 @@ def compute_logits_summary(
         # Move to CPU
         logits = logits.cpu().float()
 
-        summary = {}
+        summary: Dict[str, Any] = {}
 
         # Compute probabilities
         # For efficiency, only compute over top-k
