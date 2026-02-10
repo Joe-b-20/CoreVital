@@ -41,11 +41,15 @@
 #                - Transient buffer: last-layer hidden states from last 5 generated steps
 #                - Repetition loop detection (cosine similarity > 0.9995 on buffer)
 #                  Threshold raised from 0.99 to 0.9995 to handle float16 anisotropy
-#                - Mid-layer anomaly detection: per-step dynamic 5× L2 baseline + NaN/Inf
+#                - Mid-layer anomaly detection: per-step dynamic 8× L2 baseline + NaN/Inf
 #                  Attention collapse excluded (structural, not runtime anomaly)
 #                  Per-step baselines (not global) to handle step-0 prompt processing scale
 #                - Aggregate NaN/Inf, attention collapse, high entropy (>4.0) step count
 #                - Buffer lifecycle: allocate → consume → kill (never serialized)
+#   2026-02-10: Phase-1c fixes (CI/Codex review):
+#                - MyPy fix: renamed loop variable to avoid StepData/TimelineStep type conflict
+#                - Cross-attention NaN/Inf: pass cross_attentions[layer_idx] to
+#                  detect_tensor_anomalies() so Seq2Seq anomalies are fully checked
 # ============================================================================
 
 import uuid
@@ -434,13 +438,18 @@ class ReportBuilder:
                         except Exception as e:
                             logger.debug(f"Failed to compute cross-attention summary for layer {layer_idx}: {e}")
 
-                    # Compute NaN/Inf anomalies for this layer
+                    # Compute NaN/Inf anomalies for this layer (hidden + self-attn + cross-attn)
                     anomalies = None
                     try:
                         attn_tensor_for_check = None
                         if attentions is not None and layer_idx < len(attentions):
                             attn_tensor_for_check = attentions[layer_idx]
-                        anomaly_dict = detect_tensor_anomalies(hidden_tensor, attn_tensor_for_check)
+                        cross_attn_for_check = None
+                        if cross_attentions is not None and layer_idx < len(cross_attentions):
+                            cross_attn_for_check = cross_attentions[layer_idx]
+                        anomaly_dict = detect_tensor_anomalies(
+                            hidden_tensor, attn_tensor_for_check, cross_attn_for_check
+                        )
                         if anomaly_dict:
                             anomalies = TensorAnomalies(**anomaly_dict)
                     except Exception as e:
@@ -658,14 +667,14 @@ class ReportBuilder:
         attention_collapse_detected = False
         high_entropy_steps = 0
 
-        for step in timeline:
+        for tl_step in timeline:
             # High entropy check (per-step logits entropy)
-            if step.logits_summary and step.logits_summary.entropy is not None:
-                if step.logits_summary.entropy > 4.0:
+            if tl_step.logits_summary and tl_step.logits_summary.entropy is not None:
+                if tl_step.logits_summary.entropy > 4.0:
                     high_entropy_steps += 1
 
             # Per-layer checks
-            for layer in step.layers:
+            for layer in tl_step.layers:
                 # NaN/Inf from TensorAnomalies
                 if layer.anomalies is not None:
                     if layer.anomalies.has_nan:
@@ -684,7 +693,7 @@ class ReportBuilder:
         if timeline and num_layers >= 3:
             try:
                 # Pass list of step-layers (each is a List[LayerSummary])
-                timeline_layers = [step.layers for step in timeline]
+                timeline_layers = [tl_step.layers for tl_step in timeline]
                 mid_layer_anomaly_detected = detect_mid_layer_anomaly(timeline_layers, num_layers)
             except Exception as e:
                 logger.warning(f"Failed mid-layer anomaly detection: {e}")

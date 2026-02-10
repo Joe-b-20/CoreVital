@@ -82,6 +82,7 @@ Post-processing aggregation. Transient buffer with explicit lifecycle.
 - Buffer lives in `_build_health_flags()` (report builder), not in collector — cleaner since timeline data already contains raw tensors
 - Repetition threshold raised to **0.9995**: GPT-2 float16 produces cosine sims of 0.992-0.999 for non-repetitive text due to last-layer anisotropy; true repetition gives ~1.0
 - Mid-layer anomaly uses **per-step baselines** (not global): step 0 in CausalLM processes full prompt (different L2 scale than single-token steps 1+)
+- L2 explosion multiplier raised from **5× to 8×**: flan-t5-small peaks at 5.7× mid/early ratio in normal operation (GPT-2 at 3.1×); 5× false-positived on flan-t5-small
 - Attention collapse removed from mid-layer check: GPT-2 has 62 collapsed head occurrences across 10 steps — this is model architecture, not a runtime anomaly
 
 **Exit criteria results:**
@@ -129,6 +130,29 @@ The metrics analysis proposed computing a global baseline from "early layers of 
 | Mid-layers (L4–L7) | 743.2 – 835.9 | 64.4 – 92.3 |
 
 A global baseline of ~84 (mixing both regimes) yields 5× threshold = 420 — step 0's mid-layers (743–835) exceed this, causing a false positive. Per-step baselines correctly normalize: step 0's early mean ~246 gives threshold 1230 (mid-layers 743–835 don't trigger), while step 1's early mean ~14 gives threshold 70 (mid-layers 64–92 don't trigger either). Only genuine L2 explosions cross the per-step threshold.
+
+**Decision 5 — L2 explosion multiplier raised from 5× to 8×**
+
+The original 5× multiplier was calibrated against GPT-2 (12 layers, max mid/early L2 ratio of 3.1×). E2E testing on flan-t5-small (8 layers) revealed aggressive per-layer L2 growth (~70% per layer vs GPT-2's ~5%), causing normal mid-layers to peak at 5.7× the early-layer baseline — just above the 5× threshold. This is normal architecture behavior: with only 2 early layers (for an 8-layer model's first-third), the baseline captures less of the growth curve.
+
+Empirical separation:
+- GPT-2: max mid/early ratio = 3.1× (well below 8×)
+- flan-t5-small: max mid/early ratio = 5.7× (below 8×, but was above 5×)
+- Genuine L2 explosion: 100×+ (easily caught at 8×)
+
+The 8× multiplier provides clean separation across both architectures while still detecting genuine anomalies. The multiplier remains a single constant in `detect_mid_layer_anomaly()` for future tuning.
+
+### Post-merge fixes (CI/Codex review)
+
+Four issues identified during CI and Codex review after initial commit:
+
+| # | Issue | Root Cause | Fix |
+|---|-------|-----------|-----|
+| 1 | **MyPy type error** in `_build_health_flags()` | Loop variable `step` typed as `StepData` (from buffer iteration), then reused for `TimelineStep` iteration. MyPy rejects the incompatible reassignment. | Renamed timeline loop variable to `tl_step`. |
+| 2 | **Repetition loop false positives on non-consecutive patterns** | `detect_repetition_loop()` counted *total* above-threshold pairs, not *consecutive*. Pattern `[high, low, high, high]` reached count 3 incorrectly. | Counter now resets to 0 on any below-threshold pair; early-returns `True` when 3 consecutive reached. |
+| 3 | **Perplexity silently absent with `stats=["perplexity"]`** | `perplexity = 2^entropy` read from `summary.get("entropy")`, which is only populated if `"entropy"` is also in the stats list. Config `["perplexity"]` without `"entropy"` produced no perplexity. | Entropy now always computed internally (cheap — shared `log_softmax` already available); only *emitted* to summary dict when `"entropy" in config.stats`. Perplexity reads from the internal variable, not the dict. |
+| 4 | **Cross-attention NaN/Inf missed in Seq2Seq** | `detect_tensor_anomalies()` only checked `hidden_state` and `self-attention`. Cross-attention tensors (decoder→encoder) were ignored, meaning NaN/Inf confined to cross-attention would not set `has_nan`/`has_inf`. | Added `cross_attention` parameter to `detect_tensor_anomalies()`; call site in `_build_layer_summaries()` now passes `cross_attentions[layer_idx]`. |
+| 5 | **L2 explosion false positive on flan-t5-small** | 5× multiplier calibrated for GPT-2 (max 3.1× mid/early ratio). flan-t5-small's aggressive per-layer growth (≈70%/layer vs GPT-2's ≈5%) causes normal mid-layers to peak at 5.7× early baseline — just above 5×. | Raised multiplier to 8×. GPT-2 at 3.1× and flan-t5-small at 5.7× are well below 8×; genuine explosions (100×+) still caught. Multiplier documented as architecture-aware. |
 
 ---
 

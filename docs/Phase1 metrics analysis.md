@@ -1250,6 +1250,7 @@ health_flags = HealthFlags(
 > ⚠️ **IMPLEMENTATION UPDATE (Phase-1c):** Two corrections from E2E testing:
 > 1. **Attention collapse removed from mid-layer check.** GPT-2 has 62 collapsed-head occurrences across 10 steps — this is model architecture (well-documented in "Are Sixteen Heads Really Better Than One?"), not a runtime anomaly. Already captured separately by `attention_collapse_detected`. Mid-layer anomaly now checks NaN/Inf and L2 explosion only.
 > 2. **Per-step L2 baselines, not global.** CausalLM step 0 processes the full prompt (shape `(1, seq_len, hidden_dim)`), giving L2 norms 10× higher than single-token steps 1+ (which use KV cache). A global baseline false-triggered on step 0. Per-step baselines correctly normalize each step's early layers against its own mid-layers.
+> 3. **L2 explosion multiplier raised from 5× to 8×.** Original 5× calibrated on GPT-2 (max 3.1× mid/early ratio). flan-t5-small (8 layers, only 2 early layers) peaks at 5.7× due to ~70% per-layer growth — just above 5×. 8× accommodates diverse architectures while still catching genuine explosions (100×+).
 > 
 > **Why:** Early layers are syntactic, late layers are token selection. The "truth" lives in the middle layers - anomalies here are more dangerous.
 

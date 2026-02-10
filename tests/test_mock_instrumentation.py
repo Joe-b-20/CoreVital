@@ -769,7 +769,7 @@ class TestMidLayerAnomalyDetection:
         for i in range(num_layers):
             layer = Mock()
             layer.anomalies = Mock(has_nan=False, has_inf=False)
-            # Early layers: ~20, mid-layer 6: 500 (5x baseline = 100, so 500 >> 100)
+            # Early layers: ~20, mid-layer 6: 500 (8x baseline = 160, so 500 >> 160)
             norm = 500.0 if i == 6 else 20.0
             layer.hidden_summary = Mock(l2_norm_mean=norm)
             step_layers.append(layer)

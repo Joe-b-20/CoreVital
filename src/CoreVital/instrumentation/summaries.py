@@ -28,9 +28,20 @@
 #   2026-02-10: Phase-1c — Health flag detection functions:
 #                - detect_repetition_loop(): cosine similarity > 0.9995 on transient buffer
 #                  (threshold accounts for float16 anisotropy — non-repetitive GPT-2 gives 0.992-0.999)
-#                - detect_mid_layer_anomaly(): per-step dynamic 5× L2 baseline + NaN/Inf
+#                - detect_mid_layer_anomaly(): per-step dynamic L2 baseline + NaN/Inf
 #                  (attention collapse excluded — structural not runtime; per-step baselines
 #                   to handle CausalLM step-0 prompt processing scale difference)
+#   2026-02-10: Phase-1c fixes (CI/Codex review):
+#                - detect_repetition_loop(): enforce CONSECUTIVE similarity — counter resets
+#                  on a non-matching pair (previously counted total, false-positived on
+#                  [high, low, high, high] patterns)
+#                - compute_logits_summary(): entropy always computed internally so that
+#                  stats=["perplexity"] works without "entropy" in the list
+#                - detect_tensor_anomalies(): added cross_attention parameter — Seq2Seq
+#                  cross-attention NaN/Inf was silently missed
+#                - detect_mid_layer_anomaly(): L2 multiplier raised from 5× to 8×
+#                  (flan-t5-small peaks at 5.7× mid/early ratio in normal operation,
+#                   GPT-2 at 3.1×; 5× false-positived on flan-t5-small)
 # ============================================================================
 
 import math
@@ -303,12 +314,11 @@ def compute_logits_summary(
         topk_probs = probs_full[topk_indices]
 
         # ── Shannon Entropy (numerically stable via log_softmax) ───────
+        # Always compute internally — perplexity depends on it even if "entropy" not in stats
+        p_log_p = probs_full * log_probs_full
+        entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
+        entropy_bits = float(entropy_nats.item()) / math.log(2)
         if "entropy" in config.stats:
-            # H = -Σ(p * log_p) / log(2), using full vocab for accuracy
-            # nan_to_num handles 0 * (-inf) = NaN edge case (lim p→0 of p*log(p) = 0)
-            p_log_p = probs_full * log_probs_full
-            entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
-            entropy_bits = float(entropy_nats.item()) / math.log(2)
             summary["entropy"] = entropy_bits
 
         # ── Top-1 to Top-2 margin (legacy field, kept for backward compat) ──
@@ -334,10 +344,7 @@ def compute_logits_summary(
 
         # ── Perplexity (2^entropy) ────────────────────────────────────
         if "perplexity" in config.stats:
-            # Depends on entropy being computed
-            ent = summary.get("entropy")
-            if ent is not None:
-                summary["perplexity"] = float(2.0**ent)
+            summary["perplexity"] = float(2.0**entropy_bits)
 
         # ── Surprisal (-log₂(p_actual_token)) ────────────────────────
         if "surprisal" in config.stats and actual_token_id is not None:
@@ -603,7 +610,7 @@ def detect_repetition_loop(
     if len(hidden_state_buffer) < 4:
         return False
 
-    repetition_count = 0
+    consecutive_count = 0
     for i in range(1, len(hidden_state_buffer)):
         prev_h = hidden_state_buffer[i - 1].float()
         curr_h = hidden_state_buffer[i].float()
@@ -616,10 +623,13 @@ def detect_repetition_loop(
 
         cosine_sim = F.cosine_similarity(prev_h.unsqueeze(0), curr_h.unsqueeze(0)).item()
         if cosine_sim > threshold:
-            repetition_count += 1
+            consecutive_count += 1
+            if consecutive_count >= 3:
+                return True
+        else:
+            consecutive_count = 0  # Reset on a non-matching pair
 
-    # 3+ consecutive similar vectors = repetition loop
-    return repetition_count >= 3
+    return False
 
 
 def detect_mid_layer_anomaly(
@@ -634,7 +644,7 @@ def detect_mid_layer_anomaly(
 
     Checks (runtime anomalies only):
     1. NaN/Inf in mid-layer hidden states or attentions
-    2. L2 norm explosion (dynamic 5× early-layer baseline)
+    2. L2 norm explosion (dynamic 8× per-step early-layer baseline)
 
     Note: Attention collapse is NOT checked here — it's a model architecture
     property (e.g., GPT-2 has many collapsed heads by design), not a runtime
@@ -677,7 +687,10 @@ def detect_mid_layer_anomaly(
 
         if step_early_norms:
             baseline = sum(step_early_norms) / len(step_early_norms)
-            explosion_threshold = baseline * 5.0
+            # 8× multiplier accounts for diverse architectures:
+            # GPT-2 peaks at 3.1× mid/early, flan-t5-small at 5.7×
+            # (original 5× false-positived on flan-t5-small's aggressive layer growth)
+            explosion_threshold = baseline * 8.0
         else:
             explosion_threshold = 1000.0  # Conservative fallback
 
@@ -694,13 +707,15 @@ def detect_mid_layer_anomaly(
 def detect_tensor_anomalies(
     hidden_state: Optional[torch.Tensor] = None,
     attention: Optional[torch.Tensor] = None,
+    cross_attention: Optional[torch.Tensor] = None,
 ) -> Dict[str, bool]:
     """
-    Detect NaN/Inf in hidden state and attention tensors for a single layer.
+    Detect NaN/Inf in hidden state, self-attention, and cross-attention tensors for a single layer.
 
     Args:
         hidden_state: Hidden state tensor (any shape)
-        attention: Attention tensor (any shape)
+        attention: Self-attention tensor (any shape)
+        cross_attention: Cross-attention tensor (Seq2Seq only, any shape)
 
     Returns:
         Dictionary with has_nan and has_inf boolean flags
@@ -708,7 +723,7 @@ def detect_tensor_anomalies(
     has_nan = False
     has_inf = False
 
-    for tensor in (hidden_state, attention):
+    for tensor in (hidden_state, attention, cross_attention):
         if tensor is None:
             continue
         if not isinstance(tensor, torch.Tensor):
