@@ -10,6 +10,8 @@
 # Changelog:
 #   2026-01-16: Initial mock instrumentation tests
 #   2026-01-23: Phase-0.5 - Added tests for extensions fields and encoder_layers
+#   2026-02-10: Phase-1b - Added assertions for prompt_forward and prompt_analysis
+#                (CausalLM and Seq2Seq)
 # ============================================================================
 
 import json
@@ -64,6 +66,13 @@ class TestMockCausalLMInstrumentation:
             # At least some steps should have logits, hidden_states, or attentions
             assert step.logits is not None or step.hidden_states is not None or step.attentions is not None
 
+        # Phase-1b: prompt forward data should be captured
+        assert results.prompt_forward is not None, "CausalLM should have prompt forward data"
+        assert results.prompt_forward.hidden_states is not None
+        assert results.prompt_forward.attentions is not None
+        assert results.prompt_forward.logits is not None
+        assert results.prompt_forward.prompt_token_ids == results.prompt_token_ids
+
     def test_report_builder_with_mock_causal(self, mock_model_bundle):
         """Test that ReportBuilder produces valid JSON report with mock CausalLM results."""
         # Create config
@@ -104,6 +113,11 @@ class TestMockCausalLMInstrumentation:
         for step in report.timeline:
             assert step.token.token_id >= 0
             assert step.token.token_text is not None
+
+        # Phase-1b: prompt_analysis should be populated for CausalLM
+        assert report.prompt_analysis is not None, "CausalLM report should have prompt_analysis"
+        assert len(report.prompt_analysis.layers) > 0, "Should have prompt attention layers"
+        assert len(report.prompt_analysis.layer_transformations) > 0, "Should have layer transformations"
 
         # Serialize to JSON
         json_str = serialize_report_to_json(report)
@@ -204,6 +218,13 @@ class TestMockSeq2SeqInstrumentation:
         # Seq2Seq models should have encoder outputs (used internally for building encoder_layers)
         assert results.encoder_hidden_states is not None
 
+        # Phase-1b: Seq2Seq should reuse encoder outputs as prompt forward data
+        assert results.prompt_forward is not None, "Seq2Seq should have prompt forward data (encoder reuse)"
+        assert results.prompt_forward.hidden_states is not None
+        assert results.prompt_forward.attentions is not None
+        assert results.prompt_forward.logits is None, "Seq2Seq encoder has no next-token logits"
+        assert results.prompt_forward.prompt_token_ids == results.prompt_token_ids
+
         # Verify timeline has data
         for step in results.timeline:
             assert step.step_index >= 0
@@ -244,6 +265,12 @@ class TestMockSeq2SeqInstrumentation:
         # Seq2Seq reports should have encoder_layers
         assert report.encoder_layers is not None
         assert len(report.encoder_layers) == mock_model_bundle.num_layers
+
+        # Phase-1b: Seq2Seq should have prompt_analysis (from encoder reuse)
+        assert report.prompt_analysis is not None, "Seq2Seq report should have prompt_analysis"
+        assert len(report.prompt_analysis.layers) > 0, "Should have prompt attention layers"
+        assert len(report.prompt_analysis.layer_transformations) > 0, "Should have layer transformations"
+        assert len(report.prompt_analysis.prompt_surprisals) == 0, "Seq2Seq encoder has no surprisals"
 
         # Serialize to JSON
         json_str = serialize_report_to_json(report)

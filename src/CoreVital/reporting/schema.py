@@ -28,6 +28,9 @@
 #                  collapsed_head_count, focused_head_count
 #                - Extended LayerSummary with anomalies: Optional[TensorAnomalies]
 #                - Extended Report with prompt_analysis, health_flags
+#   2026-02-10: Phase-1b — No schema changes (PromptAnalysis, SparseAttentionHead,
+#                PromptAttentionLayer already defined in 1a). Now populated by
+#                collector prompt forward pass and report builder.
 # ============================================================================
 
 from typing import Any, Dict, List, Optional

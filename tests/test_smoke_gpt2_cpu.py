@@ -9,6 +9,7 @@
 #
 # Changelog:
 #   2026-01-13: Initial smoke test for Phase-0
+#   2026-02-10: Phase-1b - Added prompt_analysis assertions
 # ============================================================================
 
 import json
@@ -100,11 +101,26 @@ def test_smoke_gpt2_cpu(tmp_path):
     assert data["summary"]["generated_tokens"] > 0
     assert data["summary"]["elapsed_ms"] > 0
 
+    # Check prompt_analysis (Phase-1b)
+    pa = data.get("prompt_analysis")
+    assert pa is not None, "prompt_analysis should be populated for CausalLM"
+    assert len(pa["layers"]) > 0, "Should have prompt attention layers"
+    assert len(pa["layer_transformations"]) > 0, "Should have layer transformations"
+    # prompt_surprisals length = prompt_tokens - 1 (autoregressive shift)
+    assert len(pa["prompt_surprisals"]) == data["summary"]["prompt_tokens"] - 1
+    # Each layer should have heads with basin scores
+    layer0 = pa["layers"][0]
+    assert len(layer0["heads"]) > 0, "Each layer should have attention heads"
+    assert len(layer0["basin_scores"]) > 0, "Each layer should have basin scores"
+
     print("\n✓ Smoke test passed!")
     print(f"  Output: {output_path}")
     print(f"  Prompt tokens: {data['summary']['prompt_tokens']}")
     print(f"  Generated tokens: {data['summary']['generated_tokens']}")
     print(f"  Timeline steps: {len(data['timeline'])}")
+    print(f"  Prompt analysis layers: {len(pa['layers'])}")
+    print(f"  Layer transformations: {len(pa['layer_transformations'])}")
+    print(f"  Prompt surprisals: {len(pa['prompt_surprisals'])}")
 
 
 if __name__ == "__main__":

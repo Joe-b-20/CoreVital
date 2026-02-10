@@ -9,6 +9,8 @@
 # 
 # Changelog:
 #   2026-01-13: Initial configuration for Phase-0
+#   2026-02-07: Phase-1a — added new metric names to attention.stats and logits.stats
+#   2026-02-10: Phase-1b — added prompt_telemetry section (enabled, sparse_threshold)
 # ============================================================================
 
 model:
