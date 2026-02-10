@@ -27,6 +27,12 @@
 #   2026-02-06: Phase-0.75 - fixed strict mode: seed before baseline for reproducible
 #                token generation; added top_k/top_p to baseline Seq2Seq sampling to
 #                match instrumented path; doubled warmup rounds for cache stabilization
+#   2026-02-10: Phase-1b — Prompt telemetry:
+#                - Added PromptForwardData dataclass for prompt forward pass results
+#                - CausalLM: model(input_ids) before generate() captures hidden states,
+#                  attentions, logits for prompt tokens
+#                - Seq2Seq: reuses existing encoder outputs (zero-cost forward pass)
+#                - --no-prompt-telemetry CLI flag to skip prompt analysis
 # ============================================================================
 
 import time
@@ -63,6 +69,22 @@ class StepData:
 
 
 @dataclass
+class PromptForwardData:
+    """Data captured from the prompt-only forward pass (Phase-1b).
+
+    For CausalLM: comes from model(input_ids) before generate().
+    For Seq2Seq: reuses encoder outputs (zero-cost).
+
+    All tensors are kept on CPU to avoid holding GPU memory.
+    """
+
+    hidden_states: Optional[List[torch.Tensor]] = None  # Per-layer, (batch, seq_len, hidden_dim)
+    attentions: Optional[List[torch.Tensor]] = None  # Per-layer, (batch, heads, seq_len, seq_len)
+    logits: Optional[torch.Tensor] = None  # (batch, seq_len, vocab_size) — CausalLM only
+    prompt_token_ids: Optional[List[int]] = None  # Token IDs for surprisal alignment
+
+
+@dataclass
 class InstrumentationResults:
     """Complete results from an instrumented run."""
 
@@ -77,6 +99,8 @@ class InstrumentationResults:
     # Seq2Seq-specific fields
     encoder_hidden_states: Optional[List[torch.Tensor]] = None
     encoder_attentions: Optional[List[torch.Tensor]] = None
+    # Phase-1b: prompt forward pass data
+    prompt_forward: Optional[PromptForwardData] = None
     # Performance monitoring (optional)
     monitor: Optional["PerformanceMonitor"] = None
 
@@ -195,6 +219,14 @@ class InstrumentationCollector:
             # Model type from capabilities (single source of truth — no detection here)
             is_seq2seq = self.model_bundle.capabilities.is_seq2seq
 
+            # === PARENT: prompt_forward_pass (Phase-1b) ===
+            # For CausalLM: run model(input_ids) to capture prompt hidden states, attentions, logits.
+            # For Seq2Seq: encoder outputs are captured during generation (reused, zero-cost).
+            prompt_forward: Optional[PromptForwardData] = None
+            if self.config.prompt_telemetry.enabled and not is_seq2seq:
+                with _op("prompt_forward_pass"):
+                    prompt_forward = self._run_prompt_forward(inputs, prompt_token_ids, monitor=monitor)
+
             # === PARENT: model_inference ===
             # Contains: generation + extract_generated_tokens + decode_generated_text + _process_timeline
             logger.info("Starting instrumented generation...")
@@ -262,7 +294,7 @@ class InstrumentationCollector:
                 logger.debug(f"Generated tokens: {len(generated_token_ids)}")
                 logger.debug(f"Generated text: {generated_text}")
 
-                # === CHILD: _process_timeline ===
+                # === CHILD: extract encoder data + build Seq2Seq prompt_forward ===
                 # Handle both standard generate() output and manual Seq2Seq output
                 if isinstance(outputs, dict) and "output_obj" in outputs:
                     encoder_hidden_states = outputs.get("encoder_hidden_states")
@@ -271,6 +303,19 @@ class InstrumentationCollector:
                         encoder_hidden_states = list(encoder_hidden_states)
                     if encoder_attentions is not None and isinstance(encoder_attentions, tuple):
                         encoder_attentions = list(encoder_attentions)
+
+                    # Seq2Seq encoder reuse: encoder outputs ARE the prompt analysis (zero-cost)
+                    if is_seq2seq and self.config.prompt_telemetry.enabled:
+                        prompt_forward = PromptForwardData(
+                            hidden_states=encoder_hidden_states,
+                            attentions=encoder_attentions,
+                            logits=None,  # Encoders don't produce token-prediction logits
+                            prompt_token_ids=prompt_token_ids,
+                        )
+                        logger.debug(
+                            f"Seq2Seq prompt telemetry: reusing encoder outputs "
+                            f"({len(encoder_hidden_states) if encoder_hidden_states else 0} layers)"
+                        )
 
                 with _op("_process_timeline"):
                     if isinstance(outputs, dict) and "output_obj" in outputs:
@@ -317,6 +362,7 @@ class InstrumentationCollector:
                 warnings=warnings,
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attentions=encoder_attentions,
+                prompt_forward=prompt_forward,
                 monitor=monitor,
             )
 
@@ -438,6 +484,81 @@ class InstrumentationCollector:
             decoder_input_ids = torch.cat([decoder_input_ids, next_token_id], dim=-1)
             if next_token_id.item() == eos_token_id:
                 break
+
+    def _run_prompt_forward(
+        self,
+        inputs: Any,
+        prompt_token_ids: List[int],
+        monitor: Optional["PerformanceMonitor"] = None,
+    ) -> PromptForwardData:
+        """Run a single forward pass on prompt tokens to capture hidden states, attentions, and logits.
+
+        CausalLM only. For Seq2Seq, encoder outputs are reused instead.
+
+        Args:
+            inputs: Tokenized input from tokenizer
+            prompt_token_ids: Prompt token IDs
+            monitor: Optional performance monitor
+
+        Returns:
+            PromptForwardData with hidden states, attentions, and logits (all on CPU)
+        """
+        if self.model_bundle is None:
+            raise InstrumentationError("Model bundle not initialized")
+
+        model = cast(Any, self.model_bundle.model)
+
+        logger.debug(f"Running prompt forward pass ({len(prompt_token_ids)} tokens)...")
+        with torch.no_grad():
+            outputs = model(
+                **inputs,
+                output_hidden_states=True,
+                output_attentions=True,
+                return_dict=True,
+            )
+
+        # Extract hidden states: skip embedding (index 0), keep layer outputs
+        hidden_states = None
+        if hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
+            try:
+                hs = outputs.hidden_states
+                # outputs.hidden_states = (embedding, layer1, ..., layerN)
+                if isinstance(hs, (tuple, list)) and len(hs) > 1:
+                    hidden_states = [h.cpu() for h in hs[1:]]
+                elif isinstance(hs, (tuple, list)):
+                    hidden_states = [h.cpu() for h in hs]
+                logger.debug(
+                    f"Prompt forward: extracted {len(hidden_states) if hidden_states else 0} hidden state layers"
+                )
+            except (TypeError, AttributeError) as e:
+                logger.debug(f"Prompt forward: could not extract hidden states: {e}")
+
+        # Extract attentions: one tensor per layer, each (batch, heads, seq, seq)
+        attentions = None
+        if hasattr(outputs, "attentions") and outputs.attentions is not None:
+            try:
+                att = outputs.attentions
+                if isinstance(att, (tuple, list)):
+                    attentions = [a.cpu() for a in att]
+                logger.debug(f"Prompt forward: extracted {len(attentions) if attentions else 0} attention layers")
+            except (TypeError, AttributeError) as e:
+                logger.debug(f"Prompt forward: could not extract attentions: {e}")
+
+        # Extract logits: (batch, seq_len, vocab_size) — needed for prompt surprisal
+        logits = None
+        if hasattr(outputs, "logits") and outputs.logits is not None:
+            try:
+                logits = outputs.logits.cpu()
+                logger.debug(f"Prompt forward: logits shape {logits.shape}")
+            except (TypeError, AttributeError) as e:
+                logger.debug(f"Prompt forward: could not extract logits: {e}")
+
+        return PromptForwardData(
+            hidden_states=hidden_states,
+            attentions=attentions,
+            logits=logits,
+            prompt_token_ids=prompt_token_ids,
+        )
 
     def _generate_seq2seq_manual(
         self,

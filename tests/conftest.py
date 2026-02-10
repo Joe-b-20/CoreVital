@@ -10,6 +10,7 @@
 # Changelog:
 #   2026-01-16: Initial mock model bundle fixture for testing instrumentation
 #   2026-01-21: Phase-0.5 hardening - added is_encoder_decoder=True to MockSeq2SeqModel config
+#   2026-02-10: Phase-1b - added mock forward pass (__call__) for CausalLM prompt telemetry
 # ============================================================================
 
 from unittest.mock import Mock
@@ -266,6 +267,36 @@ def mock_model_bundle(request):
             return output
 
         mock_model.generate = Mock(side_effect=mock_generate)
+
+        # Mock forward pass (__call__) for prompt telemetry (Phase-1b)
+        # Returns CausalLMOutput-like object with hidden_states, attentions, logits
+        def mock_forward(
+            input_ids=None,
+            attention_mask=None,
+            output_hidden_states=True,
+            output_attentions=True,
+            return_dict=True,
+            **kwargs,
+        ):
+            seq_len = input_ids.shape[1] if input_ids is not None else 4
+
+            # hidden_states: (embedding, layer1, ..., layerN)
+            hs = tuple(torch.randn(batch_size, seq_len, hidden_size) for _ in range(num_layers + 1))
+            # attentions: (layer1, ..., layerN) — full seq×seq matrices
+            attn = tuple(
+                torch.softmax(torch.randn(batch_size, num_attention_heads, seq_len, seq_len), dim=-1)
+                for _ in range(num_layers)
+            )
+            # logits: (batch, seq_len, vocab_size)
+            logits = torch.randn(batch_size, seq_len, vocab_size)
+
+            forward_out = Mock()
+            forward_out.hidden_states = hs
+            forward_out.attentions = attn
+            forward_out.logits = logits
+            return forward_out
+
+        mock_model.side_effect = mock_forward
 
     # Build capabilities from model type
     if model_type == "seq2seq":

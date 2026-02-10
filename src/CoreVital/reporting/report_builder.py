@@ -31,6 +31,11 @@
 #                - Wire NaN/Inf detection (TensorAnomalies) per layer
 #                - Report now includes prompt_analysis (None until Phase-1b) and
 #                  health_flags (None until Phase-1c)
+#   2026-02-10: Phase-1b — Prompt telemetry wiring:
+#                - _build_prompt_analysis() builds PromptAnalysis from PromptForwardData
+#                - Sparse attention extraction + basin scores per layer
+#                - Layer transformations (cosine similarity between consecutive layers)
+#                - Prompt surprisal (CrossEntropyLoss on prompt logits, CausalLM only)
 # ============================================================================
 
 import uuid
@@ -42,9 +47,13 @@ from CoreVital.config import Config
 from CoreVital.instrumentation.collector import InstrumentationResults
 from CoreVital.instrumentation.summaries import (
     compute_attention_summary,
+    compute_basin_scores,
     compute_hidden_summary,
+    compute_layer_transformations,
     compute_logits_summary,
+    compute_prompt_surprisal,
     detect_tensor_anomalies,
+    extract_sparse_attention,
 )
 from CoreVital.logging_utils import get_logger
 from CoreVital.reporting.schema import (
@@ -58,12 +67,15 @@ from CoreVital.reporting.schema import (
     LogitsConfig,
     LogitsSummary,
     ModelInfo,
+    PromptAnalysis,
+    PromptAttentionLayer,
     PromptInfo,
     QuantizationInfo,
     Report,
     RunConfig,
     SinkConfig,
     SketchConfig,
+    SparseAttentionHead,
     SummariesConfig,
     Summary,
     TensorAnomalies,
@@ -171,6 +183,10 @@ class ReportBuilder:
         with _op("convert warnings"):
             warnings = [Warning(code=w["code"], message=w["message"]) for w in results.warnings]
 
+        # Build prompt analysis (Phase-1b)
+        with _op("_build_prompt_analysis"):
+            prompt_analysis = self._build_prompt_analysis(results)
+
         # Assemble final Report (tracked as child of report_build)
         with _op("assemble Report"):
             report = Report(
@@ -185,7 +201,7 @@ class ReportBuilder:
                 summary=summary,
                 warnings=warnings,
                 encoder_layers=encoder_layers,
-                prompt_analysis=None,  # Phase-1b
+                prompt_analysis=prompt_analysis,
                 health_flags=None,  # Phase-1c
             )
 
@@ -508,6 +524,66 @@ class ReportBuilder:
                 logger.warning(f"Failed to process encoder layer {layer_idx}: {e}")
 
         return encoder_layers if encoder_layers else None
+
+    def _build_prompt_analysis(self, results: InstrumentationResults) -> Optional[PromptAnalysis]:
+        """Build PromptAnalysis from prompt forward pass data (Phase-1b).
+
+        For CausalLM: uses data from model(input_ids) forward pass.
+        For Seq2Seq: uses reused encoder outputs.
+        Returns None if prompt telemetry is disabled or no data available.
+        """
+        pf = results.prompt_forward
+        if pf is None:
+            logger.debug("No prompt forward data — prompt_analysis will be null")
+            return None
+
+        sparse_threshold = self.config.prompt_telemetry.sparse_threshold
+
+        # 1. Build per-layer sparse attention profiles + basin scores
+        layers: list[PromptAttentionLayer] = []
+        if pf.attentions is not None:
+            for layer_idx, attn_tensor in enumerate(pf.attentions):
+                try:
+                    # Handle tuple wrapping (some models wrap layer attentions in tuples)
+                    if isinstance(attn_tensor, (tuple, list)) and len(attn_tensor) > 0:
+                        attn_tensor = attn_tensor[0]
+                    if attn_tensor is None or not isinstance(attn_tensor, torch.Tensor):
+                        layers.append(PromptAttentionLayer())
+                        continue
+
+                    # Sparse extraction (vectorized torch.where per head)
+                    sparse_heads_dicts = extract_sparse_attention(attn_tensor, threshold=sparse_threshold)
+                    sparse_heads = [SparseAttentionHead(**h) for h in sparse_heads_dicts]
+
+                    # Basin scores (middle/boundary ratio per head)
+                    basin = compute_basin_scores(attn_tensor)
+
+                    layers.append(PromptAttentionLayer(heads=sparse_heads, basin_scores=basin))
+                except Exception as e:
+                    logger.warning(f"Failed to build prompt attention for layer {layer_idx}: {e}")
+                    layers.append(PromptAttentionLayer())
+
+        # 2. Layer transformations (cosine similarity between consecutive layers)
+        layer_transformations: list[float] = []
+        if pf.hidden_states is not None and len(pf.hidden_states) >= 2:
+            try:
+                layer_transformations = compute_layer_transformations(pf.hidden_states)
+            except Exception as e:
+                logger.warning(f"Failed to compute layer transformations: {e}")
+
+        # 3. Prompt surprisal (CausalLM only — encoder logits not applicable)
+        prompt_surprisals: list[float] = []
+        if pf.logits is not None and pf.prompt_token_ids is not None:
+            try:
+                prompt_surprisals = compute_prompt_surprisal(pf.logits, pf.prompt_token_ids)
+            except Exception as e:
+                logger.warning(f"Failed to compute prompt surprisal: {e}")
+
+        return PromptAnalysis(
+            layers=layers,
+            layer_transformations=layer_transformations,
+            prompt_surprisals=prompt_surprisals,
+        )
 
 
 # ============================================================================

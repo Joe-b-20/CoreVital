@@ -35,22 +35,33 @@ Metrics that operate on data we already have. No new forward passes.
 
 ---
 
-## Phase-1b: Prompt Telemetry
-**Branch:** `phase-1b` | **Merge target:** `main` (after 1a merged)
+## Phase-1b: Prompt Telemetry ✅
+**Branch:** `phase-1b` | **Merge target:** `main` | **Status: COMPLETE**
 
 New forward pass for prompt analysis. Each piece independently testable.
 
-| # | What | Files | Details |
-|---|------|-------|---------|
-| 1 | CausalLM prompt forward | `collector.py` | `model(input_ids)` before `generate()`. CLI: `--no-prompt-telemetry`. |
-| 2 | Seq2Seq encoder reuse | `collector.py` | Explicit encoder call, pass to `generate(encoder_outputs=...)`. |
-| 3 | Vectorized sparse extraction | `summaries.py` | `torch.where(attn > threshold)` → `SparseAttentionHead` (SoA). |
-| 4 | Basin score | `summaries.py` | Vectorized middle/boundary ratio per head. |
-| 5 | Layer transformation | `summaries.py` | `F.cosine_similarity(h[:-1], h[1:])` per prompt token. |
-| 6 | Prompt surprisal | `summaries.py` | `CrossEntropyLoss(reduction='none')` on prompt logits. |
-| 7 | Report wiring | `report_builder.py` | Populate `report.prompt_analysis`. |
+| # | What | Files | Status | Notes |
+|---|------|-------|--------|-------|
+| 1 | CausalLM prompt forward | `collector.py` | ✅ | `model(input_ids)` before `generate()`. CLI: `--no-prompt-telemetry`. Config: `PromptTelemetryConfig`. |
+| 2 | Seq2Seq encoder reuse | `collector.py` | ✅ | Reuses existing encoder outputs from `_generate_seq2seq_manual` (zero-cost). |
+| 3 | Vectorized sparse extraction | `summaries.py` | ✅ | `torch.where` per head on full seq×seq matrix. Threshold configurable (default 0.01). |
+| 4 | Basin score | `summaries.py` | ✅ | Middle/boundary ratio per head. Short sequences (< 3 tokens) default to 1.0. |
+| 5 | Layer transformation | `summaries.py` | ✅ | `F.cosine_similarity` between consecutive layers, averaged across tokens. |
+| 6 | Prompt surprisal | `summaries.py` | ✅ | `CrossEntropyLoss(reduction='none')` on shifted logits/labels. CausalLM only (empty for Seq2Seq). |
+| 7 | Report wiring | `report_builder.py` | ✅ | `_build_prompt_analysis()` populates `report.prompt_analysis`. |
 
-**Exit criteria:** `prompt_analysis` populated for both CausalLM and Seq2Seq, `--no-prompt-telemetry` skips it, perf breakdown shows costs.
+**Also added:**
+- `PromptTelemetryConfig` in `config.py` with `enabled` and `sparse_threshold`
+- `prompt_telemetry` section in `configs/default.yaml`
+- `PromptForwardData` dataclass in `collector.py`
+- Mock forward pass (`__call__`) for CausalLM in test fixtures
+
+**Exit criteria results:**
+- ✅ `prompt_analysis` populated for CausalLM (GPT-2): 12 layers, sparse heads, basin scores, 11 transformations, 4 surprisals
+- ✅ `prompt_analysis` populated for Seq2Seq (flan-t5-small): 8 layers, sparse heads, basin scores, 7 transformations, 0 surprisals (correct)
+- ✅ `--no-prompt-telemetry` → `prompt_analysis: null`
+- ✅ `--perf detailed` shows `prompt_forward_pass` (115ms) and `_build_prompt_analysis` (10ms)
+- ✅ `pytest` 42/42, `ruff` clean
 
 ---
 

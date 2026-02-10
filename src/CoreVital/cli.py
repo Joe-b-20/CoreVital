@@ -16,6 +16,7 @@
 #   2026-02-06: Fixed HTTP sink missing performance data - inject extensions.performance
 #                into Report before sink.write() so both local_file and http sinks
 #                receive complete data; removed post-write read-patch-write hack
+#   2026-02-10: Phase-1b - added --no-prompt-telemetry flag
 # ============================================================================
 
 import argparse
@@ -163,6 +164,13 @@ def create_parser() -> argparse.ArgumentParser:
         help="Performance monitoring: summary (default), detailed (+ breakdown file), "
         "strict (+ warmup and baseline). Omit to disable.",
     )
+    run_parser.add_argument(
+        "--no-prompt-telemetry",
+        action="store_true",
+        default=False,
+        help="Skip prompt forward pass (no sparse attention profiles, basin scores, "
+        "layer transformations, or prompt surprisal).",
+    )
 
     return parser
 
@@ -219,6 +227,10 @@ def run_command(args: argparse.Namespace) -> int:
             # Store perf mode in config
             if perf_mode:
                 config.performance.mode = perf_mode
+
+            # Prompt telemetry (Phase-1b)
+            if args.no_prompt_telemetry:
+                config.prompt_telemetry.enabled = False
 
         # === PARENT: setup_logging ===
         with _op("setup_logging"):

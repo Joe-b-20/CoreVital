@@ -11,6 +11,7 @@
 #   2026-01-13: Initial configuration system for Phase-0
 #   2026-01-15: Added load_in_4bit and load_in_8bit flags to ModelConfig for quantization support
 #   2026-02-04: Phase-0.75 - added PerformanceConfig for performance monitoring mode
+#   2026-02-10: Phase-1b - added PromptTelemetryConfig (enabled, sparse_threshold)
 # ============================================================================
 
 import os
@@ -130,6 +131,18 @@ class PerformanceConfig(BaseModel):
     mode: Optional[str] = None
 
 
+class PromptTelemetryConfig(BaseModel):
+    """Prompt telemetry configuration (Phase-1b).
+
+    Controls whether a separate forward pass is run on prompt tokens
+    to capture sparse attention profiles, basin scores, layer
+    transformations, and prompt surprisal.
+    """
+
+    enabled: bool = True
+    sparse_threshold: float = 0.01  # Store attention weights above this threshold
+
+
 class Config(BaseModel):
     """Root configuration object."""
 
@@ -140,6 +153,7 @@ class Config(BaseModel):
     sink: SinkConfig = Field(default_factory=SinkConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
+    prompt_telemetry: PromptTelemetryConfig = Field(default_factory=PromptTelemetryConfig)
 
     @classmethod
     def from_yaml(cls, path: str) -> "Config":

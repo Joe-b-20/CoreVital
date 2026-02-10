@@ -71,6 +71,10 @@ sink:
   output_dir: "runs"
   remote_url: null
 
+prompt_telemetry:
+  enabled: true
+  sparse_threshold: 0.01  # Store attention weights above this value
+
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
