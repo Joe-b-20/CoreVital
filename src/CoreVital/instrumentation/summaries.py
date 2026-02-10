@@ -15,9 +15,15 @@
 #   2026-01-15: Enhanced attention summary to support cross-attention tensors (different source/target lengths)
 #                Added compute_encoder_hidden_states_summaries helper for Seq2Seq models
 #   2026-01-21: Phase-0.5 hardening - replaced magic number with MIN_TOPK_FOR_ENTROPY constant
+#   2026-02-07: Phase-1a — Enhanced metrics:
+#                - Numerical stability: log_softmax for entropy computation
+#                - New logit metrics: top_k_margin, voter_agreement, perplexity, surprisal
+#                - Enhanced attention: entropy_max, concentration_min, collapsed/focused counts
+#                - New: detect_tensor_anomalies() for NaN/Inf detection
 # ============================================================================
 
-from typing import TYPE_CHECKING, Any, Dict, List
+import math
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -173,31 +179,63 @@ def compute_attention_summary(
             attention = F.softmax(attention, dim=-1)
 
         summary: Dict[str, Any] = {}
-        # Compute entropy per head
-        # Entropy of attention distribution over keys for each query
-        if "entropy_mean" in config.stats or "entropy_min" in config.stats:
-            # Add small epsilon to avoid log(0)
-            eps = 1e-10
-            attention_safe = attention + eps
 
-            # Entropy: -sum(p * log(p)) per query position, then average over queries
-            # attention shape: (heads, target_len, source_len) for cross-attention
-            #                  (heads, seq_len, seq_len) for self-attention
-            # We compute entropy over the last dimension (keys/source) for each query/target position
-            entropy = -(attention_safe * torch.log(attention_safe)).sum(dim=-1)
+        # ── Per-head entropy (shared intermediate) ────────────────────
+        # Entropy of attention distribution over keys for each query position
+        # attention shape: (heads, target_len, source_len)
+        need_entropy = any(
+            s in config.stats
+            for s in ("entropy_mean", "entropy_min", "entropy_max", "collapsed_head_count", "focused_head_count")
+        )
+
+        per_head_entropy = None
+        if need_entropy:
+            # Use log_softmax for numerical stability
+            log_attn = torch.log(attention + 1e-10)
+            # Entropy per (head, query): -sum(p * log(p)) over keys
+            entropy = -(attention * log_attn).sum(dim=-1)  # (heads, target_len)
+            # Average over query positions to get per-head scalar
+            per_head_entropy = entropy.mean(dim=-1)  # (heads,)
 
             if "entropy_mean" in config.stats:
-                summary["entropy_mean"] = float(entropy.mean().item())
+                summary["entropy_mean"] = float(per_head_entropy.mean().item())
 
             if "entropy_min" in config.stats:
-                summary["entropy_min"] = float(entropy.min().item())
+                summary["entropy_min"] = float(per_head_entropy.min().item())
 
-        # Concentration: max attention weight per head
-        if "concentration_max" in config.stats:
-            # Max over keys/source for each query/target, then max over queries/targets, then max over heads
-            # Works for both self-attention and cross-attention
-            max_attn = attention.max(dim=-1)[0]  # Max over keys/source: (heads, target_len) or (heads, seq_len)
-            summary["concentration_max"] = float(max_attn.max().item())
+            if "entropy_max" in config.stats:
+                summary["entropy_max"] = float(per_head_entropy.max().item())
+
+            # Collapsed heads: entropy < 0.1 (nearly all attention on one token)
+            if "collapsed_head_count" in config.stats:
+                summary["collapsed_head_count"] = int((per_head_entropy < 0.1).sum().item())
+
+            # Focused heads: concentration > threshold (using high entropy as proxy)
+            # Focused = head has high concentration (entropy > 4.0 = overloaded/diffuse)
+            if "focused_head_count" in config.stats:
+                # focused_head_count: heads with concentration_max > 0.9
+                # We compute this from per-head max attention below
+                pass  # Will be filled in concentration section
+
+        # ── Per-head concentration (shared intermediate) ──────────────
+        need_concentration = any(
+            s in config.stats for s in ("concentration_max", "concentration_min", "focused_head_count")
+        )
+
+        if need_concentration:
+            # Max over keys for each (head, query), then mean over queries
+            max_attn_per_query = attention.max(dim=-1)[0]  # (heads, target_len)
+            per_head_max = max_attn_per_query.mean(dim=-1)  # (heads,)
+
+            if "concentration_max" in config.stats:
+                summary["concentration_max"] = float(max_attn_per_query.max().item())
+
+            if "concentration_min" in config.stats:
+                summary["concentration_min"] = float(max_attn_per_query.min().item())
+
+            # Focused heads: average max attention > 0.9 for this head
+            if "focused_head_count" in config.stats:
+                summary["focused_head_count"] = int((per_head_max > 0.9).sum().item())
 
         return summary
 
@@ -210,6 +248,7 @@ def compute_logits_summary(
     logits: torch.Tensor,
     tokenizer: Any,
     config: "LogitsSummariesConfig",
+    actual_token_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Compute summary statistics for logits tensor.
@@ -218,6 +257,8 @@ def compute_logits_summary(
         logits: Logits tensor, shape (batch, seq_len, vocab_size) or (vocab_size,)
         tokenizer: Tokenizer for decoding token IDs
         config: Logits summaries configuration
+        actual_token_id: The actually generated token ID (for surprisal computation).
+                        If None, surprisal is skipped.
 
     Returns:
         Dictionary with summary statistics
@@ -240,21 +281,26 @@ def compute_logits_summary(
 
         summary: Dict[str, Any] = {}
 
-        # Compute probabilities
-        # For efficiency, only compute over top-k
-        topk_k = max(config.topk, MIN_TOPK_FOR_ENTROPY)  # At least MIN_TOPK_FOR_ENTROPY for good entropy estimate
+        # ── Shared intermediates (compute once, use many) ──────────────
+        # Use log_softmax for numerical stability (log-sum-exp trick)
+        log_probs_full = F.log_softmax(logits, dim=-1)
+        probs_full = torch.exp(log_probs_full)
+
+        # Top-k values (shared by margin, agreement, topk_probs)
+        topk_k = max(config.topk, MIN_TOPK_FOR_ENTROPY)
         topk_values, topk_indices = torch.topk(logits, k=min(topk_k, len(logits)))
+        topk_probs = probs_full[topk_indices]
 
-        # Compute softmax over top-k (approximation for large vocabs)
-        topk_probs = F.softmax(topk_values, dim=-1)
-
-        # Entropy
+        # ── Shannon Entropy (numerically stable via log_softmax) ───────
         if "entropy" in config.stats:
-            eps = 1e-10
-            entropy = -(topk_probs * torch.log(topk_probs + eps)).sum()
-            summary["entropy"] = float(entropy.item())
+            # H = -Σ(p * log_p) / log(2), using full vocab for accuracy
+            # nan_to_num handles 0 * (-inf) = NaN edge case (lim p→0 of p*log(p) = 0)
+            p_log_p = probs_full * log_probs_full
+            entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
+            entropy_bits = float(entropy_nats.item()) / math.log(2)
+            summary["entropy"] = entropy_bits
 
-        # Top-1 to Top-2 margin
+        # ── Top-1 to Top-2 margin (legacy field, kept for backward compat) ──
         if "top1_top2_margin" in config.stats:
             if len(topk_probs) >= 2:
                 margin = topk_probs[0] - topk_probs[1]
@@ -262,10 +308,42 @@ def compute_logits_summary(
             else:
                 summary["top1_top2_margin"] = 0.0
 
-        # Top-k token probabilities
+        # ── Top-K Margin (Phase-1a: same as top1_top2_margin but separate field) ──
+        if "top_k_margin" in config.stats:
+            if len(topk_probs) >= 2:
+                summary["top_k_margin"] = float((topk_probs[0] - topk_probs[1]).item())
+            else:
+                summary["top_k_margin"] = 0.0
+
+        # ── Voter Agreement (top-K probability mass) ───────────────────
+        if "voter_agreement" in config.stats:
+            top_10 = min(10, len(topk_probs))
+            agreement = float(topk_probs[:top_10].sum().item())
+            summary["voter_agreement"] = agreement
+
+        # ── Perplexity (2^entropy) ────────────────────────────────────
+        if "perplexity" in config.stats:
+            # Depends on entropy being computed
+            ent = summary.get("entropy")
+            if ent is not None:
+                summary["perplexity"] = float(2.0**ent)
+
+        # ── Surprisal (-log₂(p_actual_token)) ────────────────────────
+        if "surprisal" in config.stats and actual_token_id is not None:
+            if 0 <= actual_token_id < len(log_probs_full):
+                # -log₂(p) = -log_p / log(2)
+                log_p_actual = log_probs_full[actual_token_id]
+                surprisal = float(-log_p_actual.item()) / math.log(2)
+                summary["surprisal"] = surprisal
+
+        # ── Top-k token probabilities ─────────────────────────────────
         if "topk_probs" in config.stats:
             topk_list = []
-            for token_id, prob in zip(topk_indices[: config.topk], topk_probs[: config.topk], strict=False):
+            for token_id, prob in zip(
+                topk_indices[: config.topk],
+                topk_probs[: config.topk],
+                strict=False,
+            ):
                 token_id = int(token_id.item())
                 token_text = tokenizer.decode([token_id])
                 topk_list.append(
@@ -319,6 +397,39 @@ def compute_encoder_hidden_states_summaries(
     except Exception as e:
         logger.exception("Failed to compute encoder hidden states summaries")
         raise SummaryComputationError("Encoder hidden states summary computation failed", details=str(e)) from e
+
+
+def detect_tensor_anomalies(
+    hidden_state: Optional[torch.Tensor] = None,
+    attention: Optional[torch.Tensor] = None,
+) -> Dict[str, bool]:
+    """
+    Detect NaN/Inf in hidden state and attention tensors for a single layer.
+
+    Args:
+        hidden_state: Hidden state tensor (any shape)
+        attention: Attention tensor (any shape)
+
+    Returns:
+        Dictionary with has_nan and has_inf boolean flags
+    """
+    has_nan = False
+    has_inf = False
+
+    for tensor in (hidden_state, attention):
+        if tensor is None:
+            continue
+        if not isinstance(tensor, torch.Tensor):
+            continue
+        if torch.isnan(tensor).any().item():
+            has_nan = True
+        if torch.isinf(tensor).any().item():
+            has_inf = True
+        # Short-circuit if both already found
+        if has_nan and has_inf:
+            break
+
+    return {"has_nan": has_nan, "has_inf": has_inf}
 
 
 def _random_projection_sketch(

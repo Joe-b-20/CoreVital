@@ -52,7 +52,7 @@ def test_smoke_gpt2_cpu(tmp_path):
     report = builder.build(results, "Hello")
 
     # Verify report structure
-    assert report.schema_version == "0.2.0"
+    assert report.schema_version == "0.3.0"
     assert report.trace_id is not None
     assert report.model.hf_id == "gpt2"
     assert report.summary.prompt_tokens > 0

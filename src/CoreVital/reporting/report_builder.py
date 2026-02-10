@@ -25,6 +25,12 @@
 #                - Removed encoder_attention=None from layer summaries
 #                - Use ModelBundle.dtype_str for quantized models
 #                - Schema version 0.1.0 → 0.2.0
+#   2026-02-07: Phase-1a — schema v0.3.0:
+#                - Wire new logit metrics (top_k_margin, voter_agreement, perplexity, surprisal)
+#                - Wire enhanced attention aggregation (entropy_max, concentration_min, counts)
+#                - Wire NaN/Inf detection (TensorAnomalies) per layer
+#                - Report now includes prompt_analysis (None until Phase-1b) and
+#                  health_flags (None until Phase-1c)
 # ============================================================================
 
 import uuid
@@ -38,6 +44,7 @@ from CoreVital.instrumentation.summaries import (
     compute_attention_summary,
     compute_hidden_summary,
     compute_logits_summary,
+    detect_tensor_anomalies,
 )
 from CoreVital.logging_utils import get_logger
 from CoreVital.reporting.schema import (
@@ -59,6 +66,7 @@ from CoreVital.reporting.schema import (
     SketchConfig,
     SummariesConfig,
     Summary,
+    TensorAnomalies,
     TimelineStep,
     TokenInfo,
     Warning,
@@ -166,7 +174,7 @@ class ReportBuilder:
         # Assemble final Report (tracked as child of report_build)
         with _op("assemble Report"):
             report = Report(
-                schema_version="0.2.0",
+                schema_version="0.3.0",
                 trace_id=trace_id,
                 created_at_utc=created_at,
                 model=model_info,
@@ -177,6 +185,8 @@ class ReportBuilder:
                 summary=summary,
                 warnings=warnings,
                 encoder_layers=encoder_layers,
+                prompt_analysis=None,  # Phase-1b
+                health_flags=None,  # Phase-1c
             )
 
         # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
@@ -287,6 +297,7 @@ class ReportBuilder:
                         step_data.logits,
                         results.model_bundle.tokenizer,
                         self.config.summaries.logits,
+                        actual_token_id=step_data.token_id,
                     )
                     logits_summary = LogitsSummary(**logits_dict)
                 except Exception as e:
@@ -389,11 +400,24 @@ class ReportBuilder:
                         except Exception as e:
                             logger.debug(f"Failed to compute cross-attention summary for layer {layer_idx}: {e}")
 
+                    # Compute NaN/Inf anomalies for this layer
+                    anomalies = None
+                    try:
+                        attn_tensor_for_check = None
+                        if attentions is not None and layer_idx < len(attentions):
+                            attn_tensor_for_check = attentions[layer_idx]
+                        anomaly_dict = detect_tensor_anomalies(hidden_tensor, attn_tensor_for_check)
+                        if anomaly_dict:
+                            anomalies = TensorAnomalies(**anomaly_dict)
+                    except Exception as e:
+                        logger.debug(f"Failed to detect anomalies for layer {layer_idx}: {e}")
+
                     layer_summary = LayerSummary(
                         layer_index=layer_idx,
                         hidden_summary=hidden_summary,
                         attention_summary=attention_summary,
                         cross_attention=cross_attention_summary,
+                        anomalies=anomalies,
                         extensions={},
                     )
                     layers.append(layer_summary)
@@ -515,7 +539,7 @@ def _test_report_builder():
     print(f"  Timeline steps: {len(report.timeline)}")
     print(f"  Warnings: {len(report.warnings)}")
 
-    assert report.schema_version == "0.2.0"
+    assert report.schema_version == "0.3.0"
     assert len(report.timeline) > 0
 
     print("✓ All report builder tests passed!\n")
