@@ -20,6 +20,11 @@
 #                - New logit metrics: top_k_margin, voter_agreement, perplexity, surprisal
 #                - Enhanced attention: entropy_max, concentration_min, collapsed/focused counts
 #                - New: detect_tensor_anomalies() for NaN/Inf detection
+#   2026-02-10: Phase-1b — Prompt telemetry summary functions:
+#                - extract_sparse_attention(): vectorized torch.where per head → SoA
+#                - compute_basin_scores(): middle/boundary ratio per head
+#                - compute_layer_transformations(): cosine similarity between consecutive layers
+#                - compute_prompt_surprisal(): CrossEntropyLoss(reduction='none') on prompt logits
 # ============================================================================
 
 import math
@@ -397,6 +402,171 @@ def compute_encoder_hidden_states_summaries(
     except Exception as e:
         logger.exception("Failed to compute encoder hidden states summaries")
         raise SummaryComputationError("Encoder hidden states summary computation failed", details=str(e)) from e
+
+
+def extract_sparse_attention(
+    attention: torch.Tensor,
+    threshold: float = 0.01,
+) -> List[Dict[str, Any]]:
+    """Extract sparse attention connections above threshold for one layer (all heads).
+
+    Uses vectorized torch.where — no Python loops over query positions.
+
+    Args:
+        attention: Attention tensor, shape (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
+        threshold: Minimum attention weight to store (default 0.01)
+
+    Returns:
+        List of dicts (one per head), each with query_indices, key_indices, weights lists.
+    """
+    # Ensure 3D: (heads, seq_len, seq_len)
+    if attention.dim() == 4:
+        attention = attention[0]
+    attention = attention.cpu().float()
+
+    num_heads = attention.shape[0]
+    heads: List[Dict[str, Any]] = []
+
+    for head_idx in range(num_heads):
+        head_attn = attention[head_idx]  # (seq_len, seq_len)
+        # Single torch.where on the full matrix — no Python loop over query positions
+        mask = head_attn > threshold
+        query_idx, key_idx = torch.where(mask)
+        weights = head_attn[mask]
+
+        heads.append(
+            {
+                "query_indices": query_idx.tolist(),
+                "key_indices": key_idx.tolist(),
+                "weights": [round(w, 4) for w in weights.tolist()],
+            }
+        )
+
+    return heads
+
+
+def compute_basin_scores(
+    attention: torch.Tensor,
+) -> List[float]:
+    """Compute basin score per attention head for one layer.
+
+    Basin score = avg(middle_attention) / avg(boundary_attention)
+    Where middle = middle third, boundaries = first + last third,
+    averaged across all query positions for this head.
+
+    Low basin_score (< 0.3) = head ignores middle tokens ("Lost in the Middle").
+
+    Args:
+        attention: Attention tensor, shape (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
+
+    Returns:
+        List of basin scores, one per head.
+    """
+    if attention.dim() == 4:
+        attention = attention[0]
+    attention = attention.cpu().float()
+
+    num_heads, seq_len, _ = attention.shape
+
+    if seq_len < 3:
+        # Too short to meaningfully split into thirds
+        return [1.0] * num_heads
+
+    mid_start = seq_len // 3
+    mid_end = 2 * seq_len // 3
+
+    # Build a boolean mask for the middle third of keys
+    mid_mask = torch.zeros(seq_len, dtype=torch.bool)
+    mid_mask[mid_start:mid_end] = True
+
+    scores: List[float] = []
+    for head_idx in range(num_heads):
+        head_attn = attention[head_idx]  # (seq_len, seq_len)
+        # Sum over key dimension, then average over query dimension
+        middle_attn = head_attn[:, mid_mask].sum(dim=-1).mean()  # scalar
+        boundary_attn = head_attn[:, ~mid_mask].sum(dim=-1).mean()  # scalar
+        basin = (middle_attn / (boundary_attn + 1e-10)).item()
+        scores.append(round(basin, 4))
+
+    return scores
+
+
+def compute_layer_transformations(
+    hidden_states: List[torch.Tensor],
+) -> List[float]:
+    """Compute layer-to-layer transformation as 1 - cosine_similarity between consecutive layers.
+
+    Each value represents how much the representation changed from one layer to the next,
+    averaged across all prompt tokens.
+
+    High transformation (>0.5) = layer performing significant work (good).
+    Low transformation (<0.1) = layer nearly identity (possible deadness).
+
+    Args:
+        hidden_states: List of hidden state tensors per layer.
+            Each tensor: (batch, seq_len, hidden_dim) or (seq_len, hidden_dim)
+
+    Returns:
+        List of transformation values, length = len(hidden_states) - 1.
+    """
+    if len(hidden_states) < 2:
+        return []
+
+    transformations: List[float] = []
+    for i in range(1, len(hidden_states)):
+        prev_h = hidden_states[i - 1].float()
+        curr_h = hidden_states[i].float()
+
+        # Ensure 2D: (seq_len, hidden_dim)
+        if prev_h.dim() == 3:
+            prev_h = prev_h[0]
+        if curr_h.dim() == 3:
+            curr_h = curr_h[0]
+
+        # Cosine similarity per token, then average
+        cosine_sim = F.cosine_similarity(prev_h, curr_h, dim=-1).mean()
+        transformation = 1.0 - cosine_sim.item()
+        transformations.append(round(transformation, 6))
+
+    return transformations
+
+
+def compute_prompt_surprisal(
+    logits: torch.Tensor,
+    prompt_token_ids: List[int],
+) -> List[float]:
+    """Compute per-token surprisal for prompt tokens using CrossEntropyLoss.
+
+    Surprisal = -log₂(p(actual_token | context))
+    Computed via manual shift (autoregressive: predict token[i+1] from logits[i]).
+
+    Args:
+        logits: Prompt logits, shape (batch, seq_len, vocab_size) or (seq_len, vocab_size)
+        prompt_token_ids: Prompt token IDs for alignment
+
+    Returns:
+        List of surprisal values in bits, length = len(prompt_token_ids) - 1
+        (first token has no context, so no surprisal).
+    """
+    if logits.dim() == 3:
+        logits = logits[0]  # (seq_len, vocab_size)
+    logits = logits.float()
+
+    if len(prompt_token_ids) < 2:
+        return []
+
+    # Autoregressive shift: logits[i] predicts token[i+1]
+    shift_logits = logits[:-1, :]  # (seq_len-1, vocab_size)
+    shift_labels = torch.tensor(prompt_token_ids[1:], dtype=torch.long)  # (seq_len-1,)
+
+    # CrossEntropyLoss with no reduction → per-token loss in nats
+    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+    loss_per_token = loss_fct(shift_logits, shift_labels)
+
+    # Convert nats to bits: bits = nats / ln(2)
+    surprisals_bits = loss_per_token / math.log(2)
+
+    return [round(s, 4) for s in surprisals_bits.tolist()]
 
 
 def detect_tensor_anomalies(

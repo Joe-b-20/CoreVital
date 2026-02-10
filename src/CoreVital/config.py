@@ -11,6 +11,7 @@
 #   2026-01-13: Initial configuration system for Phase-0
 #   2026-01-15: Added load_in_4bit and load_in_8bit flags to ModelConfig for quantization support
 #   2026-02-04: Phase-0.75 - added PerformanceConfig for performance monitoring mode
+#   2026-02-10: Phase-1b - added PromptTelemetryConfig (enabled, sparse_threshold)
 # ============================================================================
 
 import os
@@ -130,6 +131,18 @@ class PerformanceConfig(BaseModel):
     mode: Optional[str] = None
 
 
+class PromptTelemetryConfig(BaseModel):
+    """Prompt telemetry configuration (Phase-1b).
+
+    Controls whether a separate forward pass is run on prompt tokens
+    to capture sparse attention profiles, basin scores, layer
+    transformations, and prompt surprisal.
+    """
+
+    enabled: bool = True
+    sparse_threshold: float = 0.01  # Store attention weights above this threshold
+
+
 class Config(BaseModel):
     """Root configuration object."""
 
@@ -140,6 +153,7 @@ class Config(BaseModel):
     sink: SinkConfig = Field(default_factory=SinkConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
+    prompt_telemetry: PromptTelemetryConfig = Field(default_factory=PromptTelemetryConfig)
 
     @classmethod
     def from_yaml(cls, path: str) -> "Config":
@@ -194,6 +208,14 @@ class Config(BaseModel):
         Environment variables follow the pattern:
         COREVITAL_<SECTION>_<KEY>=value
 
+        Section names may contain underscores (e.g. prompt_telemetry), so we
+        match against actual keys in the config data rather than naively
+        splitting the env var name on ``_``.
+
+        Examples:
+            COREVITAL_DEVICE_REQUESTED=cuda      → data["device"]["requested"]
+            COREVITAL_PROMPT_TELEMETRY_ENABLED=0  → data["prompt_telemetry"]["enabled"]
+
         Args:
             data: Configuration dictionary
 
@@ -202,21 +224,40 @@ class Config(BaseModel):
         """
         prefix = "COREVITAL_"
 
-        for key, value in os.environ.items():
-            if not key.startswith(prefix):
+        # Build sorted section keys (longest first so multi-word names match before
+        # single-word prefixes, e.g. "prompt_telemetry" before "prompt")
+        section_keys = sorted(data.keys(), key=len, reverse=True)
+
+        for env_key, env_value in os.environ.items():
+            if not env_key.startswith(prefix):
                 continue
 
-            # Parse env var name
-            parts = key[len(prefix) :].lower().split("_")
+            remainder = env_key[len(prefix) :].lower()  # e.g. "prompt_telemetry_enabled"
 
-            if len(parts) == 2:
-                section, field = parts
-                if section in data and field in data[section]:
-                    data[section][field] = cls._parse_env_value(value)
-            elif len(parts) == 3:
-                section, subsection, field = parts
-                if section in data and subsection in data[section]:
-                    data[section][subsection][field] = cls._parse_env_value(value)
+            # Try to match a top-level section key
+            for section in section_keys:
+                section_prefix = section + "_"
+                if not remainder.startswith(section_prefix):
+                    continue
+
+                rest = remainder[len(section_prefix) :]  # e.g. "enabled" or "sketch_dim"
+                section_data = data.get(section)
+                if not isinstance(section_data, dict):
+                    break
+
+                # rest could be a direct field ("enabled") or subsection_field ("sketch_dim")
+                if rest in section_data:
+                    section_data[rest] = cls._parse_env_value(env_value)
+                else:
+                    # Try one more level: rest = "subsection_field"
+                    for sub_key in section_data:
+                        sub_prefix = sub_key + "_"
+                        if rest.startswith(sub_prefix) and isinstance(section_data[sub_key], dict):
+                            field = rest[len(sub_prefix) :]
+                            if field in section_data[sub_key]:
+                                section_data[sub_key][field] = cls._parse_env_value(env_value)
+                            break
+                break  # matched a section, stop looking
 
         return data
 
