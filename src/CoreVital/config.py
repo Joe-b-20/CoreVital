@@ -69,14 +69,34 @@ class AttentionSummariesConfig(BaseModel):
     """Attention summary configuration."""
 
     enabled: bool = True
-    stats: List[str] = Field(default_factory=lambda: ["entropy_mean", "entropy_min", "concentration_max"])
+    stats: List[str] = Field(
+        default_factory=lambda: [
+            "entropy_mean",
+            "entropy_min",
+            "entropy_max",
+            "concentration_max",
+            "concentration_min",
+            "collapsed_head_count",
+            "focused_head_count",
+        ]
+    )
 
 
 class LogitsSummariesConfig(BaseModel):
     """Logits summary configuration."""
 
     enabled: bool = True
-    stats: List[str] = Field(default_factory=lambda: ["entropy", "top1_top2_margin", "topk_probs"])
+    stats: List[str] = Field(
+        default_factory=lambda: [
+            "entropy",
+            "top1_top2_margin",
+            "topk_probs",
+            "top_k_margin",
+            "voter_agreement",
+            "perplexity",
+            "surprisal",
+        ]
+    )
     topk: int = 5
 
 

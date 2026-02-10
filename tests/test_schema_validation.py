@@ -43,7 +43,7 @@ from CoreVital.reporting.validation import validate_report
 def create_minimal_valid_report() -> Report:
     """Create a minimal valid report for testing."""
     return Report(
-        schema_version="0.2.0",
+        schema_version="0.3.0",
         trace_id="test-trace-123",
         created_at_utc="2026-01-11T15:22:08Z",
         model=ModelInfo(

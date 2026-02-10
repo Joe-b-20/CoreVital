@@ -34,7 +34,7 @@ def validate_report(report: Report) -> bool:
     errors = []
 
     # Check schema version
-    supported_versions = {"0.1.0", "0.2.0"}
+    supported_versions = {"0.1.0", "0.2.0", "0.3.0"}
     if report.schema_version not in supported_versions:
         errors.append(f"Invalid schema_version: {report.schema_version}")
 
