@@ -1238,12 +1238,18 @@ health_flags = HealthFlags(
 > 
 > **Trade-off:** Requires storing full hidden state vector (or at least last layer's vector) in timeline, not just summary stats. Alternative: Store last N hidden states in memory during generation, discard after health check.
 
+> ⚠️ **IMPLEMENTATION UPDATE (Phase-1c):** Threshold raised from `0.99` to **`0.9995`**. E2E testing with GPT-2 on CUDA float16 showed non-repetitive tokens ("picture", "below", ",", "are", "actually") produce cosine sims of 0.992–0.999 due to last-layer anisotropy. True repetition gives ~1.0. Threshold of 0.9995 cleanly separates normal text from repetition with margin on both sides.
+
 **Implementation Decision - MID-LAYER ANOMALY DETECTION:**
 > ➕ **NEW FLAG ADDED:** Recent research (Dec 2025) shows hallucinations concentrate in middle layers.
 > 
 > **Research:** "Hallucination Detection via Internal Representations" found probing layers 16-18 (in 32-layer models) yields ~83% accuracy for detecting hallucinations. Early/late layers perform significantly worse.
 > 
-> **Detection logic:** Track anomalies specifically in middle third of model (e.g., layers 10-22 in 32-layer model). Weight middle-layer entropy spikes, norm explosions, or attention collapse more heavily than boundary layers.
+> **Detection logic:** Track anomalies specifically in middle third of model (e.g., layers 10-22 in 32-layer model). ~~Weight middle-layer entropy spikes, norm explosions, or attention collapse more heavily than boundary layers.~~
+
+> ⚠️ **IMPLEMENTATION UPDATE (Phase-1c):** Two corrections from E2E testing:
+> 1. **Attention collapse removed from mid-layer check.** GPT-2 has 62 collapsed-head occurrences across 10 steps — this is model architecture (well-documented in "Are Sixteen Heads Really Better Than One?"), not a runtime anomaly. Already captured separately by `attention_collapse_detected`. Mid-layer anomaly now checks NaN/Inf and L2 explosion only.
+> 2. **Per-step L2 baselines, not global.** CausalLM step 0 processes the full prompt (shape `(1, seq_len, hidden_dim)`), giving L2 norms 10× higher than single-token steps 1+ (which use KV cache). A global baseline false-triggered on step 0. Per-step baselines correctly normalize each step's early layers against its own mid-layers.
 > 
 > **Why:** Early layers are syntactic, late layers are token selection. The "truth" lives in the middle layers - anomalies here are more dangerous.
 
@@ -1461,13 +1467,13 @@ plot_reliability_diagram(predictions)
 
 ### 🔧 Refinement 1: Repetition Loop Detection — Cosine over L2
 
-> **Full implementation and rationale:** See **Metric 14 — Health Flags** (Repetition Loop Detection section). The original L2-norm-difference approach was replaced with cosine similarity to detect directional alignment (semantic repetition) rather than magnitude similarity. Threshold: `cosine_sim > 0.99`. Requires transient buffer of last 5 hidden state vectors (~20KB), discarded after health check. Research basis: standard NLP practice.
+> **Full implementation and rationale:** See **Metric 14 — Health Flags** (Repetition Loop Detection section). The original L2-norm-difference approach was replaced with cosine similarity to detect directional alignment (semantic repetition) rather than magnitude similarity. Threshold: ~~`cosine_sim > 0.99`~~ **`cosine_sim > 0.9995`** (see Metric 14 implementation update — 0.99 false-positives on float16 due to anisotropy). Requires transient buffer of last 5 hidden state vectors (~20KB), discarded after health check. Research basis: standard NLP practice.
 
 ---
 
 ### 🎯 Refinement 2: Mid-Layer Anomaly Detection — Dynamic Threshold
 
-> **Full implementation and rationale:** See **Metric 14 — Health Flags** (Mid-Layer Anomaly Detection section). Targets the "hallucination sweet spot" (middle third of layers). Uses dynamic L2 threshold (5x early-layer baseline) — **not** a hardcoded constant. Research basis: "Hallucination Detection via Internal Representations" (Dec 2025) — 83% accuracy probing layers 16-18 in 32-layer models.
+> **Full implementation and rationale:** See **Metric 14 — Health Flags** (Mid-Layer Anomaly Detection section). Targets the "hallucination sweet spot" (middle third of layers). Uses dynamic L2 threshold (5x early-layer baseline, **per-step** not global — see Metric 14 implementation update) — **not** a hardcoded constant. Attention collapse excluded from this check (structural, not runtime). Research basis: "Hallucination Detection via Internal Representations" (Dec 2025) — 83% accuracy probing layers 16-18 in 32-layer models.
 
 ---
 
@@ -2192,4 +2198,6 @@ else:
 
 **END OF PHASE-1 METRICS ANALYSIS**
 
-*Last Updated: Pre-implementation review notes added — vectorized extraction, transient buffer discipline, schema dependency chain, Seq2Seq encoder reuse. Storage estimates corrected to reflect sparse approach (1.75MB typical, not 8.25MB from superseded compressed vector approach).*
+*Last Updated: Phase-1c complete. Health flags populated with transient buffer lifecycle, repetition loop detection (cosine threshold 0.9995 for float16 anisotropy), and per-step mid-layer anomaly detection (runtime NaN/Inf/L2 only, not structural collapse). All exit criteria verified.*
+*Phase-1b: Vectorized sparse attention, basin scores, layer transformations, and prompt surprisal implemented.*
+*Phase-1a: Pre-implementation review notes added — vectorized extraction, transient buffer discipline, schema dependency chain, Seq2Seq encoder reuse. Storage estimates corrected to reflect sparse approach (1.75MB typical, not 8.25MB from superseded compressed vector approach).*
