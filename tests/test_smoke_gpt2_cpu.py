@@ -10,6 +10,7 @@
 # Changelog:
 #   2026-01-13: Initial smoke test for Phase-0
 #   2026-02-10: Phase-1b - Added prompt_analysis assertions
+#   2026-02-10: Phase-1c - Added health_flags assertions
 # ============================================================================
 
 import json
@@ -113,6 +114,19 @@ def test_smoke_gpt2_cpu(tmp_path):
     assert len(layer0["heads"]) > 0, "Each layer should have attention heads"
     assert len(layer0["basin_scores"]) > 0, "Each layer should have basin scores"
 
+    # Check health_flags (Phase-1c)
+    hf = data.get("health_flags")
+    assert hf is not None, "health_flags should be populated"
+    assert isinstance(hf["nan_detected"], bool)
+    assert isinstance(hf["inf_detected"], bool)
+    assert isinstance(hf["attention_collapse_detected"], bool)
+    assert isinstance(hf["high_entropy_steps"], int)
+    assert isinstance(hf["repetition_loop_detected"], bool)
+    assert isinstance(hf["mid_layer_anomaly_detected"], bool)
+    # GPT-2 on a simple prompt should be clean
+    assert not hf["nan_detected"], "GPT-2 should have no NaN"
+    assert not hf["inf_detected"], "GPT-2 should have no Inf"
+
     print("\n✓ Smoke test passed!")
     print(f"  Output: {output_path}")
     print(f"  Prompt tokens: {data['summary']['prompt_tokens']}")
@@ -121,6 +135,7 @@ def test_smoke_gpt2_cpu(tmp_path):
     print(f"  Prompt analysis layers: {len(pa['layers'])}")
     print(f"  Layer transformations: {len(pa['layer_transformations'])}")
     print(f"  Prompt surprisals: {len(pa['prompt_surprisals'])}")
+    print(f"  Health flags: {hf}")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@
 #   2026-01-23: Phase-0.5 - Added tests for extensions fields and encoder_layers
 #   2026-02-10: Phase-1b - Added assertions for prompt_forward and prompt_analysis
 #                (CausalLM and Seq2Seq)
+#   2026-02-10: Phase-1c - Added assertions for health_flags (CausalLM and Seq2Seq),
+#                transient buffer lifecycle verification, repetition loop detection tests
 # ============================================================================
 
 import json
@@ -119,6 +121,18 @@ class TestMockCausalLMInstrumentation:
         assert len(report.prompt_analysis.layers) > 0, "Should have prompt attention layers"
         assert len(report.prompt_analysis.layer_transformations) > 0, "Should have layer transformations"
 
+        # Phase-1c: health_flags should be populated
+        assert report.health_flags is not None, "Report should have health_flags"
+        assert isinstance(report.health_flags.nan_detected, bool)
+        assert isinstance(report.health_flags.inf_detected, bool)
+        assert isinstance(report.health_flags.attention_collapse_detected, bool)
+        assert isinstance(report.health_flags.high_entropy_steps, int)
+        assert isinstance(report.health_flags.repetition_loop_detected, bool)
+        assert isinstance(report.health_flags.mid_layer_anomaly_detected, bool)
+        # Mock data should be clean — no anomalies expected
+        assert not report.health_flags.nan_detected, "Mock data should have no NaN"
+        assert not report.health_flags.inf_detected, "Mock data should have no Inf"
+
         # Serialize to JSON
         json_str = serialize_report_to_json(report)
         assert json_str is not None
@@ -131,6 +145,11 @@ class TestMockCausalLMInstrumentation:
         assert "model" in json_data
         assert "timeline" in json_data
         assert "summary" in json_data
+        assert "health_flags" in json_data
+        assert json_data["health_flags"] is not None
+        assert isinstance(json_data["health_flags"]["nan_detected"], bool)
+        assert isinstance(json_data["health_flags"]["repetition_loop_detected"], bool)
+        assert isinstance(json_data["health_flags"]["mid_layer_anomaly_detected"], bool)
 
         # Verify summaries are present
         assert len(json_data["timeline"]) > 0
@@ -272,6 +291,12 @@ class TestMockSeq2SeqInstrumentation:
         assert len(report.prompt_analysis.layer_transformations) > 0, "Should have layer transformations"
         assert len(report.prompt_analysis.prompt_surprisals) == 0, "Seq2Seq encoder has no surprisals"
 
+        # Phase-1c: health_flags should be populated
+        assert report.health_flags is not None, "Report should have health_flags"
+        assert isinstance(report.health_flags.nan_detected, bool)
+        assert isinstance(report.health_flags.repetition_loop_detected, bool)
+        assert isinstance(report.health_flags.mid_layer_anomaly_detected, bool)
+
         # Serialize to JSON
         json_str = serialize_report_to_json(report)
         assert json_str is not None
@@ -281,6 +306,8 @@ class TestMockSeq2SeqInstrumentation:
         assert json_data["schema_version"] == "0.3.0"
         assert "encoder_layers" in json_data
         assert len(json_data["encoder_layers"]) == mock_model_bundle.num_layers
+        assert "health_flags" in json_data
+        assert json_data["health_flags"] is not None
 
     @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
     def test_mock_seq2seq_output_shapes(self, mock_model_bundle):
@@ -563,3 +590,194 @@ class TestPhase05Features:
             if "layers" in json_data["timeline"][0] and len(json_data["timeline"][0]["layers"]) > 0:
                 assert "extensions" in json_data["timeline"][0]["layers"][0]
                 assert isinstance(json_data["timeline"][0]["layers"][0]["extensions"], dict)
+
+
+# ============================================================================
+# Phase-1c Tests: Health Flags + Transient Buffer
+# ============================================================================
+
+
+class TestPhase1cHealthFlags:
+    """Test Phase-1c health flags and transient buffer lifecycle."""
+
+    def test_health_flags_in_causal_json(self, mock_model_bundle, tmp_path):
+        """Test that health_flags appear in serialized JSON for CausalLM."""
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 3
+        config.generation.seed = 42
+        config.sink.output_dir = str(tmp_path)
+
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Health flag test")
+
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Health flag test")
+
+        json_str = serialize_report_to_json(report)
+        data = json.loads(json_str)
+
+        hf = data["health_flags"]
+        assert hf is not None
+        assert "nan_detected" in hf
+        assert "inf_detected" in hf
+        assert "attention_collapse_detected" in hf
+        assert "high_entropy_steps" in hf
+        assert "repetition_loop_detected" in hf
+        assert "mid_layer_anomaly_detected" in hf
+
+        # No transient buffer data should leak into the JSON
+        # The hidden_size of the mock model should NOT appear as an array length
+        json_flat = json_str.lower()
+        assert "hidden_state_buffer" not in json_flat
+
+    @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
+    def test_health_flags_in_seq2seq_json(self, mock_model_bundle, tmp_path):
+        """Test that health_flags appear in serialized JSON for Seq2Seq."""
+        config = Config()
+        config.model.hf_id = "mock-seq2seq"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 3
+        config.generation.seed = 42
+        config.sink.output_dir = str(tmp_path)
+
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("Translate: health flag test")
+
+        builder = ReportBuilder(config)
+        report = builder.build(results, "Translate: health flag test")
+
+        json_str = serialize_report_to_json(report)
+        data = json.loads(json_str)
+
+        hf = data["health_flags"]
+        assert hf is not None
+        assert isinstance(hf["nan_detected"], bool)
+        assert isinstance(hf["repetition_loop_detected"], bool)
+
+
+class TestRepetitionLoopDetection:
+    """Unit tests for repetition loop detection."""
+
+    def test_detect_repetition_with_identical_vectors(self):
+        """Identical hidden states should trigger repetition detection."""
+        from CoreVital.instrumentation.summaries import detect_repetition_loop
+
+        # 5 identical vectors (exact repetition)
+        vec = torch.randn(768)
+        buffer = [vec.clone() for _ in range(5)]
+        assert detect_repetition_loop(buffer) is True
+
+    def test_no_repetition_with_random_vectors(self):
+        """Random hidden states should NOT trigger repetition detection."""
+        from CoreVital.instrumentation.summaries import detect_repetition_loop
+
+        buffer = [torch.randn(768) for _ in range(5)]
+        assert detect_repetition_loop(buffer) is False
+
+    def test_no_repetition_with_short_buffer(self):
+        """Buffer with fewer than 4 entries should never trigger."""
+        from CoreVital.instrumentation.summaries import detect_repetition_loop
+
+        buffer = [torch.randn(768) for _ in range(3)]
+        assert detect_repetition_loop(buffer) is False
+
+    def test_repetition_with_near_identical_vectors(self):
+        """Vectors that are very similar (cosine > 0.9995) should trigger."""
+        from CoreVital.instrumentation.summaries import detect_repetition_loop
+
+        base = torch.randn(768)
+        # Add very tiny noise — cosine similarity will still be > 0.9995
+        buffer = [base + torch.randn(768) * 0.0001 for _ in range(5)]
+        assert detect_repetition_loop(buffer) is True
+
+    def test_empty_buffer(self):
+        """Empty buffer should not trigger."""
+        from CoreVital.instrumentation.summaries import detect_repetition_loop
+
+        assert detect_repetition_loop([]) is False
+
+
+class TestMidLayerAnomalyDetection:
+    """Unit tests for mid-layer anomaly detection."""
+
+    def test_no_anomaly_with_clean_data(self):
+        """Clean layer summaries should not trigger mid-layer anomaly."""
+        from unittest.mock import Mock
+
+        from CoreVital.instrumentation.summaries import detect_mid_layer_anomaly
+
+        # Build 12 clean layers per step, 3 steps
+        num_layers = 12
+        timeline_layers = []
+        for _ in range(3):
+            step_layers = []
+            for i in range(num_layers):
+                layer = Mock()
+                layer.anomalies = Mock(has_nan=False, has_inf=False)
+                layer.hidden_summary = Mock(l2_norm_mean=20.0 + i * 0.5)  # Gentle growth
+                step_layers.append(layer)
+            timeline_layers.append(step_layers)
+
+        assert detect_mid_layer_anomaly(timeline_layers, num_layers) is False
+
+    def test_no_anomaly_with_attention_collapse(self):
+        """Attention collapse alone should NOT trigger mid-layer anomaly (it's structural, not runtime)."""
+        from unittest.mock import Mock
+
+        from CoreVital.instrumentation.summaries import detect_mid_layer_anomaly
+
+        num_layers = 12
+        step_layers = []
+        for i in range(num_layers):
+            layer = Mock()
+            layer.anomalies = Mock(has_nan=False, has_inf=False)
+            # Collapsed heads in mid-layers (like GPT-2) — should NOT trigger
+            layer.hidden_summary = Mock(l2_norm_mean=20.0 + i * 0.5)
+            step_layers.append(layer)
+
+        assert detect_mid_layer_anomaly([step_layers], num_layers) is False
+
+    def test_anomaly_with_nan_in_mid_layer(self):
+        """NaN in a mid-layer should trigger anomaly detection."""
+        from unittest.mock import Mock
+
+        from CoreVital.instrumentation.summaries import detect_mid_layer_anomaly
+
+        num_layers = 12
+        step_layers = []
+        for i in range(num_layers):
+            layer = Mock()
+            # NaN in layer 6 (middle third: layers 4-7)
+            layer.anomalies = Mock(has_nan=(i == 6), has_inf=False)
+            layer.hidden_summary = Mock(l2_norm_mean=20.0)
+            step_layers.append(layer)
+
+        assert detect_mid_layer_anomaly([step_layers], num_layers) is True
+
+    def test_anomaly_with_l2_explosion(self):
+        """L2 norm explosion in mid-layers should trigger anomaly detection."""
+        from unittest.mock import Mock
+
+        from CoreVital.instrumentation.summaries import detect_mid_layer_anomaly
+
+        num_layers = 12
+        step_layers = []
+        for i in range(num_layers):
+            layer = Mock()
+            layer.anomalies = Mock(has_nan=False, has_inf=False)
+            # Early layers: ~20, mid-layer 6: 500 (8x baseline = 160, so 500 >> 160)
+            norm = 500.0 if i == 6 else 20.0
+            layer.hidden_summary = Mock(l2_norm_mean=norm)
+            step_layers.append(layer)
+
+        assert detect_mid_layer_anomaly([step_layers], num_layers) is True
+
+    def test_no_anomaly_with_too_few_layers(self):
+        """Model with fewer than 3 layers should not trigger."""
+        from CoreVital.instrumentation.summaries import detect_mid_layer_anomaly
+
+        assert detect_mid_layer_anomaly([[]], 2) is False

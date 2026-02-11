@@ -36,6 +36,20 @@
 #                - Sparse attention extraction + basin scores per layer
 #                - Layer transformations (cosine similarity between consecutive layers)
 #                - Prompt surprisal (CrossEntropyLoss on prompt logits, CausalLM only)
+#   2026-02-10: Phase-1c — Health flags + transient buffer:
+#                - _build_health_flags() aggregates all signals into HealthFlags
+#                - Transient buffer: last-layer hidden states from last 5 generated steps
+#                - Repetition loop detection (cosine similarity > 0.9995 on buffer)
+#                  Threshold raised from 0.99 to 0.9995 to handle float16 anisotropy
+#                - Mid-layer anomaly detection: per-step dynamic 8× L2 baseline + NaN/Inf
+#                  Attention collapse excluded (structural, not runtime anomaly)
+#                  Per-step baselines (not global) to handle step-0 prompt processing scale
+#                - Aggregate NaN/Inf, attention collapse, high entropy (>4.0) step count
+#                - Buffer lifecycle: allocate → consume → kill (never serialized)
+#   2026-02-10: Phase-1c fixes (CI/Codex review):
+#                - MyPy fix: renamed loop variable to avoid StepData/TimelineStep type conflict
+#                - Cross-attention NaN/Inf: pass cross_attentions[layer_idx] to
+#                  detect_tensor_anomalies() so Seq2Seq anomalies are fully checked
 # ============================================================================
 
 import uuid
@@ -52,6 +66,8 @@ from CoreVital.instrumentation.summaries import (
     compute_layer_transformations,
     compute_logits_summary,
     compute_prompt_surprisal,
+    detect_mid_layer_anomaly,
+    detect_repetition_loop,
     detect_tensor_anomalies,
     extract_sparse_attention,
 )
@@ -61,6 +77,7 @@ from CoreVital.reporting.schema import (
     AttentionSummary,
     GeneratedInfo,
     GenerationConfig,
+    HealthFlags,
     HiddenConfig,
     HiddenSummary,
     LayerSummary,
@@ -187,6 +204,11 @@ class ReportBuilder:
         with _op("_build_prompt_analysis"):
             prompt_analysis = self._build_prompt_analysis(results)
 
+        # Build health flags (Phase-1c)
+        # Transient buffer lifecycle: allocate → consume → kill, all inside this method
+        with _op("_build_health_flags"):
+            health_flags = self._build_health_flags(results, timeline)
+
         # Assemble final Report (tracked as child of report_build)
         with _op("assemble Report"):
             report = Report(
@@ -202,7 +224,7 @@ class ReportBuilder:
                 warnings=warnings,
                 encoder_layers=encoder_layers,
                 prompt_analysis=prompt_analysis,
-                health_flags=None,  # Phase-1c
+                health_flags=health_flags,
             )
 
         # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
@@ -416,13 +438,18 @@ class ReportBuilder:
                         except Exception as e:
                             logger.debug(f"Failed to compute cross-attention summary for layer {layer_idx}: {e}")
 
-                    # Compute NaN/Inf anomalies for this layer
+                    # Compute NaN/Inf anomalies for this layer (hidden + self-attn + cross-attn)
                     anomalies = None
                     try:
                         attn_tensor_for_check = None
                         if attentions is not None and layer_idx < len(attentions):
                             attn_tensor_for_check = attentions[layer_idx]
-                        anomaly_dict = detect_tensor_anomalies(hidden_tensor, attn_tensor_for_check)
+                        cross_attn_for_check = None
+                        if cross_attentions is not None and layer_idx < len(cross_attentions):
+                            cross_attn_for_check = cross_attentions[layer_idx]
+                        anomaly_dict = detect_tensor_anomalies(
+                            hidden_tensor, attn_tensor_for_check, cross_attn_for_check
+                        )
                         if anomaly_dict:
                             anomalies = TensorAnomalies(**anomaly_dict)
                     except Exception as e:
@@ -584,6 +611,108 @@ class ReportBuilder:
             layer_transformations=layer_transformations,
             prompt_surprisals=prompt_surprisals,
         )
+
+    def _build_health_flags(
+        self,
+        results: InstrumentationResults,
+        timeline: List[TimelineStep],
+    ) -> HealthFlags:
+        """Build aggregated health flags from timeline data (Phase-1c).
+
+        Implements the transient buffer lifecycle:
+        1. ALLOCATE: Build buffer of last-layer hidden state vectors from last 5 generated steps
+        2. CONSUME: Run repetition loop detection (cosine similarity on buffer)
+        3. KILL: Explicitly delete buffer and free GPU memory
+
+        Other health flags are aggregated from the already-built timeline (LayerSummary objects).
+        The buffer never touches the schema — only the boolean result is stored.
+        """
+        # --- Transient buffer: allocate ---
+        # Extract last-layer hidden state vector (last token) from generated steps
+        generated_steps = [s for s in results.timeline if not s.is_prompt_token]
+        buffer_steps = generated_steps[-5:]  # FIFO capacity 5
+
+        hidden_state_buffer: list[torch.Tensor] = []
+        for step in buffer_steps:
+            if step.hidden_states is not None and len(step.hidden_states) > 0:
+                try:
+                    last_layer = step.hidden_states[-1]  # (batch, seq_len, hidden_dim)
+                    if isinstance(last_layer, torch.Tensor) and last_layer.dim() >= 2:
+                        # Last token of batch 0
+                        vec = last_layer[0, -1, :].detach().cpu()  # (hidden_dim,)
+                        hidden_state_buffer.append(vec)
+                    elif isinstance(last_layer, torch.Tensor):
+                        hidden_state_buffer.append(last_layer.detach().cpu().flatten())
+                except Exception as e:
+                    logger.debug(f"Failed to extract hidden state for buffer: {e}")
+
+        logger.debug(f"Transient buffer: {len(hidden_state_buffer)} vectors from last {len(buffer_steps)} steps")
+
+        # --- Consume: repetition loop detection ---
+        repetition_loop_detected = False
+        try:
+            repetition_loop_detected = detect_repetition_loop(hidden_state_buffer)
+        except Exception as e:
+            logger.warning(f"Failed repetition loop detection: {e}")
+
+        # --- Kill: explicit buffer teardown ---
+        del hidden_state_buffer
+        del buffer_steps
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        # --- Aggregate from built timeline ---
+        nan_detected = False
+        inf_detected = False
+        attention_collapse_detected = False
+        high_entropy_steps = 0
+
+        for tl_step in timeline:
+            # High entropy check (per-step logits entropy)
+            if tl_step.logits_summary and tl_step.logits_summary.entropy is not None:
+                if tl_step.logits_summary.entropy > 4.0:
+                    high_entropy_steps += 1
+
+            # Per-layer checks
+            for layer in tl_step.layers:
+                # NaN/Inf from TensorAnomalies
+                if layer.anomalies is not None:
+                    if layer.anomalies.has_nan:
+                        nan_detected = True
+                    if layer.anomalies.has_inf:
+                        inf_detected = True
+
+                # Attention collapse
+                if layer.attention_summary is not None:
+                    if layer.attention_summary.collapsed_head_count > 0:
+                        attention_collapse_detected = True
+
+        # --- Mid-layer anomaly detection ---
+        mid_layer_anomaly_detected = False
+        num_layers = results.model_bundle.num_layers
+        if timeline and num_layers >= 3:
+            try:
+                # Pass list of step-layers (each is a List[LayerSummary])
+                timeline_layers = [tl_step.layers for tl_step in timeline]
+                mid_layer_anomaly_detected = detect_mid_layer_anomaly(timeline_layers, num_layers)
+            except Exception as e:
+                logger.warning(f"Failed mid-layer anomaly detection: {e}")
+
+        flags = HealthFlags(
+            nan_detected=nan_detected,
+            inf_detected=inf_detected,
+            attention_collapse_detected=attention_collapse_detected,
+            high_entropy_steps=high_entropy_steps,
+            repetition_loop_detected=repetition_loop_detected,
+            mid_layer_anomaly_detected=mid_layer_anomaly_detected,
+        )
+
+        logger.debug(
+            f"Health flags: nan={nan_detected}, inf={inf_detected}, "
+            f"collapse={attention_collapse_detected}, high_entropy={high_entropy_steps}, "
+            f"repetition={repetition_loop_detected}, mid_layer_anomaly={mid_layer_anomaly_detected}"
+        )
+        return flags
 
 
 # ============================================================================

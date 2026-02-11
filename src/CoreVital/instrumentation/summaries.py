@@ -25,6 +25,23 @@
 #                - compute_basin_scores(): middle/boundary ratio per head
 #                - compute_layer_transformations(): cosine similarity between consecutive layers
 #                - compute_prompt_surprisal(): CrossEntropyLoss(reduction='none') on prompt logits
+#   2026-02-10: Phase-1c — Health flag detection functions:
+#                - detect_repetition_loop(): cosine similarity > 0.9995 on transient buffer
+#                  (threshold accounts for float16 anisotropy — non-repetitive GPT-2 gives 0.992-0.999)
+#                - detect_mid_layer_anomaly(): per-step dynamic L2 baseline + NaN/Inf
+#                  (attention collapse excluded — structural not runtime; per-step baselines
+#                   to handle CausalLM step-0 prompt processing scale difference)
+#   2026-02-10: Phase-1c fixes (CI/Codex review):
+#                - detect_repetition_loop(): enforce CONSECUTIVE similarity — counter resets
+#                  on a non-matching pair (previously counted total, false-positived on
+#                  [high, low, high, high] patterns)
+#                - compute_logits_summary(): entropy always computed internally so that
+#                  stats=["perplexity"] works without "entropy" in the list
+#                - detect_tensor_anomalies(): added cross_attention parameter — Seq2Seq
+#                  cross-attention NaN/Inf was silently missed
+#                - detect_mid_layer_anomaly(): L2 multiplier raised from 5× to 8×
+#                  (flan-t5-small peaks at 5.7× mid/early ratio in normal operation,
+#                   GPT-2 at 3.1×; 5× false-positived on flan-t5-small)
 # ============================================================================
 
 import math
@@ -297,12 +314,11 @@ def compute_logits_summary(
         topk_probs = probs_full[topk_indices]
 
         # ── Shannon Entropy (numerically stable via log_softmax) ───────
+        # Always compute internally — perplexity depends on it even if "entropy" not in stats
+        p_log_p = probs_full * log_probs_full
+        entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
+        entropy_bits = float(entropy_nats.item()) / math.log(2)
         if "entropy" in config.stats:
-            # H = -Σ(p * log_p) / log(2), using full vocab for accuracy
-            # nan_to_num handles 0 * (-inf) = NaN edge case (lim p→0 of p*log(p) = 0)
-            p_log_p = probs_full * log_probs_full
-            entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
-            entropy_bits = float(entropy_nats.item()) / math.log(2)
             summary["entropy"] = entropy_bits
 
         # ── Top-1 to Top-2 margin (legacy field, kept for backward compat) ──
@@ -328,10 +344,7 @@ def compute_logits_summary(
 
         # ── Perplexity (2^entropy) ────────────────────────────────────
         if "perplexity" in config.stats:
-            # Depends on entropy being computed
-            ent = summary.get("entropy")
-            if ent is not None:
-                summary["perplexity"] = float(2.0**ent)
+            summary["perplexity"] = float(2.0**entropy_bits)
 
         # ── Surprisal (-log₂(p_actual_token)) ────────────────────────
         if "surprisal" in config.stats and actual_token_id is not None:
@@ -569,16 +582,140 @@ def compute_prompt_surprisal(
     return [round(s, 4) for s in surprisals_bits.tolist()]
 
 
+def detect_repetition_loop(
+    hidden_state_buffer: List[torch.Tensor],
+    threshold: float = 0.9995,
+) -> bool:
+    """Detect if the model is stuck in a repetition loop using cosine similarity.
+
+    Compares consecutive hidden state vectors in the buffer. If 3+ consecutive
+    pairs have cosine_sim > threshold, a repetition loop is detected.
+
+    The buffer should contain the last-layer hidden state vector from the most
+    recent generation steps (transient — never serialized).
+
+    Note on threshold: The default of 0.9995 accounts for the anisotropy problem
+    in transformer last-layer representations. In float16 models (e.g., GPT-2 on CUDA),
+    even non-repetitive tokens produce cosine similarities of 0.992-0.999. True
+    repetition (same token repeated) gives ~1.0, so 0.9995 provides clear separation.
+
+    Args:
+        hidden_state_buffer: List of 1D hidden state vectors (last layer, last token).
+            Typically the last 5 steps. Each tensor shape: (hidden_dim,)
+        threshold: Cosine similarity threshold for "same direction" (default 0.9995)
+
+    Returns:
+        True if repetition loop detected, False otherwise.
+    """
+    if len(hidden_state_buffer) < 4:
+        return False
+
+    consecutive_count = 0
+    for i in range(1, len(hidden_state_buffer)):
+        prev_h = hidden_state_buffer[i - 1].float()
+        curr_h = hidden_state_buffer[i].float()
+
+        # Ensure 1D
+        if prev_h.dim() > 1:
+            prev_h = prev_h.flatten()
+        if curr_h.dim() > 1:
+            curr_h = curr_h.flatten()
+
+        cosine_sim = F.cosine_similarity(prev_h.unsqueeze(0), curr_h.unsqueeze(0)).item()
+        if cosine_sim > threshold:
+            consecutive_count += 1
+            if consecutive_count >= 3:
+                return True
+        else:
+            consecutive_count = 0  # Reset on a non-matching pair
+
+    return False
+
+
+def detect_mid_layer_anomaly(
+    timeline_layers: List[List[Any]],
+    num_layers: int,
+) -> bool:
+    """Detect runtime anomalies in middle layers (hallucination sweet spot).
+
+    Middle layers (middle third) are where "truth processing" occurs.
+    Anomalies here are more dangerous than in early (syntactic) or late
+    (token selection) layers.
+
+    Checks (runtime anomalies only):
+    1. NaN/Inf in mid-layer hidden states or attentions
+    2. L2 norm explosion (dynamic 8× per-step early-layer baseline)
+
+    Note: Attention collapse is NOT checked here — it's a model architecture
+    property (e.g., GPT-2 has many collapsed heads by design), not a runtime
+    anomaly. Collapse is already captured by attention_collapse_detected.
+
+    Args:
+        timeline_layers: List of step layers. Each entry is a list of LayerSummary-like
+            objects with .anomalies, .hidden_summary attributes.
+        num_layers: Total number of layers in the model.
+
+    Returns:
+        True if mid-layer anomaly detected, False otherwise.
+    """
+    if not timeline_layers or num_layers < 3:
+        return False
+
+    mid_start = num_layers // 3
+    mid_end = 2 * num_layers // 3
+
+    # Check mid-layers across all steps using per-step baselines
+    # Per-step baseline accounts for different sequence lengths across steps
+    # (step 0 in CausalLM processes full prompt, steps 1+ process single tokens,
+    #  causing very different L2 norm scales — a global baseline would false-positive)
+    for step_layers in timeline_layers:
+        # NaN/Inf check (no baseline needed)
+        for layer_idx in range(mid_start, min(mid_end, len(step_layers))):
+            layer = step_layers[layer_idx]
+            if hasattr(layer, "anomalies") and layer.anomalies is not None:
+                if layer.anomalies.has_nan or layer.anomalies.has_inf:
+                    return True
+
+        # Per-step L2 explosion check: baseline from THIS step's early layers
+        step_early_norms: list[float] = []
+        for layer_idx in range(min(mid_start, len(step_layers))):
+            layer = step_layers[layer_idx]
+            if hasattr(layer, "hidden_summary") and layer.hidden_summary is not None:
+                norm = getattr(layer.hidden_summary, "l2_norm_mean", None)
+                if norm is not None and isinstance(norm, (int, float)):
+                    step_early_norms.append(float(norm))
+
+        if step_early_norms:
+            baseline = sum(step_early_norms) / len(step_early_norms)
+            # 8× multiplier accounts for diverse architectures:
+            # GPT-2 peaks at 3.1× mid/early, flan-t5-small at 5.7×
+            # (original 5× false-positived on flan-t5-small's aggressive layer growth)
+            explosion_threshold = baseline * 8.0
+        else:
+            explosion_threshold = 1000.0  # Conservative fallback
+
+        for layer_idx in range(mid_start, min(mid_end, len(step_layers))):
+            layer = step_layers[layer_idx]
+            if hasattr(layer, "hidden_summary") and layer.hidden_summary is not None:
+                norm = getattr(layer.hidden_summary, "l2_norm_mean", None)
+                if norm is not None and isinstance(norm, (int, float)) and float(norm) > explosion_threshold:
+                    return True
+
+    return False
+
+
 def detect_tensor_anomalies(
     hidden_state: Optional[torch.Tensor] = None,
     attention: Optional[torch.Tensor] = None,
+    cross_attention: Optional[torch.Tensor] = None,
 ) -> Dict[str, bool]:
     """
-    Detect NaN/Inf in hidden state and attention tensors for a single layer.
+    Detect NaN/Inf in hidden state, self-attention, and cross-attention tensors for a single layer.
 
     Args:
         hidden_state: Hidden state tensor (any shape)
-        attention: Attention tensor (any shape)
+        attention: Self-attention tensor (any shape)
+        cross_attention: Cross-attention tensor (Seq2Seq only, any shape)
 
     Returns:
         Dictionary with has_nan and has_inf boolean flags
@@ -586,7 +723,7 @@ def detect_tensor_anomalies(
     has_nan = False
     has_inf = False
 
-    for tensor in (hidden_state, attention):
+    for tensor in (hidden_state, attention, cross_attention):
         if tensor is None:
             continue
         if not isinstance(tensor, torch.Tensor):
