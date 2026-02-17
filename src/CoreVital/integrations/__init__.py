@@ -1,0 +1,1 @@
+# CoreVital integrations (OpenTelemetry, etc.)

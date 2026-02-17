@@ -62,6 +62,10 @@ logger = get_logger(__name__)
 
 # Constants
 MIN_TOPK_FOR_ENTROPY = 50  # Minimum top-k for good entropy estimate
+COLLAPSED_HEAD_ENTROPY_THRESHOLD = 0.1  # Entropy below this = nearly all weight on one token
+FOCUSED_HEAD_CONCENTRATION_THRESHOLD = 0.9  # Avg max attention above this = very focused head
+VOTER_AGREEMENT_TOP_K = 10  # Number of top tokens for voter agreement probability mass
+L2_EXPLOSION_MULTIPLIER = 8.0  # Mid-layer L2 norm vs early-layer baseline (flan-t5 peaks at 5.7x)
 
 
 def compute_hidden_summary(
@@ -228,9 +232,10 @@ def compute_attention_summary(
             if "entropy_max" in config.stats:
                 summary["entropy_max"] = float(per_head_entropy.max().item())
 
-            # Collapsed heads: entropy < 0.1 (nearly all attention on one token)
             if "collapsed_head_count" in config.stats:
-                summary["collapsed_head_count"] = int((per_head_entropy < 0.1).sum().item())
+                summary["collapsed_head_count"] = int(
+                    (per_head_entropy < COLLAPSED_HEAD_ENTROPY_THRESHOLD).sum().item()
+                )
 
             # Focused heads: concentration > threshold (using high entropy as proxy)
             # Focused = head has high concentration (entropy > 4.0 = overloaded/diffuse)
@@ -255,9 +260,10 @@ def compute_attention_summary(
             if "concentration_min" in config.stats:
                 summary["concentration_min"] = float(max_attn_per_query.min().item())
 
-            # Focused heads: average max attention > 0.9 for this head
             if "focused_head_count" in config.stats:
-                summary["focused_head_count"] = int((per_head_max > 0.9).sum().item())
+                summary["focused_head_count"] = int(
+                    (per_head_max > FOCUSED_HEAD_CONCENTRATION_THRESHOLD).sum().item()
+                )
 
         return summary
 
@@ -338,8 +344,8 @@ def compute_logits_summary(
 
         # ── Voter Agreement (top-K probability mass) ───────────────────
         if "voter_agreement" in config.stats:
-            top_10 = min(10, len(topk_probs))
-            agreement = float(topk_probs[:top_10].sum().item())
+            top_n = min(VOTER_AGREEMENT_TOP_K, len(topk_probs))
+            agreement = float(topk_probs[:top_n].sum().item())
             summary["voter_agreement"] = agreement
 
         # ── Perplexity (2^entropy) ────────────────────────────────────
@@ -687,10 +693,7 @@ def detect_mid_layer_anomaly(
 
         if step_early_norms:
             baseline = sum(step_early_norms) / len(step_early_norms)
-            # 8× multiplier accounts for diverse architectures:
-            # GPT-2 peaks at 3.1× mid/early, flan-t5-small at 5.7×
-            # (original 5× false-positived on flan-t5-small's aggressive layer growth)
-            explosion_threshold = baseline * 8.0
+            explosion_threshold = baseline * L2_EXPLOSION_MULTIPLIER
         else:
             explosion_threshold = 1000.0  # Conservative fallback
 
