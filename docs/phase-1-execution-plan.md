@@ -157,18 +157,31 @@ Four issues identified during CI and Codex review after initial commit:
 ---
 
 ## Phase-1d: Dashboard + Sinks
-**Branch:** `phase-1d` | **Merge target:** `main` (after 1c merged)
+**Branch:** `phase-1d` | **Merge target:** `main` (after 1c merged) | **Status: COMPLETE**
 
 Output and visualization.
 
-| # | What | Files | Details |
-|---|------|-------|---------|
-| 1 | Streamlit dashboard | `dashboard.py` | Entropy chart, attention heatmap, latency flags, prompt analysis, health flags. |
-| 2 | DatadogSink | `sinks/datadog_sink.py` | Replace stub. `datadog-api-client`. |
-| 3 | PrometheusSink | `sinks/prometheus_sink.py` | Replace stub. `prometheus_client`. |
-| 4 | Sink CLI routing | `cli.py` | `--sink local\|datadog\|prometheus`. |
+| # | What | Files | Status | Notes |
+|---|------|-------|--------|-------|
+| 1 | Streamlit dashboard | `dashboard.py` | ✅ | Entropy/perplexity/surprisal charts, attention heatmaps (configurable metric), L2 norm heatmap, health flag badges, prompt analysis (transforms + basin scores + sparse attention), performance breakdown, raw JSON viewer. Plotly optional (graceful fallback). |
+| 2 | DatadogSink | `sinks/datadog_sink.py` | ✅ | Metrics API v2 (`submit_metrics`). Gauges: `corevital.generation.*`, `corevital.health.*`, `corevital.step.*`. Tags: model, device, trace_id, quantized. Always writes local backup. Lazy import with clear install instructions. |
+| 3 | PrometheusSink | `sinks/prometheus_sink.py` | ✅ | Pull model: HTTP server on configurable port, Prometheus scrapes `/metrics`. Gauges: `corevital_generation_*`, `corevital_health_*`, `corevital_entropy_mean`, `corevital_step_*_last`. Labels: model, device, trace_id. Server starts on first `write()`, stays alive. Always writes local backup. |
+| 4 | Sink CLI routing | `cli.py` | ✅ | Replaced `--remote_sink`/`--remote_url` with `--sink local\|datadog\|prometheus`. Added `--datadog_api_key`, `--datadog_site`, `--prometheus_port`. Env var fallback: `DD_API_KEY`, `DD_SITE`. |
 
-**Exit criteria:** Dashboard renders real report, sinks pass mocked tests, CLI routes correctly.
+**Also added:**
+- Optional dependencies in `pyproject.toml`: `[dashboard]`, `[datadog]`, `[prometheus]`, `[all]`
+- `SinkConfig` extended with `datadog_api_key`, `datadog_site`, `prometheus_port`
+- 14 new tests in `tests/test_sinks.py`: tag generation, series construction, local backup, CLI routing, import guards
+
+**Exit criteria results:**
+- ✅ Dashboard renders real GPT-2 and flan-t5-small reports (all sections populated)
+- ✅ DatadogSink builds correct metric series (18 metrics for 3-step report with health flags)
+- ✅ PrometheusSink creates and updates gauges, starts server once
+- ✅ Both sinks always write local JSON backup
+- ✅ CLI `--sink local|datadog|prometheus` routes correctly
+- ✅ Default `--sink local` backward-compatible with existing behavior
+- ✅ `pytest` 68/68, `ruff` clean, `mypy` clean
+- ✅ E2E: GPT-2 + flan-t5-small with `--sink local` produce correct output
 
 ---
 

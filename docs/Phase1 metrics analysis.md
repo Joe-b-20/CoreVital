@@ -1882,7 +1882,14 @@ TOTAL PERSISTED: ~1.75 MB per trace (typical)
 TOTAL TRANSIENT: ~30 KB (discarded)
 ```
 
-**For 100 traces: ~175 MB** (easily fits in memory, dashboard-friendly)
+> **Note on File Sizes:** The above estimates refer to **compact JSON data size**. Trace files are saved in compact format (no indentation, minimal separators, `exclude_none=True`) for optimal file size. This achieves:
+> - **~63% reduction** vs pretty-printed JSON (no indent/whitespace)
+> - **~19 KB savings** per file from excluding None fields
+> - **Total on-disk size:** ~1.3-1.5 MB typical (vs ~3.5-5 MB with pretty-printing)
+> 
+> If you want to inspect formatted JSON, use the dashboard's "Raw JSON" section which provides on-demand pretty-printing. For even smaller files, consider gzip compression (typically 70-80% reduction).
+
+**For 100 traces: ~175 MB** (compact data size, easily fits in memory, dashboard-friendly)
 
 **Storage by Attention Sparsity:**
 - Peaked attention (~5 connections/query): 0.65 MB per trace

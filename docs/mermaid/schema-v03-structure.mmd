@@ -1,0 +1,217 @@
+%% Phase-1 Schema v0.3.0 — Pydantic Model Hierarchy
+%% Shows all models, their fields, and relationships after Phase-1 additions.
+%% NEW models/fields marked with ✚. EXISTING models marked with ●.
+%% Ref: docs/Phase1 metrics analysis.md (Schema Changes section)
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+classDiagram
+    direction TB
+
+    class Report {
+        ● schema_version: str = 0.3.0
+        ● trace_id: str
+        ● created_at_utc: str
+        ● model: ModelInfo
+        ● run_config: RunConfig
+        ● prompt: PromptInfo
+        ● generated: GeneratedInfo
+        ● timeline: List~TimelineStep~
+        ● encoder_layers: Optional~List~LayerSummary~
+        ● summary: Summary
+        ● warnings: List~Warning~
+        ● extensions: Dict~str, Any~
+        ✚ prompt_analysis: Optional~PromptAnalysis~
+        ✚ health_flags: Optional~HealthFlags~
+    }
+    
+    note for Report "extensions dict contains:<br/>- risk (Phase-2): risk_score, risk_factors, blamed_layers<br/>- fingerprint (Phase-3): vector, prompt_hash<br/>- early_warning (Phase-4): failure_risk, warning_signals<br/>- narrative (Phase-7): summary text<br/>- rag (optional): RAGContext if --rag-context provided<br/>- performance (optional): if --perf flag used"
+
+    class TimelineStep {
+        ● step_index: int
+        ● token: TokenInfo
+        ● logits_summary: LogitsSummary
+        ● layers: List~LayerSummary~
+        ● extensions: Dict~str, Any~
+    }
+    
+    class TokenInfo {
+        ● token_id: int
+        ● token_text: str
+        ● is_prompt_token: bool
+    }
+
+    class LogitsSummary {
+        ● entropy: Optional~float~
+        ● top1_top2_margin: Optional~float~
+        ● topk: List~TopKItem~
+        ✚ top_k_margin: Optional~float~
+        ✚ voter_agreement: Optional~float~
+        ✚ perplexity: Optional~float~
+        ✚ surprisal: Optional~float~
+    }
+    
+    class TopKItem {
+        token_id: int
+        token_text: str
+        prob: float
+    }
+
+    class LayerSummary {
+        ● layer_index: int
+        ● hidden_summary: HiddenSummary
+        ● attention_summary: AttentionSummary
+        ● cross_attention: Optional~AttentionSummary~
+        ✚ anomalies: Optional~TensorAnomalies~
+        ● extensions: Dict~str, Any~
+    }
+    
+    note for LayerSummary "cross_attention: Only for decoder layers in Seq2Seq models.<br/>attention_summary: Always self-attention (decoder or encoder)."
+
+    class HiddenSummary {
+        ● mean: Optional~float~
+        ● std: Optional~float~
+        ● l2_norm_mean: Optional~float~
+        ● max_abs: Optional~float~
+        ● sketch: List~float~
+    }
+
+    class AttentionSummary {
+        ● entropy_mean: Optional~float~
+        ● entropy_min: Optional~float~
+        ● concentration_max: Optional~float~
+        ✚ entropy_max: Optional~float~
+        ✚ concentration_min: Optional~float~
+        ✚ collapsed_head_count: int = 0
+        ✚ focused_head_count: int = 0
+    }
+
+    class TensorAnomalies {
+        <<NEW>>
+        has_nan: bool = false
+        has_inf: bool = false
+    }
+
+    class PromptAnalysis {
+        <<NEW>>
+        layers: List~PromptAttentionLayer~
+        layer_transformations: List~float~
+        prompt_surprisals: List~float~
+    }
+
+    class PromptAttentionLayer {
+        <<NEW>>
+        heads: List~SparseAttentionHead~
+        basin_scores: List~float~
+    }
+
+    class SparseAttentionHead {
+        <<NEW — Structure of Arrays>>
+        query_indices: List~int~
+        key_indices: List~int~
+        weights: List~float~
+    }
+
+    class HealthFlags {
+        <<NEW>>
+        nan_detected: bool = false
+        inf_detected: bool = false
+        attention_collapse_detected: bool = false
+        high_entropy_steps: int = 0
+        repetition_loop_detected: bool = false
+        mid_layer_anomaly_detected: bool = false
+    }
+
+    class ModelInfo {
+        ● hf_id: str
+        ● revision: Optional~str~
+        ● architecture: str
+        ● num_layers: int
+        ● hidden_size: int
+        ● num_attention_heads: int
+        ● tokenizer_hf_id: str
+        ● dtype: Optional~str~
+        ● device: str
+        ● quantization: QuantizationInfo
+    }
+    
+    class QuantizationInfo {
+        enabled: bool
+        method: Optional~str~
+    }
+
+    class Summary {
+        ● prompt_tokens: int
+        ● generated_tokens: int
+        ● total_steps: int
+        ● elapsed_ms: int
+    }
+    
+    class Warning {
+        code: str
+        message: str
+    }
+
+    class RAGContext {
+        <<NEW Phase-2>>
+        context_token_count: Optional~int~
+        retrieved_doc_ids: Optional~List~str~~
+        retrieved_doc_titles: Optional~List~str~~
+        retrieval_metadata: Optional~Dict~
+    }
+
+    class RiskExtension {
+        <<Phase-2>>
+        risk_score: float
+        risk_factors: List~str~
+        blamed_layers: List~int~
+    }
+
+    class FingerprintExtension {
+        <<Phase-3>>
+        vector: List~float~
+        prompt_hash: str
+    }
+
+    class EarlyWarningExtension {
+        <<Phase-4>>
+        failure_risk: float
+        warning_signals: List~str~
+    }
+
+    class NarrativeExtension {
+        <<Phase-7>>
+        summary: str
+    }
+
+    class PerformanceExtension {
+        <<Phase-0.75>>
+        total_wall_time_ms: float
+        parent_operations: List~ParentOperation~
+        unaccounted_time: Dict~str, float~
+        detailed_file: Optional~str~
+    }
+
+    %% ─── Relationships ───
+    Report "1" *-- "1" ModelInfo
+    ModelInfo "1" *-- "1" QuantizationInfo
+    Report "1" *-- "N" TimelineStep
+    Report "1" *-- "1" Summary
+    Report "1" *-- "0..1" PromptAnalysis : NEW
+    Report "1" *-- "0..1" HealthFlags : NEW
+    Report "1" *-- "1" Extensions
+    Extensions "0..1" *-- "0..1" RiskExtension
+    Extensions "0..1" *-- "0..1" FingerprintExtension
+    Extensions "0..1" *-- "0..1" EarlyWarningExtension
+    Extensions "0..1" *-- "0..1" NarrativeExtension
+    Extensions "0..1" *-- "0..1" RAGContext
+    Extensions "0..1" *-- "0..1" PerformanceExtension
+    TimelineStep "1" *-- "1" TokenInfo
+    TimelineStep "1" *-- "1" LogitsSummary
+    TimelineStep "1" *-- "N" LayerSummary
+    LogitsSummary "0..*" *-- "0..*" TopKItem
+    LayerSummary "1" *-- "0..1" HiddenSummary
+    LayerSummary "1" *-- "0..1" AttentionSummary
+    LayerSummary "1" *-- "0..1" TensorAnomalies : NEW
+    PromptAnalysis "1" *-- "N" PromptAttentionLayer : NEW
+    PromptAttentionLayer "1" *-- "N" SparseAttentionHead : NEW
+    Report "1" *-- "N" Warning
