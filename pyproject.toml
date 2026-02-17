@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["llm", "monitoring", "transformers", "instrumentation", "health"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
@@ -40,9 +40,28 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
 ]
+dashboard = [
+    "streamlit>=1.30.0",
+    "plotly>=5.18.0",
+]
+datadog = [
+    "datadog-api-client>=2.20.0",
+]
+prometheus = [
+    "prometheus-client>=0.20.0",
+]
+otel = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+]
+all = [
+    "CoreVital[dashboard,datadog,prometheus,otel]",
+]
 
 [project.scripts]
 CoreVital = "CoreVital.cli:main"
+corevital = "CoreVital.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Joe-b-20/CoreVital"
@@ -57,9 +76,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not slow'"
 markers = [
     "gpu: marks tests requiring a GPU (deselect with '-m \"not gpu\"')",
+    "slow: marks slow tests e.g. production model smoke (deselect with '-m \"not slow\"')",
 ]
 
 [tool.ruff]
@@ -74,6 +94,8 @@ select = ["E", "F", "I", "W", "B"]
 # I: isort (import sorting)
 # W: pycodestyle warnings
 # B: flake8-bugbear (catches common bugs)
+per-file-ignores = { "dashboard.py" = ["E501", "W291"] }
+# dashboard.py: long metric-guide and caption strings (user-facing text), markdown line breaks
 
 [tool.ruff.lint.isort]
 known-first-party = ["CoreVital"]

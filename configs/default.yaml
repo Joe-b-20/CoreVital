@@ -41,6 +41,7 @@ summaries:
       - l2_norm_mean
       - max_abs
     sketch:
+      enabled: false   # Set true for debugging; off by default to keep payload small
       method: "randproj"
       dim: 32
       seed: 0
@@ -69,13 +70,21 @@ summaries:
     topk: 5
 
 sink:
-  type: "local_file"  # local_file, http
+  type: "sqlite"  # sqlite (default), local_file (JSON), datadog, prometheus
   output_dir: "runs"
   remote_url: null
+  sqlite_path: "runs/corevital.db"
+  sqlite_backup_json: false
 
 prompt_telemetry:
   enabled: true
-  sparse_threshold: 0.01  # Store attention weights above this value
+  sparse_threshold: 0.01   # Store attention weights above this value
+  sparse_max_per_head: 50  # Cap connections per head to limit payload size
+
+# Foundation F2: what to store per run (summary = small payload, full = everything)
+capture:
+  capture_mode: "full"   # summary | full | on_risk
+  risk_threshold: 0.7    # For on_risk: store full when risk >= this (Phase-2)
 
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

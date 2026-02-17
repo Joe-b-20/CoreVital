@@ -1,8 +1,8 @@
 # CoreVital
 
-**Pre-Phase-1**: Hugging Face Instrumentation + JSON Trace Artifact + Sink Interface + Performance Monitoring
+**Why CoreVital exists:** LLM outputs fail in subtle ways (repetition, confusion, numerical issues), and debugging internal behavior is hard. CoreVital instruments inference, summarizes tensors into lightweight metrics, and computes health flags, risk scores, and narratives so you can debug faster, monitor production, and compare models.
 
-An open-source Python toolkit for monitoring the internal health of Large Language Models during inference. This implementation provides deep instrumentation of Hugging Face transformers, capturing hidden states, attention patterns, and logit distributions without saving full tensors.
+**What it does:** Deep instrumentation of Hugging Face transformers—hidden states, attention patterns, logits—without storing full tensors. Produces JSON or SQLite reports with risk score, health flags (NaN/Inf, repetition loop, attention collapse, etc.), fingerprints, early-warning signals, and human-readable narratives. Optional Library API (`CoreVitalMonitor`) for embeddable runs and `should_intervene()` for health-aware decoding.
 
 ## Features
 
@@ -10,43 +10,69 @@ An open-source Python toolkit for monitoring the internal health of Large Langua
 -  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors
 -  **Performance Monitoring**: Track operation times with `--perf` flag (summary, detailed, or strict mode)
 -  **Model Registry**: Single source of truth for model type detection via `ModelCapabilities`
--  **Extensible Persistence**: Pluggable Sink interface (LocalFileSink, HTTPSink stub, DatadogSink/PrometheusSink stubs)
+-  **Extensible Persistence**: Pluggable Sink interface — SQLite (default), LocalFile, Datadog, Prometheus, HTTP, OpenTelemetry
 -  **CI/CD**: GitHub Actions workflow with pytest, Ruff linting, and MyPy type checking
 -  **Configurable**: YAML configuration with environment variable overrides
 -  **CPU/CUDA Support**: Automatic device detection or manual override
 -  **Quantization Support**: 4-bit and 8-bit quantization via bitsandbytes for memory-efficient inference
--  **Structured Artifacts**: JSON trace files with schema version `0.2.0` for future compatibility
+-  **Structured Artifacts**: JSON trace files with schema version `0.3.0` for future compatibility
+
+**Tested with:** Llama 3 (e.g. meta-llama/Llama-3.2-1B), Mistral 7B, Mixtral 8x7B, Qwen2. See [Model compatibility](docs/model-compatibility.md) and smoke tests in `tests/test_models_production.py` (run with `pytest -m slow`).
+
+**Status:** CoreVital is in active development (v0.3.0). The core instrumentation and reporting features are production-ready and tested. Some advanced features (streaming API, full metrics export) are in development. See [Roadmap](#roadmap) for details.
+
+## Try CoreVital in 5 minutes
+
+**Option A — Try without installing (no clone, no Streamlit Cloud)**  
+Open the repo in **GitHub Codespaces** (click **Code → Codespaces → Create codespace on main**). In the terminal run:
+
+```bash
+./scripts/try_demo.sh
+```
+
+Then open the **forwarded URL** for port 8501 (Codespaces will show a “Open in Browser” link). Use **Demo sample** in the sidebar to view a sample report, or run an inference in a second terminal (`corevital run --model gpt2 --prompt "Your prompt" --max_new_tokens 20`) and reload the dashboard to see the run.
+
+**Option B — Install locally**
+
+1. **Install:** `pip install -e .` (or `pip install corevital` once [published on PyPI](https://pypi.org/project/corevital/))
+2. **Run one inference:** `corevital run --model gpt2 --prompt "Explain why the sky is blue in one sentence." --max_new_tokens 20 --device auto`
+3. **View the report:** `pip install -e ".[dashboard]"` then `streamlit run dashboard.py` — open the app and load the run from the database or from `runs/`.
+
+To try the dashboard without running a model, select **Demo sample** in the dashboard sidebar, or upload [docs/demo/sample_report.json](docs/demo/sample_report.json). See [docs/demo/](docs/demo/).
+
+**Live Demo:** Deploy the dashboard to Streamlit Cloud or Hugging Face Spaces (see [Live Demo Setup](#live-demo-setup) below).
 
 ## Quick Start
 
 ### Installation
+
+**From PyPI (when published):** `pip install corevital` (or `pip install corevital[dashboard]` for the Streamlit dashboard). No clone required.
+
+**From source (development):**
 ```bash
-# Clone the repository
 git clone https://github.com/Joe-b-20/CoreVital.git
 cd CoreVital
-
-# Install in development mode
 pip install -e .
 ```
 
 ### Basic Usage
 ```bash
 # Run monitoring on GPT-2 (CausalLM) with a simple prompt
-python -m CoreVital.cli run \
+corevital run \
   --model gpt2 \
   --prompt "Explain why the sky is blue" \
   --max_new_tokens 50 \
   --device auto
 
 # Run monitoring on T5 (Seq2Seq) model
-python -m CoreVital.cli run \
+corevital run \
   --model google/flan-t5-small \
-  --prompt "My code works and I have no idea why, which is infinitely more terrifying than when it doesn't work and I have no idea why." \
+  --prompt "My code works and I have no idea why" \
   --max_new_tokens 20 \
   --device auto
 
 # Run with 4-bit quantization (requires CUDA)
-python -m CoreVital.cli run \
+corevital run \
   --model gpt2 \
   --prompt "Explain why the sky is blue" \
   --max_new_tokens 50 \
@@ -54,7 +80,7 @@ python -m CoreVital.cli run \
   --quantize-4
 
 # Run with 8-bit quantization (requires CUDA)
-python -m CoreVital.cli run \
+corevital run \
   --model gpt2 \
   --prompt "Explain why the sky is blue" \
   --max_new_tokens 50 \
@@ -62,29 +88,58 @@ python -m CoreVital.cli run \
   --quantize-8
 
 # Run with performance monitoring (summary mode)
-python -m CoreVital.cli run \
-  --model gpt2 \
-  --prompt "Hello world" \
-  --perf
+corevital run --model gpt2 --prompt "Hello world" --perf
 
 # Run with detailed performance breakdown
-python -m CoreVital.cli run \
-  --model gpt2 \
-  --prompt "Hello world" \
-  --perf detailed
+corevital run --model gpt2 --prompt "Hello world" --perf detailed
 
 # Run with strict mode (includes warmup and baseline measurements)
-python -m CoreVital.cli run \
-  --model gpt2 \
-  --prompt "Hello world" \
-  --perf strict
+corevital run --model gpt2 --prompt "Hello world" --perf strict
 
-# Output will be saved to ./runs/ directory
+# Default: output is saved to runs/corevital.db (SQLite); no JSON file unless you pass --write-json.
+# Use --sink local for JSON in runs/; add --json-pretty for indented (larger) JSON.
 ```
 
-### CLI Options
+> **Tip:** `corevital` is the installed CLI command. You can also use `python -m CoreVital.cli` if running from source without installing.
+
+### Library API (CoreVitalMonitor)
+
+Use the embeddable monitor for programmatic runs and post-run risk checks:
+
+```python
+from CoreVital import CoreVitalMonitor
+
+monitor = CoreVitalMonitor(capture_mode="summary", intervene_on_risk_above=0.8)
+monitor.run("gpt2", "Explain quantum tunneling.", max_new_tokens=20)
+# For large models use 4-bit: monitor.run("meta-llama/Llama-3.1-8B", prompt, load_in_4bit=True, device="cuda")
+
+print("Risk score:", monitor.get_risk_score())
+print("Health flags:", monitor.get_health_flags())
+if monitor.should_intervene():
+    print("Consider resampling or lowering temperature.")
+
+# Or use the context manager
+with monitor.wrap_generation("gpt2", "Hello world") as m:
+    summary = m.get_summary()  # risk_score, health_flags, fingerprint, narrative
+
+# Async stream (per-step events after run; v1 = post-run replay)
+import asyncio
+async def main():
+    monitor = CoreVitalMonitor(capture_mode="summary")
+    async for event in monitor.stream("gpt2", "Say hi.", max_new_tokens=5):
+        print(event["step_index"], event["token_text"], event.get("entropy"))
+asyncio.run(main())
+```
+
+### CLI commands
+
+- **`run`** — Run instrumented generation (default sink: SQLite at `runs/corevital.db`).
+- **`migrate`** — Migrate `trace_*.json` files from a directory into a SQLite DB (`corevital migrate --from-dir runs --to-db runs/corevital.db`).
+- **`compare`** — Summarize runs by model from a SQLite DB (`corevital compare --db runs/corevital.db`).
+
+### CLI Options (run)
 ```bash
-python -m CoreVital.cli run --help
+corevital run --help
 
 Options:
   --model TEXT              Hugging Face model ID (required)
@@ -93,16 +148,19 @@ Options:
   --device TEXT             Device: auto|cpu|cuda [default: auto]
   --seed INT                Random seed [default: 42]
   --temperature FLOAT       Sampling temperature [default: 0.8]
-  --top_k INT              Top-k sampling [default: 50]
-  --top_p FLOAT            Top-p sampling [default: 0.95]
+  --top_k INT               Top-k sampling [default: 50]
+  --top_p FLOAT             Top-p sampling [default: 0.95]
   --quantize-4              Load model with 4-bit quantization (requires CUDA)
   --quantize-8              Load model with 8-bit quantization (requires CUDA)
-  --out PATH               Output path (directory or file)
-  --remote_sink TEXT       Remote sink: none|http [default: none]
-  --remote_url TEXT        Remote sink URL
-  --config PATH            Path to custom config YAML file
-  --log_level TEXT         Logging level: DEBUG|INFO|WARNING|ERROR [default: INFO]
-  --perf [MODE]            Performance monitoring: summary (default), detailed, or strict
+  --out PATH                Output directory (default: runs); with --sink sqlite, DB is <out>/corevital.db
+  --sink TEXT               Sink: sqlite (default) | local | datadog | prometheus
+  --capture TEXT            Capture mode: summary | full | on_risk
+  --rag-context PATH        Path to JSON file with RAG context metadata
+  --export-otel             Export run to OpenTelemetry (OTLP); requires pip install CoreVital[otel]
+  --otel-endpoint HOST:PORT OTLP gRPC endpoint (or set OTEL_EXPORTER_OTLP_ENDPOINT)
+  --config PATH             Path to custom config YAML file
+  --log_level TEXT          Logging level: DEBUG|INFO|WARNING|ERROR [default: INFO]
+  --perf [MODE]             Performance monitoring: summary (default), detailed, or strict
 ```
 
 ## Output Format
@@ -110,7 +168,7 @@ Options:
 Each run produces a JSON trace file in `./runs/` with this structure:
 ```json
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "trace_id": "uuid-here",
   "created_at_utc": "2026-01-11T15:22:08Z",
   "model": {
@@ -155,6 +213,8 @@ Each run produces a JSON trace file in `./runs/` with this structure:
     "elapsed_ms": 1234
   },
   "warnings": [],
+  "health_flags": { "nan_detected": false, "high_entropy_steps": 0, ... },
+  "extensions": { "risk": { "risk_score": 0.2, "risk_factors": [] }, "fingerprint": { ... }, "narrative": { ... } },
   "encoder_layers": [
     {
       "layer_index": 0,
@@ -163,8 +223,7 @@ Each run produces a JSON trace file in `./runs/` with this structure:
       "cross_attention": null,
       "extensions": {}
     }
-  ],
-  "extensions": {}
+  ]
 }
 ```
 
@@ -184,7 +243,25 @@ Each run produces a JSON trace file in `./runs/` with this structure:
 - **model.dtype**: Model dtype as string. `Optional[str]` — may be `null` or `"quantized_unknown"` when dtype cannot be definitively detected for quantized models.
 - **model.revision**: Model commit hash/revision extracted from model config
 - **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null). The dtype field shows quantized dtypes (int8, uint8) when detectable, or `"quantized_unknown"` otherwise.
-- **extensions**: Custom key-value pairs available at Report, TimelineStep, and LayerSummary levels for future metric expansion.
+- **health_flags**: Aggregated flags (nan_detected, attention_collapse_detected, high_entropy_steps, repetition_loop_detected, etc.).
+- **extensions**: Risk (risk_score, risk_factors, blamed_layers), fingerprint (vector, prompt_hash; when available), early_warning (when available), narrative, RAG, performance.
+
+### Trace File Sizes
+
+Trace files are saved in **compact JSON format** (no indentation, minimal separators) for smaller file sizes. Typical file sizes:
+
+- **Small models (GPT-2, 12 layers, ~15 steps):** 200-600 KB on disk
+- **Medium models (Llama-3.1-8B, 32 layers, ~50 steps):** 1.3-1.5 MB on disk (compact JSON)
+- **Large models (more layers/steps):** Up to ~5 MB depending on attention sparsity
+
+**Optimizations applied:**
+- **Compact JSON:** No indentation, minimal separators (`separators=(",", ":")`) — saves ~63% vs pretty-printed
+- **Exclude None fields:** Optional fields set to `None` are omitted from JSON — saves ~19 KB per file
+- **Sparse attention storage:** Only attention weights above threshold are stored — saves ~680× vs naive approach
+
+**Note:** If you want to inspect the JSON in a formatted way, use the dashboard's "Raw JSON" section which provides a toggle for pretty-printing. For even smaller files, consider gzip compression (typically achieves 70-80% reduction).
+
+The storage is dominated by **sparse attention profiles** from prompt telemetry (Phase-1b), which store only attention weights above a threshold. Typical storage: **0.5-5 MB** depending on attention patterns (documented in `docs/Phase1 metrics analysis.md`).
 
 ### Performance Monitoring (`--perf`)
 
@@ -235,8 +312,34 @@ Example performance output in summary:
   - **Cross-attention**: How the decoder attends to encoder outputs at each generation step, showing how the model "listens" to the encoded input
 - **Other Models**: Models using eager attention by default will work without modification. Models that don't support attention output will log warnings.
 - **Quantization**: 4-bit and 8-bit quantization via bitsandbytes is supported for models that are compatible. Quantization requires CUDA and will automatically fall back to CPU without quantization if CUDA is unavailable. The quantization status is reflected in the output JSON report.
+- **Production models (Llama, Mistral, Mixtral, Qwen)**: See [Model compatibility](docs/model-compatibility.md) for tested variants and optional eager attention for full capture.
 
 ## Architecture
+
+CoreVital instruments LLM inference by hooking into the model's forward pass, extracting internal tensors (hidden states, attention weights, logits), and computing lightweight summary statistics. The architecture is designed for production use with minimal overhead and storage requirements.
+
+### System Overview
+
+- **Instrumentation Layer**: PyTorch hooks capture tensors during model forward pass
+- **Summary Computation**: Lightweight statistics (mean, std, entropy, norms) computed in-memory
+- **Report Building**: Structured JSON reports with schema versioning
+- **Pluggable Sinks**: Multiple persistence backends (SQLite, local files, Datadog, Prometheus, OTLP)
+
+**Architecture Diagrams:**
+- [Data Flow](docs/mermaid/metrics-data-flow.mmd) — How data flows from model inference to reports
+- [Computation Pipeline](docs/mermaid/phase-1-computation-pipeline.mmd) — Phase-1 metrics computation flow
+- [Schema Structure](docs/mermaid/schema-v03-structure.mmd) — Report schema v0.3.0 organization
+- [Metrics Dependency Chain](docs/mermaid/metrics-dependency-chain.mmd) — How metrics depend on each other
+- [Signal Interpretation](docs/mermaid/metrics-signal-interpretation.mmd) — What each metric means
+- [Performance Monitoring](docs/mermaid/operations-hierarchy.mmd) — Operation timing hierarchy
+- [Execution Flow](docs/mermaid/operations-flow-sequential.mmd) — Sequential execution order
+- [Extensions Computation](docs/mermaid/extensions-computation-flow.mmd) — How risk, fingerprint, narrative, and early_warning are computed
+
+**Production Deployment:** See [Production Deployment Guide](docs/production-deployment.md) for sampling strategies, database setup, metrics export, and alerting.
+
+**Integration Examples:** See [Integration Examples](docs/integration-examples.md) for Flask, FastAPI, and production patterns.
+
+**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs.
 
 ### Sink Interface
 
@@ -252,10 +355,11 @@ class CustomSink(Sink):
 ```
 
 Built-in sinks:
-- **LocalFileSink**: Write JSON to local filesystem
-- **HTTPSink**: POST JSON to remote endpoint (stub)
-- **DatadogSink**: Send metrics to Datadog (stub — planned for phase-2+)
-- **PrometheusSink**: Expose metrics for Prometheus scraping (stub — planned for phase-2+)
+- **SQLiteSink** (default): One SQLite DB per run directory; supports `list_traces()`, filters by model_id/prompt_hash. Use `--sink sqlite`.
+- **LocalFileSink**: Write JSON to local filesystem (`--sink local`).
+- **DatadogSink**: Send metrics/events to Datadog (`--sink datadog`; requires `DD_API_KEY` or `--datadog_api_key`).
+- **PrometheusSink**: Expose `/metrics` for scraping (`--sink prometheus`; `--prometheus_port`).
+- **HTTPSink**: POST JSON to remote endpoint.
 
 ### Configuration
 
@@ -265,10 +369,216 @@ export COREVITAL_DEVICE=cuda
 export COREVITAL_SEED=123
 ```
 
+## Performance Benchmarks
+
+CoreVital is designed for minimal overhead. Performance measurements from real runs:
+
+### Overhead Measurements
+
+**Small models (GPT-2, ~12 layers, ~15 generation steps):**
+- **Inference overhead:** ~2-5% (instrumentation adds ~50-200ms to ~2-5s total)
+- **Report building:** ~50-100ms
+- **Total overhead:** ~3-6% of wall time
+
+**Medium models (Llama-3.1-8B, 32 layers, ~50 steps):**
+- **Inference overhead:** ~1-2% (instrumentation adds ~100-400ms to ~4-8s total)
+- **Report building:** ~3-4s (dominated by per-layer summary computation)
+- **Total overhead:** ~15-20% of wall time (report building is the bottleneck)
+
+**Large models (7B+, longer sequences):**
+- **Inference overhead:** Improves to ~0.5-2% (model computation dominates)
+- **Report building:** Scales roughly O(steps × layers × heads)
+- **Memory:** Negligible Python heap overhead (summaries only, no raw tensors)
+
+### Optimization Strategies
+
+- **Use `--capture summary`** for production: stores only health flags and time series, skipping per-layer data
+- **Use `--capture on_risk`**: summary by default, full trace only when risk exceeds threshold
+- **Sampling**: Instrument only a subset of requests (e.g., 1% random or every N-th request)
+- **Report building scales**: For very large models, consider skipping prompt telemetry (`--no-prompt-telemetry`) or reducing attention detail
+
+See [Performance Monitoring](docs/phase-0.75-journey.md) for detailed analysis and benchmarking methodology.
+
+## Comparison with Alternatives
+
+CoreVital focuses on **internal inference health monitoring**—instrumenting the model's forward pass to detect issues like repetition loops, attention collapse, and numerical anomalies. Here's how it compares:
+
+| Tool | Focus | Internal Instrumentation | Health Signals | Storage Model |
+|------|-------|-------------------------|----------------|---------------|
+| **CoreVital** | Internal inference health | ✅ Yes (hooks into forward pass) | Entropy, repetition, attention collapse, NaN/Inf | Summary-only (no raw tensors) |
+| **LangSmith** | LLM application tracing | ❌ No (API-level only) | Output quality scores | Full traces (prompts/responses) |
+| **OpenLIT / Langtrace** | LLM observability | ❌ No (OpenTelemetry at API level) | Latency, cost, token counts | Request/response traces |
+| **Aporia** | AI observability & guardrails | ❌ No (application-level) | Output guardrails, drift | Application metrics |
+| **Langfuse** | LLM tracing & evals | ❌ No (API-level tracing) | Eval scores on outputs | Full traces |
+
+**CoreVital's differentiator:** Only CoreVital instruments **inside** the model's forward pass to capture hidden states, attention patterns, and logits during generation. This enables detection of issues that manifest internally (e.g., attention collapse, repetition loops) before they appear in outputs.
+
+**When to use CoreVital:**
+- You're running self-hosted/open-source models (Hugging Face transformers)
+- You need to debug why models fail (repetition, confusion, numerical issues)
+- You want to monitor model health in production without storing raw activations
+- You need to compare models or track degradation over time
+
+**When to use alternatives:**
+- You're using API-based LLMs (OpenAI, Anthropic) → use LangSmith/OpenLIT
+- You need application-level tracing → use Langfuse/Langtrace
+- You need output guardrails → use Aporia
+
+See [Competitive Landscape](docs/competitive-landscape-and-ip.md) for detailed analysis.
+
+## Use Cases
+
+See [Case Studies](docs/case-studies/) for real-world examples of CoreVital in production.
+
+### 1. Debugging Model Failures
+
+**Problem:** Model produces repetitive or nonsensical output, but you don't know why.
+
+**Solution:** Run CoreVital to see:
+- **Repetition loop detected:** Last-layer hidden states became nearly identical → model is stuck
+- **High entropy steps:** Model was confused at specific tokens → check input context
+- **Attention collapse:** Some heads put all weight on one token → possible training issue
+- **NaN/Inf detected:** Numerical instability → check inputs or model weights
+
+**Example:**
+```bash
+corevital run --model meta-llama/Llama-3.1-8B \
+  --prompt "Explain quantum computing" \
+  --max_new_tokens 100 \
+  --perf detailed
+# Check dashboard for risk score, health flags, and timeline
+```
+
+### 2. Production Monitoring
+
+**Problem:** Monitor model health in production without storing massive tensor dumps.
+
+**Solution:** Use `--capture summary` or `--capture on_risk` to get lightweight health signals:
+- Risk score per run
+- Health flags (NaN, repetition, attention collapse)
+- Time series (entropy, perplexity) for trend analysis
+
+**Example:**
+```python
+from CoreVital import CoreVitalMonitor
+
+monitor = CoreVitalMonitor(capture_mode="summary")
+monitor.run("gpt2", user_prompt, max_new_tokens=50)
+
+if monitor.should_intervene():
+    # Resample or fallback to another model
+    pass
+```
+
+### 3. Model Comparison
+
+**Problem:** Compare how different models or configurations perform on the same prompts.
+
+**Solution:** Run CoreVital on multiple models, then use the dashboard's Compare view or `corevital compare`:
+- Risk scores across models
+- Health flags comparison
+- Entropy/perplexity trends
+- Performance overhead
+
+**Example:**
+```bash
+# Run on model A
+corevital run --model gpt2 --prompt "..." --sink sqlite
+
+# Run on model B
+corevital run --model meta-llama/Llama-3.2-1B --prompt "..." --sink sqlite
+
+# Compare
+corevital compare --db runs/corevital.db
+# Or use dashboard Compare view
+```
+
+### 4. Research & Analysis
+
+**Problem:** Analyze model behavior across different prompts or configurations.
+
+**Solution:** Use CoreVital's detailed reports to study:
+- Attention patterns (sparse attention profiles)
+- Layer transformations (how representations change)
+- Entropy profiles (confidence over generation)
+- Basin scores (attention focus on prompt middle)
+
+**Example:** See [Phase-1 Metrics Analysis](docs/Phase1%20metrics%20analysis.md) for research-backed metric interpretations.
+
+## Glossary
+
+**Hidden States:** Internal representations computed by each transformer layer. Shape: `(batch, sequence_length, hidden_dim)`. CoreVital summarizes these as mean, std, L2 norm, max absolute value.
+
+**Attention Patterns:** Weights showing which tokens each attention head focuses on. Shape: `(batch, heads, seq_len, seq_len)`. CoreVital computes entropy statistics (how spread out attention is) and detects collapse (heads focusing on one token).
+
+**Logits:** Raw model outputs before softmax, representing scores for each token in the vocabulary. CoreVital computes entropy (uncertainty), perplexity, surprisal, and top-k margins.
+
+**Entropy:** Measure of uncertainty in probability distributions. Low entropy = confident (peaked distribution), high entropy = uncertain (flat distribution). Range: 0 to ~16-17 for typical LLMs.
+
+**Perplexity:** Exponential of entropy. Roughly "how many tokens the model is choosing between." Low perplexity (1-4) = confident, high perplexity (>16) = very uncertain.
+
+**Surprisal:** Negative log probability of the actual token. High surprisal = model was surprised by the token it produced.
+
+**Attention Collapse:** When an attention head puts almost all weight (>0.95) on a single token. Can indicate training issues or model degradation.
+
+**Repetition Loop:** When the model gets stuck repeating the same tokens. Detected by comparing last-layer hidden states across steps (high cosine similarity indicates repetition).
+
+**Risk Score:** Single number (0-1) summarizing overall run health. Computed from health flags, entropy patterns, and attention anomalies. Higher = more likely to produce poor output.
+
+**Health Flags:** Boolean indicators for specific issues: NaN/Inf detected, attention collapse, high entropy steps, repetition loop, mid-layer anomaly.
+
+**Prompt Telemetry:** Extra forward pass over the prompt (before generation) to analyze how the model processes input. Captures layer transformations, attention patterns, and surprisal.
+
+**Cross-Attention:** (Seq2Seq only) How the decoder attends to encoder outputs. Shows which parts of the input the model "listens to" during generation.
+
+## Live Demo Setup
+
+Deploy the CoreVital dashboard to Streamlit Cloud or Hugging Face Spaces for a live demo:
+
+### Streamlit Cloud
+
+1. **Fork the repository** on GitHub
+2. **Go to [Streamlit Cloud](https://streamlit.io/cloud)**
+3. **Click "New app"** → Select your fork → Set main file to `dashboard.py`
+4. **Configure:**
+   - Python version: 3.12
+   - Dependencies: Add `requirements.txt` or use `pyproject.toml` (Streamlit will auto-detect)
+5. **Deploy** → Your dashboard will be live at `https://your-app.streamlit.app`
+
+**Note:** Streamlit Cloud has resource limits. For large models, consider Hugging Face Spaces with GPU.
+
+### Hugging Face Spaces
+
+1. **Create a new Space** on [Hugging Face](https://huggingface.co/spaces)
+2. **Select "Streamlit"** SDK
+3. **Upload files:**
+   - `dashboard.py`
+   - `src/` directory (CoreVital package)
+   - `docs/demo/sample_report.json` (for demo sample)
+   - `requirements.txt` or `pyproject.toml`
+4. **Configure `README.md`** for the Space (optional)
+5. **Deploy** → Your dashboard will be live at `https://huggingface.co/spaces/your-username/your-space`
+
+**Requirements file example:**
+```txt
+streamlit>=1.30.0
+plotly>=5.18.0
+torch>=2.0.0
+transformers>=4.30.0
+numpy>=1.24.0
+pyyaml>=6.0
+pydantic>=2.0.0
+```
+
+**Note:** For demo purposes, you can use the sample report (`docs/demo/sample_report.json`) without running models. Users can also upload their own reports.
+
 ## Development
+
+**Environment:** Use the project’s conda env for tests, lint, and dashboard: `conda activate llm_hm`.
 
 ### Running Tests
 ```bash
+conda activate llm_hm
 # Run all tests (excluding GPU tests)
 pytest tests/ -v --tb=short -m "not gpu"
 
@@ -346,7 +656,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 - `src/CoreVital/`: Main package
   - `models/`: Model loading, management, and `ModelCapabilities` registry
   - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
-  - `reporting/`: Schema (v0.2.0), validation, and report building
+  - `reporting/`: Schema (v0.3.0), validation, and report building
   - `sinks/`: Persistence backends (LocalFile, HTTP, Datadog, Prometheus)
   - `utils/`: Shared utilities
 - `.github/workflows/`: CI/CD pipeline (test.yaml)
@@ -356,58 +666,47 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-**Pre-Phase-1** (Current): Cleanup & Tooling
-- ✅ Schema v0.2.0: removed deprecated fields (`encoder_attention`, `encoder_hidden_states`)
-- ✅ `ModelCapabilities` registry: centralized model type detection, eliminated scattered hardcoded checks
-- ✅ Robust dtype detection: `Optional[str]` with explicit `"quantized_unknown"` fallback
-- ✅ CI/CD: GitHub Actions workflow (pytest, Ruff, MyPy) on every push
-- ✅ Ruff linter configured with rules `["E", "F", "I", "W", "B"]` (includes flake8-bugbear)
-- ✅ MyPy type checking configured
-- ✅ Stub sinks: `DatadogSink` and `PrometheusSink` (implementing `Sink` interface)
-- ✅ Codebase-wide lint and format cleanup
+Phases are implemented in order; for a clean git history, use one branch per phase and merge to `main` before starting the next. See [Phase Branch Strategy](docs/phase-branch-strategy.md).
 
-**Phase-0.75** (Complete): Performance Monitoring
-- ✅ `--perf` CLI flag with three modes: summary, detailed, strict
-- ✅ Lightweight operation timing via context managers
-- ✅ Nested operation hierarchy tracking (parent/child relationships)
-- ✅ Per-step statistics for repeated operations (count, min, max, avg)
-- ✅ Strict mode: warmup runs, baseline measurements, overhead calculations
-- ✅ Separate detailed breakdown JSON file
-- ✅ Performance data in `extensions.performance` of main trace
-
-**Phase-0.5** (Complete): Hardening & Future-Proofing
-- ✅ Extensions field on Report, TimelineStep, and LayerSummary for future metric expansion
-- ✅ Separated encoder_layers (computed once) from decoder timeline for Seq2Seq models
-- ✅ Robust Seq2Seq detection with Mock object handling for testing
-- ✅ Improved quantization validation and logging
-- ✅ Fixed dtype detection for quantized models (now shows int8/uint8 instead of float16)
-- ✅ Memory optimizations (decoder self-attention slicing)
-- ✅ Standardized logging levels (INFO for model loading, DEBUG for tensor extraction)
-- ✅ Comprehensive persistence and validation tests
-- ✅ Comprehensive test coverage for Phase-0.5 features (extensions, encoder_layers)
+**Pre-Phase-1** (Complete): Cleanup & Tooling
+- ✅ Schema v0.2.0 → v0.3.0, `ModelCapabilities` registry, CI/CD (pytest, Ruff, MyPy), sinks (SQLite default, LocalFile, Datadog, Prometheus), dtype detection, codebase lint/format
 
 **Phase-0** (Complete): HF instrumentation + JSON trace + Sink interface
-- ✅ Capture hidden states, attention, logits
-- ✅ Compute lightweight summaries
-- ✅ JSON artifact generation
-- ✅ LocalFileSink implementation
-- ✅ Automatic attention implementation handling (SDPA → eager for attention outputs)
-- ✅ Model revision extraction from config
-- ✅ Dynamic model loading with automatic Seq2Seq detection (T5, BART, etc.)
-- ✅ Manual generation for Seq2Seq models to capture hidden states and attentions
-- ✅ Deep Seq2Seq instrumentation: encoder hidden states, encoder attention, and cross-attention metrics
-- ✅ 4-bit and 8-bit quantization support via bitsandbytes
-- ✅ Mock testing suite for fast instrumentation testing without model loading
+- ✅ Capture hidden states, attention, logits; lightweight summaries; LocalFileSink; SDPA → eager for attention; Seq2Seq manual generation; 4-bit/8-bit quantization; mock testing suite
 
-**Upcoming Phases**:
-- Phase-1: Internal metrics (prompt telemetry, dashboard, integration sinks)
-- Phase-2: Risk scores + layer blame
-- Phase-3: Prompt fingerprints
-- Phase-4: Failure-horizon prediction
-- Phase-5: Health-aware decoding
-- Phase-6: Cross-model comparison
-- Phase-7: Human-readable narratives
-- Phase-8: Dashboard + packaging
+**Phase-0.5** (Complete): Hardening & Future-Proofing
+- ✅ Extensions on Report/TimelineStep/LayerSummary; encoder_layers separation; Seq2Seq detection; quantization validation; memory optimizations; logging levels; persistence tests
+
+**Phase-0.75** (Complete): Performance Monitoring
+- ✅ `--perf` (summary/detailed/strict); operation timing; nested hierarchy; per-step stats; warmup/baseline; `extensions.performance`
+
+**Phase-1** (Complete): Prompt telemetry, health flags, dashboard, SQLite default
+- ✅ Phase-1a: Schema + enhanced metrics. Phase-1b: Prompt telemetry (sparse attention, basin scores, layer transformations, surprisal). Phase-1c: Health flags (repetition loop, mid-layer anomaly, transient buffer). Phase-1d: Dashboard, SQLite default sink. See `docs/phase-1-execution-plan.md`.
+
+**Phase-2** (Complete): Risk scores + layer blame
+- ✅ `compute_risk_score`, `compute_layer_blame`; `extensions.risk`; on_risk capture trigger
+
+**Phase-3** (Complete): Prompt fingerprints
+- ✅ `compute_fingerprint_vector`, `compute_prompt_hash`; `extensions.fingerprint`
+
+**Phase-4** (Complete): Early warning
+- ✅ `compute_early_warning`; `extensions.early_warning`; streaming API (post-run replay)
+
+**Phase-5** (Complete): Health-aware decoding
+- ✅ `should_intervene()`; `CoreVitalMonitor.intervene_on_risk_above` / `intervene_on_signals`
+
+**Phase-6** (Complete): Cross-model comparison
+- ✅ Dashboard Compare view; `corevital compare`; SQLite list/filter by model_id, prompt_hash
+
+**Phase-7** (Complete): Human-readable narratives
+- ✅ Template-based `build_narrative`; `extensions.narrative`
+
+**Phase-8** (Complete): Dashboard + packaging
+- ✅ Dashboard filters, export (JSON/CSV); packaging extras (dashboard, datadog, prometheus, otel); Library API: `CoreVitalMonitor` (run, wrap_generation, stream, get_risk_score, get_summary, should_intervene)
+- ✅ Integrations: OpenTelemetry (optional `[otel]` extra)
+- Optional / deferred: true online streaming during generation, CLI `--models` for compare
+
+Full phase details: `docs/phase-2-through-8-execution-plan.md`.
 
 ## Requirements
 
@@ -418,6 +717,13 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 - Pydantic
 - bitsandbytes (for quantization support)
 - accelerate (required by bitsandbytes)
+
+**Optional extras** (`pip install -e ".[dashboard]"` or `.[otel]"` or `.[all]"`):
+- `dashboard`: Streamlit + Plotly for the web dashboard
+- `datadog`: Datadog API client for `--sink datadog`
+- `prometheus`: Prometheus client for `--sink prometheus`
+- `otel`: OpenTelemetry SDK + OTLP exporter for `--export-otel`
+- `all`: dashboard + datadog + prometheus
 
 **Dev dependencies** (`pip install -e ".[dev]"`):
 - pytest
