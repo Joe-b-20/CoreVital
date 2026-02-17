@@ -12,11 +12,13 @@
 #   2026-01-15: Added load_in_4bit and load_in_8bit flags to ModelConfig for quantization support
 #   2026-02-04: Phase-0.75 - added PerformanceConfig for performance monitoring mode
 #   2026-02-10: Phase-1b - added PromptTelemetryConfig (enabled, sparse_threshold)
+#   2026-02-11: Phase-1d - extended SinkConfig with datadog_api_key, datadog_site,
+#               prometheus_port for new sink types
 # ============================================================================
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
@@ -53,6 +55,7 @@ class GenerationConfig(BaseModel):
 class SketchConfig(BaseModel):
     """Sketch configuration for hidden state summaries."""
 
+    enabled: bool = False  # Disabled by default to minimize payload; enable for debugging
     method: str = "randproj"
     dim: int = 32
     seed: int = 0
@@ -112,9 +115,14 @@ class SummariesConfig(BaseModel):
 class SinkConfig(BaseModel):
     """Sink configuration."""
 
-    type: str = "local_file"  # local_file, http
+    type: Literal["sqlite", "local_file", "datadog", "prometheus"] = "sqlite"
     output_dir: str = "runs"
-    remote_url: Optional[str] = None
+    remote_url: Optional[str] = None  # Legacy (http sink)
+    datadog_api_key: Optional[str] = None
+    datadog_site: str = "datadoghq.com"
+    prometheus_port: int = 9091
+    sqlite_path: str = "runs/corevital.db"  # Path to SQLite DB when type=sqlite
+    sqlite_backup_json: bool = False  # When True, also write JSON file when using sqlite sink
 
 
 class LoggingConfig(BaseModel):
@@ -127,8 +135,7 @@ class LoggingConfig(BaseModel):
 class PerformanceConfig(BaseModel):
     """Performance monitoring configuration."""
 
-    # Mode: None (disabled) | "summary" | "detailed" | "strict"
-    mode: Optional[str] = None
+    mode: Optional[Literal["summary", "detailed", "strict"]] = None
 
 
 class PromptTelemetryConfig(BaseModel):
@@ -141,12 +148,36 @@ class PromptTelemetryConfig(BaseModel):
 
     enabled: bool = True
     sparse_threshold: float = 0.01  # Store attention weights above this threshold
+    sparse_max_per_head: Optional[int] = 50  # Cap stored connections per head to limit payload size
+
+
+class CaptureConfig(BaseModel):
+    """Capture mode: what to store per run (Foundation F2).
+
+    - summary: Store only health flags, time series (entropy, perplexity, surprisal),
+      and prompt analysis scalars; no per-layer data. Small payload.
+    - full: Store everything (current behavior).
+    - on_risk: Like summary, but when risk or health flags trigger, also store full trace.
+      (Requires Phase-2 risk score; until then behaves like summary.)
+    """
+
+    capture_mode: Literal["summary", "full", "on_risk"] = "full"
+    risk_threshold: float = 0.7  # For on_risk: store full trace when risk_score >= this
+
+
+class OtelConfig(BaseModel):
+    """OpenTelemetry export (optional). Install with: pip install CoreVital[otel]."""
+
+    export_otel: bool = False
+    otel_endpoint: Optional[str] = None  # e.g. http://localhost:4317 for OTLP gRPC; env OTEL_EXPORTER_OTLP_ENDPOINT
 
 
 class Config(BaseModel):
     """Root configuration object."""
 
     model: ModelConfig = Field(default_factory=ModelConfig)
+    # Optional RAG context (Foundation F3); set from CLI --rag-context or API. Not from YAML.
+    rag_context: Optional[Dict[str, Any]] = Field(default=None)
     device: DeviceConfig = Field(default_factory=DeviceConfig)
     generation: GenerationConfig = Field(default_factory=GenerationConfig)
     summaries: SummariesConfig = Field(default_factory=SummariesConfig)
@@ -154,6 +185,8 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
     prompt_telemetry: PromptTelemetryConfig = Field(default_factory=PromptTelemetryConfig)
+    capture: CaptureConfig = Field(default_factory=CaptureConfig)
+    otel: OtelConfig = Field(default_factory=OtelConfig)
 
     @classmethod
     def from_yaml(cls, path: str) -> "Config":

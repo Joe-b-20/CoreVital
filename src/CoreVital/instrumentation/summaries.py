@@ -112,8 +112,8 @@ def compute_hidden_summary(
         if "max_abs" in config.stats:
             summary["max_abs"] = float(hidden_state.abs().max().item())
 
-        # Sketch via random projection
-        if config.sketch.method == "randproj":
+        # Sketch via random projection (optional — disabled by default to minimize payload)
+        if getattr(config.sketch, "enabled", False) and config.sketch.method == "randproj":
             sketch = _random_projection_sketch(
                 hidden_state,
                 config.sketch.dim,
@@ -426,14 +426,17 @@ def compute_encoder_hidden_states_summaries(
 def extract_sparse_attention(
     attention: torch.Tensor,
     threshold: float = 0.01,
+    max_per_head: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Extract sparse attention connections above threshold for one layer (all heads).
 
     Uses vectorized torch.where — no Python loops over query positions.
+    When max_per_head is set, keeps only the top-N connections by weight per head to limit payload.
 
     Args:
         attention: Attention tensor, shape (batch, heads, seq_len, seq_len) or (heads, seq_len, seq_len)
         threshold: Minimum attention weight to store (default 0.01)
+        max_per_head: If set, keep at most this many connections per head (by weight, descending)
 
     Returns:
         List of dicts (one per head), each with query_indices, key_indices, weights lists.
@@ -448,16 +451,21 @@ def extract_sparse_attention(
 
     for head_idx in range(num_heads):
         head_attn = attention[head_idx]  # (seq_len, seq_len)
-        # Single torch.where on the full matrix — no Python loop over query positions
         mask = head_attn > threshold
         query_idx, key_idx = torch.where(mask)
         weights = head_attn[mask]
+
+        if max_per_head is not None and weights.numel() > max_per_head:
+            top_vals, top_pos = torch.topk(weights, max_per_head, largest=True, sorted=False)
+            query_idx = query_idx[top_pos]
+            key_idx = key_idx[top_pos]
+            weights = top_vals
 
         heads.append(
             {
                 "query_indices": query_idx.tolist(),
                 "key_indices": key_idx.tolist(),
-                "weights": [round(w, 4) for w in weights.tolist()],
+                "weights": [round(float(w), 4) for w in weights.tolist()],
             }
         )
 
@@ -796,12 +804,14 @@ def _test_summaries():
 
     config = Config()
 
-    # Test hidden summary
+    # Test hidden summary (sketch disabled by default for small payload)
     hidden = torch.randn(1, 10, 768)
     hidden_summary = compute_hidden_summary(hidden, config.summaries.hidden)
     print(f"✓ Hidden summary: {list(hidden_summary.keys())}")
     assert "mean" in hidden_summary
-    assert "sketch" in hidden_summary
+    # Sketch only present when config.sketch.enabled is True
+    if getattr(config.summaries.hidden.sketch, "enabled", False):
+        assert "sketch" in hidden_summary
 
     # Test attention summary
     attention = torch.softmax(torch.randn(1, 12, 10, 10), dim=-1)

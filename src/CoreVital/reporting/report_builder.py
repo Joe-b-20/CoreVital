@@ -53,11 +53,13 @@
 # ============================================================================
 
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 
 from CoreVital.config import Config
+from CoreVital.early_warning import compute_early_warning
+from CoreVital.fingerprint import compute_fingerprint_vector, compute_prompt_hash
 from CoreVital.instrumentation.collector import InstrumentationResults
 from CoreVital.instrumentation.summaries import (
     compute_attention_summary,
@@ -72,6 +74,7 @@ from CoreVital.instrumentation.summaries import (
     extract_sparse_attention,
 )
 from CoreVital.logging_utils import get_logger
+from CoreVital.narrative import build_narrative
 from CoreVital.reporting.schema import (
     AttentionConfig,
     AttentionSummary,
@@ -88,6 +91,7 @@ from CoreVital.reporting.schema import (
     PromptAttentionLayer,
     PromptInfo,
     QuantizationInfo,
+    RAGContext,
     Report,
     RunConfig,
     SinkConfig,
@@ -100,6 +104,7 @@ from CoreVital.reporting.schema import (
     TokenInfo,
     Warning,
 )
+from CoreVital.risk import compute_layer_blame, compute_risk_score
 from CoreVital.utils.time import get_utc_timestamp
 
 logger = get_logger(__name__)
@@ -167,8 +172,9 @@ class ReportBuilder:
         )
 
         # Build timeline (tracked as child of report_build - corevital logic)
+        # Returns (timeline, layers_by_step) for health flags; summary mode omits layers from storage
         with _op("_build_timeline"):
-            timeline = self._build_timeline(results)
+            timeline, timeline_layers_for_flags = self._build_timeline(results)
 
         # Build encoder layers (for Seq2Seq models)
         # encoder_layers represents the encoder pass computed ONCE
@@ -206,8 +212,11 @@ class ReportBuilder:
 
         # Build health flags (Phase-1c)
         # Transient buffer lifecycle: allocate → consume → kill, all inside this method
+        # When capture_mode is summary/on_risk, use timeline_layers_for_flags (not stored in report)
         with _op("_build_health_flags"):
-            health_flags = self._build_health_flags(results, timeline)
+            health_flags = self._build_health_flags(
+                results, timeline, timeline_layers_override=timeline_layers_for_flags
+            )
 
         # Assemble final Report (tracked as child of report_build)
         with _op("assemble Report"):
@@ -226,6 +235,90 @@ class ReportBuilder:
                 prompt_analysis=prompt_analysis,
                 health_flags=health_flags,
             )
+
+            # RAG context (Foundation F3): store in extensions when provided via CLI/API
+            rag_dict = getattr(self.config, "rag_context", None)
+            if rag_dict is not None:
+                try:
+                    report.extensions["rag"] = RAGContext(**rag_dict).model_dump()
+                except Exception as e:
+                    logger.warning(f"Invalid RAG context, skipping: {e}")
+
+            # Phase-2: risk score and layer blame (always computed when health_flags exist)
+            risk_score = 0.0
+            if health_flags is not None:
+                try:
+                    risk_score, risk_factors = compute_risk_score(health_flags, summary)
+                    blamed_layers = compute_layer_blame(timeline_layers_for_flags)
+                    report.extensions["risk"] = {
+                        "risk_score": risk_score,
+                        "risk_factors": risk_factors,
+                        "blamed_layers": blamed_layers,
+                    }
+                except Exception as e:
+                    logger.warning(f"Risk computation failed, skipping: {e}")
+
+            # F2.3 on_risk: when risk or any health flag triggers, attach full layer data to report
+            capture_mode = getattr(self.config.capture, "capture_mode", "full")
+            risk_threshold = getattr(self.config.capture, "risk_threshold", 0.7)
+            any_health_flag_set = health_flags is not None and (
+                health_flags.nan_detected
+                or health_flags.inf_detected
+                or health_flags.attention_collapse_detected
+                or health_flags.repetition_loop_detected
+                or health_flags.mid_layer_anomaly_detected
+                or (health_flags.high_entropy_steps > 0)
+            )
+            if (
+                capture_mode == "on_risk"
+                and (risk_score >= risk_threshold or any_health_flag_set)
+                and len(timeline_layers_for_flags) == len(report.timeline)
+            ):
+                # Attach full layers to timeline (already computed in timeline_layers_for_flags)
+                report.timeline = [
+                    step.model_copy(update={"layers": timeline_layers_for_flags[i]})
+                    for i, step in enumerate(report.timeline)
+                ]
+                # Rebuild prompt_analysis with sparse heads included
+                full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
+                if full_prompt_analysis is not None:
+                    report.prompt_analysis = full_prompt_analysis
+                logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
+
+            # Phase-3: fingerprint (run-summary vector + prompt hash) for every report
+            try:
+                hf = health_flags if health_flags is not None else HealthFlags()
+                vec = compute_fingerprint_vector(timeline, summary, hf, risk_score)
+                prompt_hash = compute_prompt_hash(prompt, model_info.hf_id)
+                report.extensions["fingerprint"] = {"vector": vec, "prompt_hash": prompt_hash}
+            except Exception as e:
+                logger.warning(f"Fingerprint computation failed, skipping: {e}")
+
+            # Phase-4: early warning (failure_risk, warning_signals) from timeline + health_flags
+            try:
+                hf_ew = health_flags if health_flags is not None else HealthFlags()
+                failure_risk, warning_signals = compute_early_warning(timeline, hf_ew)
+                report.extensions["early_warning"] = {
+                    "failure_risk": failure_risk,
+                    "warning_signals": warning_signals,
+                }
+            except Exception as e:
+                logger.warning(f"Early warning computation failed, skipping: {e}")
+
+            # Phase-7: template-based narrative (2–4 sentences)
+            try:
+                hf_n = health_flags if health_flags is not None else HealthFlags()
+                risk_ext = report.extensions.get("risk") or {}
+                ew_ext = report.extensions.get("early_warning") or {}
+                summary_text = build_narrative(
+                    hf_n,
+                    risk_ext.get("risk_score", 0.0),
+                    risk_ext.get("blamed_layers", []),
+                    ew_ext.get("warning_signals", []),
+                )
+                report.extensions["narrative"] = {"summary": summary_text}
+            except Exception as e:
+                logger.warning(f"Narrative build failed, skipping: {e}")
 
         # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
 
@@ -307,14 +400,21 @@ class ReportBuilder:
             ),
         )
 
-    def _build_timeline(self, results: InstrumentationResults) -> List[TimelineStep]:
+    def _build_timeline(self, results: InstrumentationResults) -> Tuple[List[TimelineStep], List[List[LayerSummary]]]:
         """Build timeline from instrumentation results.
 
         Tracks per-step timing for performance monitoring.
+        When capture_mode is summary or on_risk, layer summaries are computed for health
+        flags but not stored in the report (layers=[]); the second return value holds
+        them for _build_health_flags.
         """
         import time
 
-        timeline = []
+        capture_mode = getattr(self.config.capture, "capture_mode", "full")
+        store_layers = capture_mode == "full"
+
+        timeline: List[TimelineStep] = []
+        layers_by_step: List[List[LayerSummary]] = []
         step_times_ms: List[float] = []
 
         for step_data in results.timeline:
@@ -327,7 +427,7 @@ class ReportBuilder:
                 is_prompt_token=step_data.is_prompt_token,
             )
 
-            # Logits summary
+            # Logits summary (always computed for time series and high_entropy_steps)
             logits_summary = LogitsSummary()
             if step_data.logits is not None:
                 try:
@@ -341,7 +441,7 @@ class ReportBuilder:
                 except Exception as e:
                     logger.warning(f"Failed to compute logits summary for step {step_data.step_index}: {e}")
 
-            # Layer summaries
+            # Layer summaries: always compute (needed for health flags); store only when full
             layers = []
             if step_data.hidden_states is not None:
                 layers = self._build_layer_summaries(
@@ -350,12 +450,13 @@ class ReportBuilder:
                     results.model_bundle.num_layers,
                     cross_attentions=step_data.cross_attentions,
                 )
+            layers_by_step.append(layers)
 
             timeline_step = TimelineStep(
                 step_index=step_data.step_index,
                 token=token_info,
                 logits_summary=logits_summary,
-                layers=layers,
+                layers=layers if store_layers else [],
                 extensions={},
             )
 
@@ -375,7 +476,7 @@ class ReportBuilder:
                     "avg_ms": sum(step_times_ms) / len(step_times_ms),
                 }
 
-        return timeline
+        return timeline, layers_by_step
 
     def _build_layer_summaries(
         self,
@@ -552,21 +653,33 @@ class ReportBuilder:
 
         return encoder_layers if encoder_layers else None
 
-    def _build_prompt_analysis(self, results: InstrumentationResults) -> Optional[PromptAnalysis]:
+    def _build_prompt_analysis(
+        self,
+        results: InstrumentationResults,
+        store_sparse_heads_override: Optional[bool] = None,
+    ) -> Optional[PromptAnalysis]:
         """Build PromptAnalysis from prompt forward pass data (Phase-1b).
 
         For CausalLM: uses data from model(input_ids) forward pass.
         For Seq2Seq: uses reused encoder outputs.
         Returns None if prompt telemetry is disabled or no data available.
+        When capture_mode is summary or on_risk, sparse heads are omitted (heads=[]) to reduce payload.
+        When store_sparse_heads_override is True (e.g. on_risk triggered), sparse heads are included.
         """
         pf = results.prompt_forward
         if pf is None:
             logger.debug("No prompt forward data — prompt_analysis will be null")
             return None
 
-        sparse_threshold = self.config.prompt_telemetry.sparse_threshold
+        capture_mode = getattr(self.config.capture, "capture_mode", "full")
+        store_sparse_heads = (
+            store_sparse_heads_override if store_sparse_heads_override is not None else (capture_mode == "full")
+        )
 
-        # 1. Build per-layer sparse attention profiles + basin scores
+        sparse_threshold = self.config.prompt_telemetry.sparse_threshold
+        sparse_max_per_head = getattr(self.config.prompt_telemetry, "sparse_max_per_head", None)
+
+        # 1. Build per-layer sparse attention profiles + basin scores (omit heads when summary/on_risk)
         layers: list[PromptAttentionLayer] = []
         if pf.attentions is not None:
             for layer_idx, attn_tensor in enumerate(pf.attentions):
@@ -578,11 +691,17 @@ class ReportBuilder:
                         layers.append(PromptAttentionLayer())
                         continue
 
-                    # Sparse extraction (vectorized torch.where per head)
-                    sparse_heads_dicts = extract_sparse_attention(attn_tensor, threshold=sparse_threshold)
-                    sparse_heads = [SparseAttentionHead(**h) for h in sparse_heads_dicts]
+                    # Sparse extraction only when full capture (otherwise omit to reduce payload)
+                    sparse_heads: list = []
+                    if store_sparse_heads:
+                        sparse_heads_dicts = extract_sparse_attention(
+                            attn_tensor,
+                            threshold=sparse_threshold,
+                            max_per_head=sparse_max_per_head,
+                        )
+                        sparse_heads = [SparseAttentionHead(**h) for h in sparse_heads_dicts]
 
-                    # Basin scores (middle/boundary ratio per head)
+                    # Basin scores (middle/boundary ratio per head) — always computed
                     basin = compute_basin_scores(attn_tensor)
 
                     layers.append(PromptAttentionLayer(heads=sparse_heads, basin_scores=basin))
@@ -616,6 +735,7 @@ class ReportBuilder:
         self,
         results: InstrumentationResults,
         timeline: List[TimelineStep],
+        timeline_layers_override: Optional[List[List[LayerSummary]]] = None,
     ) -> HealthFlags:
         """Build aggregated health flags from timeline data (Phase-1c).
 
@@ -624,8 +744,8 @@ class ReportBuilder:
         2. CONSUME: Run repetition loop detection (cosine similarity on buffer)
         3. KILL: Explicitly delete buffer and free GPU memory
 
-        Other health flags are aggregated from the already-built timeline (LayerSummary objects).
-        The buffer never touches the schema — only the boolean result is stored.
+        Other health flags are aggregated from layer data. When capture_mode is summary/on_risk,
+        timeline[].layers is empty; pass timeline_layers_override (computed but not stored).
         """
         # --- Transient buffer: allocate ---
         # Extract last-layer hidden state vector (last token) from generated steps
@@ -661,7 +781,13 @@ class ReportBuilder:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        # --- Aggregate from built timeline ---
+        # --- Aggregate from layer data (use override when capture_mode is summary/on_risk) ---
+        layers_to_aggregate = (
+            timeline_layers_override
+            if timeline_layers_override is not None
+            else [tl_step.layers for tl_step in timeline]
+        )
+
         nan_detected = False
         inf_detected = False
         attention_collapse_detected = False
@@ -673,8 +799,8 @@ class ReportBuilder:
                 if tl_step.logits_summary.entropy > 4.0:
                     high_entropy_steps += 1
 
-            # Per-layer checks
-            for layer in tl_step.layers:
+        for step_layers in layers_to_aggregate:
+            for layer in step_layers:
                 # NaN/Inf from TensorAnomalies
                 if layer.anomalies is not None:
                     if layer.anomalies.has_nan:
@@ -690,11 +816,9 @@ class ReportBuilder:
         # --- Mid-layer anomaly detection ---
         mid_layer_anomaly_detected = False
         num_layers = results.model_bundle.num_layers
-        if timeline and num_layers >= 3:
+        if layers_to_aggregate and num_layers >= 3:
             try:
-                # Pass list of step-layers (each is a List[LayerSummary])
-                timeline_layers = [tl_step.layers for tl_step in timeline]
-                mid_layer_anomaly_detected = detect_mid_layer_anomaly(timeline_layers, num_layers)
+                mid_layer_anomaly_detected = detect_mid_layer_anomaly(layers_to_aggregate, num_layers)
             except Exception as e:
                 logger.warning(f"Failed mid-layer anomaly detection: {e}")
 
