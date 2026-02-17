@@ -133,6 +133,20 @@ class TestMockCausalLMInstrumentation:
         assert not report.health_flags.nan_detected, "Mock data should have no NaN"
         assert not report.health_flags.inf_detected, "Mock data should have no Inf"
 
+        # Phase-2: risk extension populated when health_flags exist
+        risk = report.extensions.get("risk")
+        assert risk is not None, "Report should have extensions['risk'] when health_flags exist"
+        assert "risk_score" in risk and "risk_factors" in risk and "blamed_layers" in risk
+        assert 0 <= risk["risk_score"] <= 1
+        assert isinstance(risk["risk_factors"], list) and isinstance(risk["blamed_layers"], list)
+
+        # Phase-3: fingerprint on every report
+        fp = report.extensions.get("fingerprint")
+        assert fp is not None, "Report should have extensions['fingerprint']"
+        assert "vector" in fp and "prompt_hash" in fp
+        assert len(fp["vector"]) == 9
+        assert isinstance(fp["prompt_hash"], str) and len(fp["prompt_hash"]) == 64
+
         # Serialize to JSON
         json_str = serialize_report_to_json(report)
         assert json_str is not None
@@ -156,6 +170,94 @@ class TestMockCausalLMInstrumentation:
         first_step = json_data["timeline"][0]
         # At least one of these should be present
         assert "logits" in first_step or "layers" in first_step
+
+    def test_report_builder_summary_capture_mode_has_no_layers_and_heads(self, mock_model_bundle):
+        """When capture_mode=summary, timeline.layers and prompt_attention.heads should be empty,
+        but health_flags must still be populated.
+        """
+        # Create config with summary capture mode
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 3
+        config.generation.seed = 42
+        config.capture.capture_mode = "summary"
+
+        # Create collector and inject mock bundle
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+
+        # Run generation
+        prompt = "Test prompt summary"
+        results = collector.run(prompt)
+
+        # Build report
+        builder = ReportBuilder(config)
+        report = builder.build(results, prompt)
+
+        # Timeline should have no per-layer data in summary mode
+        assert len(report.timeline) > 0
+        for step in report.timeline:
+            assert step.layers == []
+
+        # Prompt analysis should exist but with empty heads per layer
+        assert report.prompt_analysis is not None
+        for layer in report.prompt_analysis.layers:
+            assert layer.heads == []
+
+        # Health flags should still be computed from internal data
+        assert report.health_flags is not None
+        assert isinstance(report.health_flags.nan_detected, bool)
+        assert isinstance(report.health_flags.repetition_loop_detected, bool)
+
+    def test_report_builder_on_risk_attaches_full_layers_when_triggered(self, mock_model_bundle):
+        """When capture_mode=on_risk and risk or health flag triggers, timeline gets full layers (F2.3)."""
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 3
+        config.generation.seed = 42
+        config.capture.capture_mode = "on_risk"
+        config.capture.risk_threshold = 0.0  # Trigger on any risk_score >= 0 (always true)
+
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("On-risk trigger test")
+
+        builder = ReportBuilder(config)
+        report = builder.build(results, "On-risk trigger test")
+
+        assert len(report.timeline) > 0
+        # F2.3: when on_risk triggers, full layers are attached
+        first_step = report.timeline[0]
+        assert len(first_step.layers) > 0, "on_risk trigger should attach full timeline layers"
+
+    def test_report_builder_rag_context_in_extensions(self, mock_model_bundle):
+        """When config.rag_context is set, report.extensions['rag'] should contain RAGContext data (Foundation F3)."""
+        config = Config()
+        config.model.hf_id = "mock-causal"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 2
+        config.generation.seed = 42
+        config.rag_context = {
+            "context_token_count": 100,
+            "retrieved_doc_ids": ["doc1", "doc2"],
+            "retrieved_doc_titles": ["Title 1", "Title 2"],
+            "retrieval_metadata": {"k": 5, "scores": [0.9, 0.8]},
+        }
+
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+        results = collector.run("RAG test")
+        builder = ReportBuilder(config)
+        report = builder.build(results, "RAG test")
+
+        rag = report.extensions.get("rag")
+        assert rag is not None, "extensions['rag'] should be set when config.rag_context is provided"
+        assert rag.get("context_token_count") == 100
+        assert rag.get("retrieved_doc_ids") == ["doc1", "doc2"]
+        assert rag.get("retrieved_doc_titles") == ["Title 1", "Title 2"]
+        assert rag.get("retrieval_metadata") == {"k": 5, "scores": [0.9, 0.8]}
 
     def test_mock_causal_output_shapes(self, mock_model_bundle):
         """Test that mock CausalLM model returns correctly shaped tensors."""
@@ -522,12 +624,11 @@ class TestPhase05Features:
         # CausalLM models should have encoder_layers as None
         assert report.encoder_layers is None
 
-        # Serialize to JSON and verify
+        # Serialize to JSON and verify (exclude_none=True may omit encoder_layers when None)
         json_str = serialize_report_to_json(report)
         json_data = json.loads(json_str)
 
-        assert "encoder_layers" in json_data
-        assert json_data["encoder_layers"] is None
+        assert json_data.get("encoder_layers") is None
 
     @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
     def test_encoder_layers_populated_for_seq2seq(self, mock_model_bundle):

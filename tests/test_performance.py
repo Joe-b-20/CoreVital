@@ -31,7 +31,7 @@ from CoreVital.utils.serialization import serialize_report_to_json
 def _minimal_report(trace_id: str = "deadbeef-0000-0000-0000-000000000000", **extensions):
     """Minimal valid Report for performance tests."""
     return Report(
-        schema_version="0.1.0",
+        schema_version="0.3.0",
         trace_id=trace_id,
         created_at_utc="2026-01-01T00:00:00Z",
         model=ModelInfo(
