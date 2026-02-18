@@ -261,9 +261,7 @@ def compute_attention_summary(
                 summary["concentration_min"] = float(max_attn_per_query.min().item())
 
             if "focused_head_count" in config.stats:
-                summary["focused_head_count"] = int(
-                    (per_head_max > FOCUSED_HEAD_CONCENTRATION_THRESHOLD).sum().item()
-                )
+                summary["focused_head_count"] = int((per_head_max > FOCUSED_HEAD_CONCENTRATION_THRESHOLD).sum().item())
 
         return summary
 
