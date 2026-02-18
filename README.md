@@ -1,8 +1,10 @@
 # CoreVital
 
-**Why CoreVital exists:** LLM outputs fail in subtle ways (repetition, confusion, numerical issues), and debugging internal behavior is hard. CoreVital instruments inference, summarizes tensors into lightweight metrics, and computes health flags, risk scores, and narratives so you can debug faster, monitor production, and compare models.
+**LLM inference health monitor with risk scoring, structured artifacts, and an interactive dashboard.**
 
-**What it does:** Deep instrumentation of Hugging Face transformers—hidden states, attention patterns, logits—without storing full tensors. Produces JSON or SQLite reports with risk score, health flags (NaN/Inf, repetition loop, attention collapse, etc.), fingerprints, early-warning signals, and human-readable narratives. Optional Library API (`CoreVitalMonitor`) for embeddable runs and `should_intervene()` for health-aware decoding.
+CoreVital hooks into the forward pass of any Hugging Face transformer to capture hidden states, attention patterns, and logits at every generation step. Instead of storing raw tensors, it computes lightweight summary statistics and produces structured reports with a 0--1 risk score, boolean health flags, layer blame, prompt fingerprints, and human-readable narratives. Reports persist to SQLite (default), JSON, Datadog, Prometheus, or OpenTelemetry.
+
+Use it to debug why a model repeats itself, monitor inference health in production, or compare models side by side -- all without modifying model code.
 
 ## Features
 
@@ -19,7 +21,7 @@
 
 **Tested with:** Llama 3 (e.g. meta-llama/Llama-3.2-1B), Mistral 7B, Mixtral 8x7B, Qwen2. See [Model compatibility](docs/model-compatibility.md) and smoke tests in `tests/test_models_production.py` (run with `pytest -m slow`).
 
-**Status:** CoreVital is in active development (v0.3.0). The core instrumentation and reporting features are production-ready and tested. Some advanced features (streaming API, full metrics export) are in development. See [Roadmap](#roadmap) for details.
+**Status (v0.3.0):** This showcase branch includes full implementations of Phases 0--8 (instrumentation, metrics, risk scoring, fingerprinting, early warning, health-aware decoding, cross-model comparison, narratives, library API). Streaming is post-run replay; real-time per-step streaming is planned. See [Roadmap](#roadmap).
 
 ## Try CoreVital
 
@@ -35,6 +37,70 @@ The hosted dashboard ships with a curated demo database (5 traces, two models, v
 pip install "git+https://github.com/Joe-b-20/CoreVital.git@release/showcase"
 corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
 ```
+
+## What You Get
+
+Every run produces a structured report. Here is a condensed example from a real GPT-2 run:
+
+```json
+{
+  "risk_score": 0.35,
+  "health_flags": {
+    "nan_detected": false,
+    "attention_collapse_detected": true,
+    "high_entropy_steps": 1,
+    "repetition_loop_detected": false
+  },
+  "narrative": "Moderate risk. Attention collapse detected in 3 heads. One high-entropy step at position 2.",
+  "timeline": [
+    {
+      "step_index": 0,
+      "token": { "token_text": " the", "prob": 0.222 },
+      "entropy": 4.02,
+      "perplexity": 16.22,
+      "surprisal": 3.91
+    }
+  ],
+  "fingerprint_vector": [0.35, 4.02, 0.22, 5, 12, ...]
+}
+```
+
+Full reports include per-layer hidden-state and attention summaries for every generation step, prompt telemetry, layer blame, and performance breakdowns. See [Output Format](#output-format) for the complete schema.
+
+## How It Works
+
+```
+Prompt
+  |
+  v
+HF generate() with PyTorch forward hooks
+  |
+  +---> Hidden states, attention weights, logits (per layer, per step)
+  |
+  v
+Summary computation (mean, std, entropy, L2 norm -- raw tensors discarded)
+  |
+  v
+Report builder (risk score, health flags, layer blame, fingerprint, narrative)
+  |
+  v
+Sink (SQLite | JSON | Datadog | Prometheus | OpenTelemetry)
+  |
+  v
+Dashboard (Streamlit: timeline charts, attention heatmaps, Compare view)
+```
+
+## Measured Overhead
+
+All measurements on CPU, `--perf` mode, excluding model load time:
+
+| Model | Layers | Steps | Inference | Report build | Prompt telemetry | Total overhead |
+|-------|--------|-------|-----------|-------------|-----------------|---------------|
+| flan-t5-small | 8 | 8 | 709 ms | 164 ms | -- | +23% |
+| Phi-3-mini-4k | 32 | 50 | 3,347 ms | 1,652 ms | 687 ms | +70% |
+| Llama-3.1-8B | 32 | 50 | 4,183 ms | 1,578 ms | 1,084 ms | +64% |
+
+Report building scales as O(steps x layers x heads). For production use, `--capture summary` skips per-layer data and drops overhead to under 5%. `--capture on_risk` records a full trace only when risk exceeds a threshold.
 
 ## Quick Start
 
@@ -359,33 +425,14 @@ export COREVITAL_DEVICE=cuda
 export COREVITAL_SEED=123
 ```
 
-## Performance Benchmarks
+## Performance
 
-CoreVital is designed for minimal overhead. Performance measurements from real runs:
+See [Measured Overhead](#measured-overhead) for real numbers. Key optimization levers:
 
-### Overhead Measurements
-
-**Small models (GPT-2, ~12 layers, ~15 generation steps):**
-- **Inference overhead:** ~2-5% (instrumentation adds ~50-200ms to ~2-5s total)
-- **Report building:** ~50-100ms
-- **Total overhead:** ~3-6% of wall time
-
-**Medium models (Llama-3.1-8B, 32 layers, ~50 steps):**
-- **Inference overhead:** ~1-2% (instrumentation adds ~100-400ms to ~4-8s total)
-- **Report building:** ~3-4s (dominated by per-layer summary computation)
-- **Total overhead:** ~15-20% of wall time (report building is the bottleneck)
-
-**Large models (7B+, longer sequences):**
-- **Inference overhead:** Improves to ~0.5-2% (model computation dominates)
-- **Report building:** Scales roughly O(steps × layers × heads)
-- **Memory:** Negligible Python heap overhead (summaries only, no raw tensors)
-
-### Optimization Strategies
-
-- **Use `--capture summary`** for production: stores only health flags and time series, skipping per-layer data
-- **Use `--capture on_risk`**: summary by default, full trace only when risk exceeds threshold
-- **Sampling**: Instrument only a subset of requests (e.g., 1% random or every N-th request)
-- **Report building scales**: For very large models, consider skipping prompt telemetry (`--no-prompt-telemetry`) or reducing attention detail
+- **`--capture summary`**: Skips per-layer data; overhead drops to under 5%.
+- **`--capture on_risk`**: Summary by default, full trace only when risk exceeds threshold.
+- **Sampling**: Instrument a subset of requests (1% random, every N-th).
+- **Skip prompt telemetry**: `--no-prompt-telemetry` removes the extra forward pass.
 
 See [Design Journey](docs/design-journey.md) for the performance monitoring design rationale.
 
@@ -523,11 +570,8 @@ corevital compare --db runs/corevital.db
 
 ## Development
 
-**Environment:** Use the project’s conda env for tests, lint, and dashboard: `conda activate llm_hm`.
-
 ### Running Tests
 ```bash
-conda activate llm_hm
 # Run all tests (excluding GPU tests)
 pytest tests/ -v --tb=short -m "not gpu"
 
@@ -627,7 +671,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-All phases are complete. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs across each phase.
+This showcase branch includes implementations of all phases. Streaming (Phase 4) is currently post-run replay; real-time per-step events are the main planned improvement. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs.
 
 | Phase | Focus | Key deliverables |
 |-------|-------|-----------------|
