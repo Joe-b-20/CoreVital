@@ -2,7 +2,7 @@
 
 **Purpose:** Run production-level tests for **all** listed CoreVital models (Llama, Mistral, Mixtral, Qwen, etc.) on a GPU pod (e.g. RunPod), with **instruct** variants for coherent answers, runtime metrics logged to a file, and optional S3 sync so results can be inspected after shutting down the pod. Tests must be **flawless** so no debugging is needed on the expensive GPU.
 
-**When to run:** **After** the next push. Install the latest CoreVital from PyPI (or from the repo tag) on the pod so the run reflects the released version.
+**When to run:** **After** the next push. Install the latest CoreVital from the repo on the pod so the run reflects the released version.
 
 ---
 

@@ -301,8 +301,10 @@ db_path: Optional[str] = None
 # Max size to load for "Raw JSON" expander without warning (MB)
 LARGE_FILE_MB = 50
 
-# Path to bundled demo sample (dashboard.py is in repo root; parent = repo root)
-_DEMO_SAMPLE_PATH = Path(__file__).resolve().parent / "docs" / "demo" / "sample_report.json"
+_REPO_ROOT = Path(__file__).resolve().parent
+_DEMO_SAMPLE_PATH = _REPO_ROOT / "docs" / "demo" / "sample_report.json"
+_DEMO_DB_PATH = _REPO_ROOT / "docs" / "demo" / "corevital_demo.db"
+_DEFAULT_DB_PATH = Path("runs/corevital.db")
 
 if source == "Demo sample":
     if _DEMO_SAMPLE_PATH.exists():
@@ -342,10 +344,11 @@ elif source == "Local files":
         st.sidebar.warning("./runs/ directory not found. Run a model first.")
 
 elif source == "Database":
+    _initial_db = str(_DEFAULT_DB_PATH) if _DEFAULT_DB_PATH.exists() else str(_DEMO_DB_PATH)
     db_path = st.sidebar.text_input(
         "SQLite path",
-        value="runs/corevital.db",
-        help="Path to corevital.db (e.g. runs/corevital.db)",
+        value=_initial_db,
+        help="Path to corevital.db. Falls back to bundled demo DB when runs/corevital.db is absent.",
     )
     db_traces: List[Dict[str, Any]] = []
     if db_path:

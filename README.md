@@ -29,25 +29,30 @@
 
 The notebook installs CoreVital, runs GPT-2 with your prompt, and prints the risk score, health flags, and per-step entropy. Change the prompt to anything you want.
 
+**Live Dashboard** -- browse real Llama-3.1 and GPT-2 traces without installing anything:
+
+<!-- TODO: replace URL after deploying to Streamlit Community Cloud -->
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://corevital.streamlit.app)
+
+The hosted dashboard ships with a curated demo database (5 traces, two models, varying risk levels). Select "Database" in the sidebar to explore.
+
 **Install locally** (for CLI, dashboard, and production use):
 
 ```bash
-pip install git+https://github.com/Joe-b-20/CoreVital.git
+pip install "git+https://github.com/Joe-b-20/CoreVital.git@release/showcase"
 corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
 ```
-
-To publish on PyPI so users can simply `pip install corevital`, see [Publishing to PyPI](#publishing-to-pypi).
 
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Install from GitHub (recommended)
-pip install git+https://github.com/Joe-b-20/CoreVital.git
+# Install from GitHub
+pip install "git+https://github.com/Joe-b-20/CoreVital.git@release/showcase"
 
 # Or clone and install in editable mode (for development)
-git clone https://github.com/Joe-b-20/CoreVital.git
+git clone -b release/showcase https://github.com/Joe-b-20/CoreVital.git
 cd CoreVital
 pip install -e .
 ```
@@ -523,18 +528,6 @@ corevital compare --db runs/corevital.db
 
 **Cross-Attention:** (Seq2Seq only) How the decoder attends to encoder outputs. Shows which parts of the input the model "listens to" during generation.
 
-## Publishing to PyPI
-
-To make CoreVital installable via `pip install corevital`:
-
-```bash
-pip install build twine
-python -m build
-twine upload dist/*
-```
-
-This uses the metadata in `pyproject.toml`. After publishing, users can install with `pip install corevital` (or `pip install corevital[dashboard]` for the Streamlit dashboard) without cloning the repo.
-
 ## Development
 
 **Environment:** Use the project’s conda env for tests, lint, and dashboard: `conda activate llm_hm`.
@@ -587,6 +580,18 @@ GitHub Actions runs on every push and pull request to `main`:
 - **Type Check**: MyPy static analysis
 - **Test**: pytest suite (Python 3.12)
 
+### Hosting the Dashboard
+
+The Streamlit dashboard can be hosted publicly via [Streamlit Community Cloud](https://share.streamlit.io):
+
+1. Sign in at [share.streamlit.io](https://share.streamlit.io) with the GitHub account that owns this repo.
+2. Click **New app**, select the `CoreVital` repo, branch `release/showcase`, main file `dashboard.py`.
+3. Deploy. The `requirements.txt` at the repo root handles all dependencies.
+
+The bundled demo database (`docs/demo/corevital_demo.db`) ships with 5 curated traces (GPT-2 and Llama-3.1-8B-Instruct at varying risk levels). On the hosted app, select **Database** in the sidebar to browse them -- no local setup required.
+
+To use your own database, copy `runs/corevital.db` into the repo (or update the SQLite path in the sidebar).
+
 ### Mock Testing Suite
 
 The project includes a comprehensive mock testing suite that allows testing instrumentation logic without loading heavy models. This enables fast, lightweight testing of the instrumentation pipeline.
@@ -633,10 +638,10 @@ All phases are complete. See [Design Journey](docs/design-journey.md) for archit
 
 | Phase | Focus | Key deliverables |
 |-------|-------|-----------------|
-| Pre-Phase-1 | Cleanup and tooling | Schema v0.3.0, `ModelCapabilities` registry, CI/CD, dtype detection |
 | Phase 0 | HF instrumentation | Hidden states, attention, logits capture; summaries; Seq2Seq; quantization |
 | Phase 0.5 | Hardening | Extensions model, encoder/decoder separation, memory optimizations |
 | Phase 0.75 | Performance monitoring | `--perf` (summary/detailed/strict); operation timing; warmup/baseline |
+| Pre-Phase-1 | Cleanup and tooling | Schema v0.3.0, `ModelCapabilities` registry, CI/CD, dtype detection |
 | Phase 1 | Metrics and telemetry | Enhanced metrics, prompt telemetry, health flags, dashboard, SQLite default |
 | Phase 2 | Risk scoring | `compute_risk_score`, `compute_layer_blame`; `on_risk` capture trigger |
 | Phase 3 | Fingerprinting | `compute_fingerprint_vector`, `compute_prompt_hash` |

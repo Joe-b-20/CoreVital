@@ -32,3 +32,7 @@
 ## About the sample report
 
 The bundled `sample_report.json` is a real CoreVital report from a Llama-3.1-8B-Instruct run (not synthetic). It includes full per-layer summaries for all 32 layers across 10 generation steps, prompt analysis, health flags, risk scoring, fingerprinting, narrative, and performance data.
+
+## Demo database
+
+`corevital_demo.db` contains 5 curated traces (1 GPT-2, 4 Llama-3.1-8B-Instruct) at varying risk levels (0.30 to 0.48). This is the database used by the hosted Streamlit dashboard so visitors can explore the Compare view and filter by model without running any inference locally.
