@@ -1,6 +1,12 @@
 %% Operations hierarchy: all nodes and edges verified against cli.py, collector.py, hf_loader.py, report_builder.py, config.py, sinks, utils.serialization
 %% Updated: pre-phase-1 — ModelCapabilities registry replaces standalone Seq2Seq detection;
 %%          compute_encoder_hidden_states_summaries removed (encoder layers built directly)
+%% Updated: Phase-1b — prompt_forward_pass added (CausalLM: model(input_ids), Seq2Seq: reuse encoder)
+%% Updated: Phase-1c — _build_health_flags added (repetition loop, mid-layer anomaly detection)
+%% Updated: Phase-2-7 — extensions computation added (risk, fingerprint, narrative, early_warning)
+%% Updated: Phase-1d — SQLite sink added, performance injection before sink.write(), OTLP export
+%% Note: decoder_loop timing is added manually (not via _op) but appears as child of _generate_seq2seq_manual
+%% Last verified: 2026-02-16
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa'}}}%%
 flowchart TB
     T[total_wall_time]
@@ -12,6 +18,8 @@ flowchart TB
     T --> Tok[tokenize]
     T --> Inf[model_inference]
     T --> RB[report_build]
+    T --> Perf[inject performance if --perf]
+    T --> SW[sink_write]
 
     Config --> C1[from_yaml or from_default]
     Config --> C2[CLI overrides]
@@ -42,10 +50,18 @@ flowchart TB
     Tok --> Tok1[tokenizer prompt return_tensors pt]
     Tok --> Tok2[.to device]
 
+    T --> PromptFwd[prompt_forward_pass Phase-1b]
+    PromptFwd --> PF1[model input_ids CausalLM only]
+    PromptFwd --> PF2[extract prompt hidden_states]
+    PromptFwd --> PF3[extract prompt attentions]
+    PromptFwd --> PF4[extract prompt logits CausalLM]
+    PromptFwd --> PF5[Seq2Seq: reuse encoder outputs]
+
     Inf --> Causal[model.generate CausalLM]
     Inf --> Seq2Seq[_generate_seq2seq_manual]
     Inf --> Extract[extract generated tokens]
     Inf --> Decode[decode generated text]
+    Inf --> EncExt[extract encoder outputs if Seq2Seq]
     Inf --> Proc[_process_timeline]
     Inf --> Warn[_collect_warnings]
 
@@ -55,7 +71,16 @@ flowchart TB
     Seq2Seq --> S2[decoder_loop]
 
     S2 --> S2prep[prepare decoder_start_token_id decoder_input_ids]
-    S2prep --> S2a[decoder_step x max_new_tokens]
+    S2prep --> S2a[decoder_loop for step in max_new_tokens]
+    S2a --> S2a1[model forward decoder_input_ids encoder_outputs]
+    S2a --> S2a2[extract next_token_logits]
+    S2a --> S2a3[extract decoder_hidden_states slice last pos]
+    S2a --> S2a4[extract decoder_attentions slice last query]
+    S2a --> S2a5[extract cross_attentions slice last pos]
+    S2a --> S2a6[sample temperature top_k top_p]
+    S2a --> S2a7[append to decoder_input_ids]
+    S2a --> S2a8[check EOS break]
+    S2a --> S2a9[track per_step times for stats]
 
     S1 --> S1a[model.encoder input_ids output_hidden_states output_attentions]
     S1 --> S1b[extract encoder_hidden_states]
@@ -75,6 +100,7 @@ flowchart TB
     Inf --> EncExt[extract encoder outputs if Seq2Seq]
     EncExt --> Ext2[extract encoder_hidden_states]
     EncExt --> Ext3[extract encoder_attentions]
+    EncExt --> Ext4[build PromptForwardData from encoder Seq2Seq]
 
     Decode --> Dec1[tokenizer.decode generated_token_ids]
 
@@ -92,10 +118,13 @@ flowchart TB
     RB --> R3[_build_prompt_info]
     RB --> R4[_build_generated_info]
     RB --> R5[_build_timeline]
-    RB --> R7[_build_encoder_layers if Seq2Seq]
+    RB --> R6[_build_prompt_analysis Phase-1b]
+    RB --> R7[_build_health_flags Phase-1c]
+    RB --> R7a[_build_encoder_layers if Seq2Seq]
     RB --> R8[build Summary]
     RB --> R9[convert warnings]
-    RB --> R10[assemble Report v0.2.0]
+    RB --> R10[assemble Report v0.3.0]
+    RB --> R11[compute extensions]
 
     R5 --> S3[_build_timeline]
 
@@ -107,9 +136,18 @@ flowchart TB
     H2 --> L2[compute_attention_summary per layer]
     H2 --> L3[compute_attention_summary cross Seq2Seq]
 
-    R7 --> S5a[for each encoder layer]
+    R7a --> S5a[for each encoder layer]
     S5a --> E1[compute_hidden_summary]
     S5a --> E2[compute_attention_summary]
+
+    R11 --> Ext1[compute_risk_score Phase-2]
+    R11 --> Ext2[compute_layer_blame Phase-2]
+    R11 --> Ext3[compute_fingerprint_vector Phase-3]
+    R11 --> Ext4[compute_prompt_hash Phase-3]
+    R11 --> Ext5[compute_early_warning Phase-4]
+    R11 --> Ext6[build_narrative Phase-7]
+    R11 --> Ext7[on_risk: attach full layers if triggered]
+    R11 --> Ext8[RAG context if provided]
 
     style T fill:#1e40af,stroke:#3b82f6,color:#93c5fd
     style ML fill:#065f46,stroke:#10b981,color:#6ee7b7
@@ -123,3 +161,22 @@ flowchart TB
     style L3 fill:#7c3aed,stroke:#a78bfa
     style E1 fill:#7c3aed,stroke:#a78bfa
     style E2 fill:#7c3aed,stroke:#a78bfa
+    style PromptFwd fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF5 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style R6 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style R7 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style R11 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext5 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext6 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext7 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext8 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Perf fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style SW fill:#0e7490,stroke:#22d3ee,color:#a5f3fc

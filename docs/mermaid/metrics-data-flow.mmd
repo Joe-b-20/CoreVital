@@ -1,0 +1,208 @@
+%% Phase-1 Metrics Data Flow: Sources → Shared Computations → Individual Metrics → Schema Output
+%% Shows what data each metric needs, where it comes from, how it's calculated, and what it produces.
+%% Shared intermediates highlighted to show which metrics reuse the same computation.
+%% Ref: docs/Phase1 metrics analysis.md (Metrics 1-14)
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% RAW MODEL OUTPUTS (left-most sources)
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph SRC["RAW MODEL OUTPUTS"]
+        direction LR
+        logits["logits<br/>[batch, seq, vocab_size]<br/>Per generated step"]
+        hidden["hidden_states<br/>[layers × (batch, seq, dim)]<br/>Per generated step"]
+        attn_w["attention_weights<br/>[layers × (batch, heads, seq, seq)]<br/>Per generated step"]
+        prompt_out["prompt_outputs<br/>(extra forward pass)<br/>logits + hidden + attentions<br/>for ALL prompt tokens"]
+        sampled["sampled_token_id<br/>(from generate)"]
+        input_ids["input_ids<br/>(tokenized prompt)"]
+    end
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% SHARED INTERMEDIATE COMPUTATIONS
+    %% Computed once, consumed by multiple metrics
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph SHARED["SHARED INTERMEDIATES  (compute once, use many)"]
+        direction LR
+        log_sm["log_softmax(logits)<br/>→ log_probs<br/>⚠️ Numerically stable"]
+        sm["exp(log_probs)<br/>→ probs"]
+        topk["topk(probs, k=10)<br/>→ top_k_values, top_k_indices"]
+        head_ent["per_head_entropy<br/>-Σ(a_i · log₂(a_i + ε))<br/>[heads] per layer"]
+        head_conc["per_head_max<br/>max(a, dim=-1)<br/>[heads] per layer"]
+    end
+
+    logits --> log_sm
+    log_sm --> sm
+    sm --> topk
+    attn_w --> head_ent
+    attn_w --> head_conc
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% LOGIT METRICS
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph LOGIT["LOGIT METRICS — Output Distribution Analysis"]
+        direction TB
+        M1["<b>M1: Shannon Entropy</b><br/>H = -Σ(p · log_p) / log(2)<br/><i>Output:</i> entropy: float<br/><i>Range:</i> 0 (certain) → ~17 (uniform)<br/><i>Signal:</i> &gt;4.0 = high confusion"]
+        M2["<b>M2: Top-K Margin</b><br/>prob[0] - prob[1]<br/><i>Output:</i> top_k_margin: float<br/><i>Range:</i> 0 (tie) → 1.0 (certain)<br/><i>Signal:</i> &lt;0.2 = model torn"]
+        M3["<b>M3: Voter Agreement</b><br/>Σ(top_k_probs)<br/><i>Output:</i> voter_agreement: float<br/><i>Range:</i> 0 → 1.0<br/><i>Signal:</i> &lt;0.7 = probability spread wide"]
+        M4["<b>M4: Max Probability</b><br/>max(probs)<br/><i>Output:</i> max_prob: float<br/><i>Range:</i> 0 → 1.0<br/><i>Signal:</i> &lt;0.3 = no clear winner"]
+    end
+
+    log_sm --> M1
+    sm --> M1
+    topk --> M2
+    topk --> M3
+    sm --> M4
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% ATTENTION METRICS (generation timeline)
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph ATTN_GEN["ATTENTION METRICS — Information Flow (Generation)"]
+        direction TB
+        M5["<b>M5: Attention Entropy</b><br/>mean/min/max of per_head_entropy<br/><i>Output:</i> entropy_mean, entropy_min, entropy_max: float<br/>collapsed_head_count, focused_head_count: int<br/><i>Signal:</i> collapsed_head_count &gt; 0 = FAILURE"]
+        M6["<b>M6: Concentration</b><br/>max/min of per_head_max<br/><i>Output:</i> concentration_max, concentration_min: float<br/><i>Signal:</i> &gt;0.95 = attention collapse"]
+    end
+
+    head_ent --> M5
+    head_conc --> M6
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% PROMPT ATTENTION METRICS (from extra forward pass)
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph ATTN_PROMPT["ATTENTION METRICS — Prompt Telemetry"]
+        direction TB
+        M7a["<b>M7a: Sparse Extraction</b><br/>torch.where(attn &gt; 0.01)<br/><i>Output:</i> SparseAttentionHead (SoA)<br/>query_indices, key_indices, weights<br/><i>Storage:</i> ~1.5MB typical"]
+        M7b["<b>M7b: Basin Score</b><br/>avg(middle_attn) / avg(boundary_attn)<br/><i>Output:</i> basin_scores: List[float] per layer<br/><i>Signal:</i> &lt;0.3 = Lost in the Middle"]
+    end
+
+    prompt_out --> M7a
+    prompt_out --> M7b
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% HIDDEN STATE METRICS
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph HIDDEN["HIDDEN STATE METRICS — Representation Health"]
+        direction TB
+        M8["<b>M8: L2 Norm</b><br/>‖h‖₂ = √Σ(h_i²)<br/><i>Output:</i> l2_norm: float per layer<br/><i>Signal:</i> &gt;50 = explosion, &lt;0.1 = vanishing"]
+        M9["<b>M9: Standard Deviation</b><br/>std(h, dim=-1).mean()<br/><i>Output:</i> std: float per layer<br/><i>Signal:</i> &lt;0.1 = layer dead"]
+        M10["<b>M10: Layer Transformation</b><br/>1 - cos_sim(h_n, h_{n-1})<br/><i>Output:</i> layer_transformation: float<br/><i>Signal:</i> &lt;0.1 = dead layer, &gt;0.8 = corruption?"]
+        M11["<b>M11: Mean</b><br/>mean(h, dim=-1).mean()<br/><i>Output:</i> mean: float per layer<br/><i>Signal:</i> Large bias shift = investigate"]
+    end
+
+    hidden --> M8
+    hidden --> M9
+    hidden --> M10
+    hidden --> M11
+
+    %% Prompt hidden states for layer transformation
+    prompt_out --> M10
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% ANOMALY DETECTION
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph ANOMALY["ANOMALY DETECTION — Per-Layer Per-Tensor"]
+        direction TB
+        M12["<b>M12: NaN/Inf Detection</b><br/>isnan(tensor).any()<br/>isinf(tensor).any()<br/><i>Output:</i> TensorAnomalies(has_nan, has_inf)<br/><i>Signal:</i> ANY true = immediate alert 🔴"]
+    end
+
+    logits --> M12
+    hidden --> M12
+    attn_w --> M12
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% DERIVED METRICS (depend on other metrics' outputs)
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph DERIVED["DERIVED METRICS — Computed from Other Metrics"]
+        direction TB
+        M13["<b>M13: Perplexity</b><br/>2^entropy<br/><i>Output:</i> perplexity: float<br/><i>Signal:</i> = number of 'plausible' tokens<br/>&gt;16 = high confusion"]
+        M13_5a["<b>M13.5a: Surprisal (generation)</b><br/>-log₂(p_actual_token)<br/><i>Output:</i> surprisal: float per step<br/><i>Signal:</i> &gt;5.0 = model was surprised"]
+        M13_5b["<b>M13.5b: Surprisal (prompt)</b><br/>CrossEntropyLoss(reduction=none)<br/>shift logits vs shift labels<br/><i>Output:</i> prompt_surprisals: List[float]<br/><i>Signal:</i> High = prompt confuses model"]
+    end
+
+    M1 ==>|"entropy value"| M13
+    sm -->|"probs"| M13_5a
+    sampled -->|"actual token"| M13_5a
+    prompt_out -->|"prompt logits"| M13_5b
+    input_ids -->|"shifted labels"| M13_5b
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% HEALTH FLAGS (aggregate from multiple metrics)
+    %% ───────────────────────────────────────────────────────────────────
+    subgraph HEALTH["HEALTH FLAGS — Aggregated Alerts (post-processing)"]
+        direction TB
+        M14["<b>M14: Health Flags</b><br/><i>Aggregates:</i><br/>nan_detected, inf_detected<br/>attention_collapse_detected<br/>high_entropy_steps: int<br/>repetition_loop_detected<br/>mid_layer_anomaly_detected"]
+        M14a["<b>M14a: Repetition Loop</b><br/>cos_sim(h_t, h_{t-k}) &gt; 0.99<br/>Transient buffer: last 5 vectors<br/><i>Signal:</i> Model stuck in loop"]
+        M14b["<b>M14b: Mid-Layer Anomaly</b><br/>Dynamic threshold: 5× early-layer baseline<br/>Targets middle ⅓ of layers<br/><i>Signal:</i> Hallucination sweet spot hit"]
+    end
+
+    M12 ==>|"nan/inf flags"| M14
+    M5 ==>|"collapsed_head_count"| M14
+    M1 ==>|"entropy > 4.0 count"| M14
+    hidden -.->|"transient buffer<br/>(last 5 hidden states)"| M14a
+    M14a ==> M14
+    M8 ==>|"l2_norm<br/>(early layer baseline)"| M14b
+    M12 ==>|"mid-layer nan/inf"| M14b
+    M5 ==>|"mid-layer collapse"| M14b
+    M14b ==> M14
+
+    %% ───────────────────────────────────────────────────────────────────
+    %% STYLING
+    %% ───────────────────────────────────────────────────────────────────
+
+    %% Sources
+    style SRC fill:#0f172a,stroke:#334155,color:#94a3b8
+    style logits fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style hidden fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style attn_w fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style prompt_out fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style sampled fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style input_ids fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    %% Shared intermediates
+    style SHARED fill:#0f172a,stroke:#334155,color:#94a3b8
+    style log_sm fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style sm fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style topk fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style head_ent fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style head_conc fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+
+    %% Logit metrics
+    style LOGIT fill:#1e1b4b15,stroke:#6366f1,color:#a5b4fc
+    style M1 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M2 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M3 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M4 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+
+    %% Attention metrics (generation)
+    style ATTN_GEN fill:#7c2d1215,stroke:#f97316,color:#fed7aa
+    style M5 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style M6 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    %% Attention metrics (prompt)
+    style ATTN_PROMPT fill:#7c2d1215,stroke:#f97316,color:#fed7aa
+    style M7a fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style M7b fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    %% Hidden state metrics
+    style HIDDEN fill:#14532d15,stroke:#22c55e,color:#bbf7d0
+    style M8 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style M9 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style M10 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style M11 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+
+    %% Anomaly detection
+    style ANOMALY fill:#7f1d1d15,stroke:#ef4444,color:#fecaca
+    style M12 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    %% Derived metrics
+    style DERIVED fill:#713f1215,stroke:#eab308,color:#fef08a
+    style M13 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style M13_5a fill:#713f12,stroke:#facc15,color:#fef9c3
+    style M13_5b fill:#713f12,stroke:#facc15,color:#fef9c3
+
+    %% Health flags
+    style HEALTH fill:#4c002515,stroke:#ec4899,color:#fbcfe8
+    style M14 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style M14a fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style M14b fill:#831843,stroke:#f472b6,color:#fbcfe8

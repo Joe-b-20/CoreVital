@@ -1,0 +1,192 @@
+%% Phase-1 Metrics: Signal Interpretation Reference
+%% Maps each metric to its output ranges, what those ranges mean,
+%% and what action to take. Read as: Metric → Threshold → Meaning → Action.
+%% Ref: docs/Phase1 metrics analysis.md
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart LR
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% LOGIT SIGNALS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SIG_LOGIT["LOGIT SIGNAL INTERPRETATION"]
+        direction TB
+
+        E["M1: Shannon Entropy<br/>float: 0 → ~17"]
+        E --> E_LOW["< 2.0<br/>Confident ✅"]
+        E --> E_MED["2.0 - 4.0<br/>Normal uncertainty"]
+        E --> E_HIGH["> 4.0<br/>HIGH CONFUSION ⚠️"]
+        E --> E_SPIKE["Sudden spike<br/>Lost context 🔴"]
+
+        M["M2: Top-K Margin<br/>float: 0 → 1.0"]
+        M --> M_HIGH["> 0.5<br/>Strong preference ✅"]
+        M --> M_MED["0.2 - 0.5<br/>Clear but competitive"]
+        M --> M_LOW["< 0.2<br/>Model torn ⚠️"]
+
+        V["M3: Voter Agreement<br/>float: 0 → 1.0"]
+        V --> V_HIGH["> 0.95<br/>Peaked distribution ✅"]
+        V --> V_MED["0.7 - 0.95<br/>Normal concentration"]
+        V --> V_LOW["< 0.7<br/>Probability spread wide ⚠️"]
+
+        MP["M4: Max Probability<br/>float: 0 → 1.0"]
+        MP --> MP_HIGH["> 0.7<br/>Very confident ✅"]
+        MP --> MP_MED["0.3 - 0.7<br/>Moderate confidence"]
+        MP --> MP_LOW["< 0.3<br/>No clear winner ⚠️"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% COMBINED LOGIT PATTERNS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SIG_COMBO["COMBINED LOGIT PATTERNS"]
+        direction TB
+        P1["Low entropy + High margin<br/>= Confident, peaked ✅"]
+        P2["High entropy + Low margin<br/>= Completely uncertain 🔴"]
+        P3["Low entropy + Low margin<br/>= Few options, evenly matched ⚠️"]
+        P4["High agreement + Low margin<br/>= Competitive top-K set"]
+    end
+
+    E_LOW --> P1
+    M_HIGH --> P1
+    E_HIGH --> P2
+    M_LOW --> P2
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% ATTENTION SIGNALS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SIG_ATTN["ATTENTION SIGNAL INTERPRETATION"]
+        direction TB
+
+        AE["M5: Attention Entropy<br/>mean/min/max per layer"]
+        AE --> AE_NORMAL["1.5 - 3.0<br/>Healthy distribution ✅"]
+        AE --> AE_COLLAPSE["min < 0.1<br/>HEAD COLLAPSE 🔴<br/>Information bottleneck"]
+        AE --> AE_OVERLOAD["> 4.0<br/>OVERLOAD ⚠️<br/>Inattentive heads"]
+        AE --> AE_COUNT["collapsed_count > 0<br/>IMMEDIATE ALERT 🔴"]
+
+        C["M6: Concentration Max<br/>float per layer"]
+        C --> C_NORMAL["0.3 - 0.7<br/>Healthy ✅"]
+        C --> C_HIGH["> 0.95<br/>COLLAPSE 🔴<br/>All attention on 1 token"]
+
+        BS["M7b: Basin Score<br/>float per head per layer"]
+        BS --> BS_LOW["< 0.3<br/>Lost in the Middle ⚠️<br/>Head ignores middle tokens"]
+        BS --> BS_NORMAL["≈ 1.0<br/>Equal attention ✅"]
+        BS --> BS_HIGH["> 1.5<br/>Middle-focused (investigate)"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% HIDDEN STATE SIGNALS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SIG_HIDDEN["HIDDEN STATE SIGNAL INTERPRETATION"]
+        direction TB
+
+        L2["M8: L2 Norm<br/>float per layer"]
+        L2 --> L2_NORMAL["1 - 10<br/>Healthy range ✅"]
+        L2 --> L2_HIGH["> 50<br/>EXPLOSION ⚠️<br/>Activations growing unbounded"]
+        L2 --> L2_LOW["< 0.1<br/>VANISHING 🔴<br/>Activations dying out"]
+
+        SD["M9: Std Dev<br/>float per layer"]
+        SD --> SD_NORMAL["0.5 - 2.0<br/>Healthy diversity ✅"]
+        SD --> SD_LOW["< 0.1<br/>DEAD LAYER 🔴<br/>Uniform activations"]
+
+        LT["M10: Layer Transform<br/>float per transition"]
+        LT --> LT_LOW["< 0.1<br/>Dead layer ⚠️<br/>Identity function"]
+        LT --> LT_NORMAL["0.2 - 0.5<br/>Healthy refinement ✅"]
+        LT --> LT_HIGH["> 0.8<br/>Radical change ⚠️<br/>Possible corruption"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% ANOMALY & HEALTH SIGNALS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SIG_HEALTH["ANOMALY & HEALTH SIGNAL INTERPRETATION"]
+        direction TB
+
+        NI["M12: NaN/Inf<br/>bool flags per layer"]
+        NI --> NI_TRUE["ANY true = 🔴<br/>IMMEDIATE FAILURE<br/>Stop serving, investigate"]
+
+        S["M13.5: Surprisal<br/>float per token"]
+        S --> S_LOW["< 2.0<br/>Expected token ✅"]
+        S --> S_MED["2.0 - 5.0<br/>Plausible but not top choice"]
+        S --> S_HIGH["> 5.0<br/>Model was SURPRISED ⚠️"]
+
+        HF["M14: Health Flags<br/>aggregated bools + counts"]
+        HF --> HF_GREEN["All false, counts = 0<br/>Generation healthy ✅"]
+        HF --> HF_YELLOW["repetition or high_entropy<br/>WARNING ⚠️"]
+        HF --> HF_RED["nan/inf or collapse<br/>CRITICAL 🔴"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% STYLING
+    %% ═══════════════════════════════════════════════════════════════════
+
+    %% Section backgrounds
+    style SIG_LOGIT fill:#312e8115,stroke:#818cf8,color:#c7d2fe
+    style SIG_COMBO fill:#312e8110,stroke:#818cf8,color:#c7d2fe
+    style SIG_ATTN fill:#7c2d1215,stroke:#fb923c,color:#fed7aa
+    style SIG_HIDDEN fill:#14532d15,stroke:#4ade80,color:#bbf7d0
+    style SIG_HEALTH fill:#83184315,stroke:#f472b6,color:#fbcfe8
+
+    %% Metric source nodes
+    style E fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style V fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style MP fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style AE fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style BS fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style L2 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style SD fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style LT fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style NI fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style S fill:#713f12,stroke:#facc15,color:#fef9c3
+    style HF fill:#831843,stroke:#f472b6,color:#fbcfe8
+
+    %% Green signals
+    style E_LOW fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style M_HIGH fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style V_HIGH fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style MP_HIGH fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style AE_NORMAL fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C_NORMAL fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style BS_NORMAL fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style L2_NORMAL fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style SD_NORMAL fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style LT_NORMAL fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style S_LOW fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style HF_GREEN fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style P1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    %% Yellow signals
+    style E_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style E_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style M_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style M_LOW fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style V_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style V_LOW fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style MP_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style MP_LOW fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style AE_OVERLOAD fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style BS_LOW fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style BS_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style L2_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style LT_LOW fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style LT_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style S_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style S_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style HF_YELLOW fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style P3 fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style P4 fill:#713f12,stroke:#f59e0b,color:#fde68a
+
+    %% Red signals
+    style E_SPIKE fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style AE_COLLAPSE fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style AE_COUNT fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style C_HIGH fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style L2_LOW fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style SD_LOW fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style NI_TRUE fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style HF_RED fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style P2 fill:#7f1d1d,stroke:#f87171,color:#fecaca

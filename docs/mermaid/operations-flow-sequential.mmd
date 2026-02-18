@@ -1,6 +1,11 @@
 %% Sequential flow: order verified against run_command -> collector.run -> builder.build -> sink.write
 %% Updated: pre-phase-1 — ModelCapabilities replaces standalone Seq2Seq detection step;
 %%          compute_encoder_hidden_states_summaries removed; sinks include Datadog/Prometheus stubs
+%% Updated: Phase-1b — prompt_forward_pass added (CausalLM: model(input_ids), Seq2Seq: reuse encoder)
+%% Updated: Phase-1c — _build_health_flags added
+%% Updated: Phase-2-7 — extensions computation added (risk, fingerprint, narrative, early_warning)
+%% Updated: Phase-1d — SQLite sink added, performance injection before sink.write(), OTLP export
+%% Last verified: 2026-02-16
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
 
 flowchart LR
@@ -46,7 +51,21 @@ flowchart LR
         Tok1[tokenizer prompt return_tensors pt] --> Tok2[.to device]
     end
 
-    Tok2 --> I1
+    Tok2 --> PF1
+
+    subgraph SG2a["prompt_forward_pass Phase-1b"]
+        direction TB
+        PF1{CausalLM or Seq2Seq?}
+        PF2[model input_ids CausalLM<br/>output_hidden_states output_attentions]
+        PF3[extract prompt hidden_states attentions logits]
+        PF4[Seq2Seq: reuse encoder outputs<br/>zero-cost forward pass]
+        PF1 -->|CausalLM| PF2
+        PF1 -->|Seq2Seq| PF4
+        PF2 --> PF3
+        PF4 --> PF3
+    end
+
+    PF3 --> I1
 
     subgraph SG3["model_inference"]
         direction TB
@@ -108,41 +127,77 @@ flowchart LR
     subgraph SG5["report_build"]
         direction LR
         R1[generate trace_id] --> R2[_build_model_info] --> R3[_build_run_config] --> R4[_build_prompt_info] --> R5[_build_generated_info] --> R6[_build_timeline]
+        R6 --> R6a[_build_prompt_analysis Phase-1b]
+        R6 --> R7[_build_health_flags Phase-1c]
         R6 --> R8[_build_encoder_layers if Seq2Seq]
         R8 --> R9[build Summary]
         R9 --> R10[convert warnings]
-        R10 --> R11[assemble Report v0.2.0]
+        R10 --> R11[assemble Report v0.3.0]
     end
 
-    R11 --> Perf1
+    R11 --> Ext1
+
+    subgraph SG5c["compute extensions"]
+        direction TB
+        Ext1[compute_risk_score + layer_blame Phase-2] --> Ext2[compute_fingerprint_vector + prompt_hash Phase-3]
+        Ext2 --> Ext3[compute_early_warning Phase-4]
+        Ext3 --> Ext4[build_narrative Phase-7]
+        Ext4 --> Ext5[on_risk: attach full layers if risk/flags trigger]
+        Ext5 --> Ext6[RAG context if provided]
+        Ext6 --> Ext7[report.extensions populated]
+    end
+
+    Ext7 --> Perf1
 
     subgraph SG5b["inject performance if --perf"]
         direction LR
         Perf1[mark_run_end] --> Perf2[build_summary_dict]
-        Perf2 --> Perf3[report.extensions.performance = summary]
+        Perf2 --> Perf3[write detailed file if detailed/strict]
+        Perf3 --> Perf4[report.extensions.performance = summary]
     end
 
-    Perf3 --> Sink1
+    Perf4 --> Sink1
 
     subgraph SG5a["sink initialization"]
         direction LR
-        Sink1[LocalFileSink / HTTPSink / DatadogSink / PrometheusSink]
+        Sink1{config.sink.type?}
+        Sink1 -->|local_file| Sink2[LocalFileSink]
+        Sink1 -->|sqlite| Sink3[SQLiteSink db_path]
+        Sink1 -->|datadog| Sink4[DatadogSink api_key site]
+        Sink1 -->|prometheus| Sink5[PrometheusSink port]
+        Sink1 -->|http| Sink6[HTTPSink stub]
     end
 
-    Sink1 --> J1
+    Sink2 --> J1
+    Sink3 --> J1
+    Sink4 --> J1
+    Sink5 --> J1
+    Sink6 --> J1
 
     subgraph SG7["sink_write"]
         direction TB
-        J1[report.model_dump mode json] --> J2[json.dumps indent ensure_ascii]
+        J1[serialize_report_to_json] --> J2[json.dumps compact separators]
         J2 --> SinkType{sink type?}
-        SinkType -->|local_file| W1[LocalFileSink: build filepath open write file]
-        SinkType -->|http| W2[HTTPSink: POST body]
-        SinkType -->|datadog / prometheus| W3[stub: NotImplementedError]
+        SinkType -->|local_file| W1[LocalFileSink: write JSON file]
+        SinkType -->|sqlite| W2[SQLiteSink: INSERT OR REPLACE reports]
+        SinkType -->|datadog| W3[DatadogSink: send metrics/events]
+        SinkType -->|prometheus| W4[PrometheusSink: expose /metrics]
+        SinkType -->|http| W5[HTTPSink: POST JSON stub]
     end
 
-    W1 --> End([End])
-    W2 --> End
-    W3 --> End
+    W1 --> Otel1
+    W2 --> Otel1
+    W3 --> Otel1
+    W4 --> Otel1
+    W5 --> Otel1
+
+    subgraph SG8["optional: export to OpenTelemetry"]
+        direction LR
+        Otel1{config.otel.export_otel?}
+        Otel1 -->|yes| Otel2[export_run_to_otel OTLP]
+        Otel1 -->|no| End
+        Otel2 --> End
+    end
 
     style Start fill:#059669
     style End fill:#059669
@@ -172,15 +227,35 @@ flowchart LR
     style Warn2 fill:#5b21b6
     style R1 fill:#92400e
     style R11 fill:#92400e
-    style Perf1 fill:#92400e
-    style Perf3 fill:#92400e
-    style Sink1 fill:#92400e
+    style R6 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style R7 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style Ext1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext5 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext6 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Ext7 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Perf1 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Perf2 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Perf3 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Perf4 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Sink1 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Sink2 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Sink3 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Sink4 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Sink5 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Sink6 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
     style J1 fill:#0e7490
     style J2 fill:#0e7490
     style SinkType fill:#0e7490
     style W1 fill:#0e7490
     style W2 fill:#0e7490
     style W3 fill:#0e7490
+    style W4 fill:#0e7490
+    style W5 fill:#0e7490
+    style Otel1 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Otel2 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
     style SG0 fill:#1e40af15
     style SG0a fill:#1e40af15
     style SG0b fill:#1e40af15
@@ -188,6 +263,11 @@ flowchart LR
     style SG1 fill:#065f4615
     style SG1a fill:#065f4615
     style SG2 fill:#065f4615
+    style SG2a fill:#7c2d1215
+    style PF1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PF4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
     style SG3 fill:#5b21b615
     style SG3a fill:#5b21b615
     style SG3b fill:#5b21b615
@@ -195,6 +275,8 @@ flowchart LR
     style SG4 fill:#5b21b615
     style SG4a fill:#5b21b615
     style SG5 fill:#92400e15
-    style SG5a fill:#92400e15
-    style SG5b fill:#92400e15
+    style SG5a fill:#0e749015
+    style SG5b fill:#0e749015
+    style SG5c fill:#7c2d1215
     style SG7 fill:#0e749015
+    style SG8 fill:#0e749015

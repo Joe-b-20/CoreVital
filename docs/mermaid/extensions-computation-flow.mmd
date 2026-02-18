@@ -1,0 +1,123 @@
+%% Extensions Computation Flow: How risk, fingerprint, narrative, and early_warning are computed
+%% Shows dependencies and order of computation in report_build
+%% Ref: src/CoreVital/reporting/report_builder.py (lines 247-321)
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+    Start([Report assembled<br/>health_flags, timeline, summary])
+
+    %% Phase-2: Risk Score
+    subgraph SG_Risk["Phase-2: Risk Score & Layer Blame"]
+        direction TB
+        Risk1[compute_risk_score<br/>health_flags, summary]
+        Risk2[compute_layer_blame<br/>timeline_layers_for_flags]
+        Risk1 --> RiskExt["extensions.risk = {<br/>risk_score, risk_factors,<br/>blamed_layers}"]
+        Risk2 --> RiskExt
+    end
+
+    %% on_risk logic
+    subgraph SG_OnRisk["on_risk Capture Mode Logic"]
+        direction TB
+        OnRisk1{risk_score >= threshold<br/>OR any health_flag?}
+        OnRisk1 -->|yes| OnRisk2[Attach full timeline layers<br/>to report.timeline]
+        OnRisk1 -->|yes| OnRisk3[Rebuild prompt_analysis<br/>with sparse heads]
+        OnRisk1 -->|no| OnRisk4[Keep summary mode<br/>no full layers]
+        OnRisk2 --> OnRisk3
+    end
+
+    %% Phase-3: Fingerprint
+    subgraph SG_Fingerprint["Phase-3: Fingerprint"]
+        direction TB
+        Finger1[compute_fingerprint_vector<br/>timeline, summary, health_flags, risk_score]
+        Finger2[compute_prompt_hash<br/>prompt, model_id]
+        Finger1 --> FingerExt["extensions.fingerprint = {<br/>vector, prompt_hash}"]
+        Finger2 --> FingerExt
+    end
+
+    %% Phase-4: Early Warning
+    subgraph SG_EarlyWarn["Phase-4: Early Warning"]
+        direction TB
+        EW1[compute_early_warning<br/>timeline, health_flags]
+        EW1 --> EWExt["extensions.early_warning = {<br/>failure_risk, warning_signals}"]
+    end
+
+    %% Phase-7: Narrative
+    subgraph SG_Narrative["Phase-7: Narrative"]
+        direction TB
+        Nar1[build_narrative<br/>health_flags, risk_score,<br/>blamed_layers, warning_signals]
+        Nar1 --> NarExt["extensions.narrative = {<br/>summary: str}"]
+    end
+
+    %% RAG Context (optional)
+    subgraph SG_RAG["RAG Context (if provided)"]
+        direction TB
+        RAG1{config.rag_context<br/>provided?}
+        RAG1 -->|yes| RAG2[RAGContext.model_dump<br/>from config]
+        RAG2 --> RAGExt["extensions.rag = RAGContext"]
+        RAG1 -->|no| RAGExt
+    end
+
+    %% Performance (injected by CLI)
+    subgraph SG_Perf["Performance (injected by CLI if --perf)"]
+        direction TB
+        Perf1[mark_run_end]
+        Perf2[build_summary_dict]
+        Perf3[write detailed file<br/>if detailed/strict]
+        Perf4[report.extensions.performance = summary]
+        Perf1 --> Perf2
+        Perf2 --> Perf3
+        Perf3 --> Perf4
+    end
+
+    Start --> SG_Risk
+    Start --> SG_OnRisk
+    Start --> SG_Fingerprint
+    Start --> SG_EarlyWarn
+    Start --> SG_RAG
+
+    RiskExt --> SG_Narrative
+    EWExt --> SG_Narrative
+
+    SG_Narrative --> SG_Perf
+    SG_OnRisk --> SG_Perf
+
+    Perf4 --> End([Report ready for sink.write])
+
+    %% Styling
+    style Start fill:#059669,stroke:#10b981,color:#d1fae5
+    style End fill:#059669,stroke:#10b981,color:#d1fae5
+
+    style SG_Risk fill:#7c2d1215,stroke:#fb923c
+    style Risk1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Risk2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style RiskExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    style SG_OnRisk fill:#7c2d1215,stroke:#fb923c
+    style OnRisk1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style OnRisk2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style OnRisk3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style OnRisk4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    style SG_Fingerprint fill:#7c2d1215,stroke:#fb923c
+    style Finger1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Finger2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style FingerExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    style SG_EarlyWarn fill:#7c2d1215,stroke:#fb923c
+    style EW1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style EWExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    style SG_Narrative fill:#7c2d1215,stroke:#fb923c
+    style Nar1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style NarExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    style SG_RAG fill:#1e3a5f15,stroke:#60a5fa
+    style RAG1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style RAG2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style RAGExt fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    style SG_Perf fill:#0e749015,stroke:#22d3ee
+    style Perf1 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Perf2 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Perf3 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Perf4 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc

@@ -74,5 +74,5 @@ jobs:
         run: |
           pip install -e ".[dev]"
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short -m "not gpu"
+      - name: Run tests with coverage
+        run: pytest tests/ -v --tb=short -m "not gpu" --cov=CoreVital --cov-report=term-missing

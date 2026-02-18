@@ -100,10 +100,6 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
         ModelLoadError: If model loading fails
     """
     from contextlib import nullcontext
-    from typing import TYPE_CHECKING
-
-    if TYPE_CHECKING:
-        pass
 
     def _op(name: str):
         """Helper to wrap operations with monitor if available."""

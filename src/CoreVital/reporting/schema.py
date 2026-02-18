@@ -329,6 +329,27 @@ class HealthFlags(BaseModel):
     mid_layer_anomaly_detected: bool = False
 
 
+class RAGContext(BaseModel):
+    """Optional RAG (retrieval-augmented generation) context metadata (Foundation F3).
+
+    When the run is part of a RAG pipeline, store context length and retrieval info
+    so runs can be correlated with context size, source docs, etc. No retrieval
+    instrumentation; caller provides this via --rag-context or API.
+    """
+
+    context_token_count: Optional[int] = Field(default=None, description="Number of tokens in the retrieved context.")
+    retrieved_doc_ids: Optional[List[str]] = Field(
+        default=None, description="IDs of retrieved documents (e.g. chunk or doc IDs)."
+    )
+    retrieved_doc_titles: Optional[List[str]] = Field(
+        default=None, description="Human-readable titles for retrieved documents."
+    )
+    retrieval_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Extra retrieval info (e.g. k, scores, source).",
+    )
+
+
 class Report(BaseModel):
     """
     Complete monitoring report.
@@ -382,5 +403,6 @@ class Report(BaseModel):
         description="Aggregated health flags from post-processing (Phase-1c). Null when not yet implemented.",
     )
     extensions: Dict[str, Any] = Field(
-        default_factory=dict, description="For future metric expansion. Custom key-value pairs."
+        default_factory=dict,
+        description="For future metric expansion. Known keys: 'rag' (RAGContext, F3), 'performance', 'risk' (Phase-2).",
     )

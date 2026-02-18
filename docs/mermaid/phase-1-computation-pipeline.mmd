@@ -1,0 +1,316 @@
+%% Phase-1 Computation Pipeline: WHERE and WHEN each metric is computed
+%% Shows the collector flow with new Phase-1 computation stages inserted.
+%% Color key: 🔵 Existing | 🟢 Phase-1a (schema+enhanced) | 🟠 Phase-1b (prompt) | 🔴 Phase-1c (health) | 🟡 Phase-2-7 (extensions)
+%% Ref: src/CoreVital/instrumentation/collector.py, summaries.py, report_builder.py
+%% Last verified: 2026-02-16
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    Start([collector.run]) --> LoadModel
+
+    %% ─── MODEL LOAD ───
+    subgraph SG_Load["model_load (existing)"]
+        LoadModel["Load model + tokenizer<br/>ModelCapabilities.from_config"]
+    end
+
+    LoadModel --> TypeCheck
+
+    TypeCheck{CausalLM or Seq2Seq?}
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% CAUSAL LM PATH
+    %% ═══════════════════════════════════════════════════════════════════
+
+    TypeCheck -->|CausalLM| PromptFwd_C
+
+    subgraph SG_Prompt_C["🟠 Phase-1b: CausalLM Prompt Telemetry"]
+        direction TB
+        PromptFwd_C["model(input_ids)<br/>output_hidden_states=True<br/>output_attentions=True"]
+        PromptFwd_C --> PSparse_C["Sparse extraction<br/>torch.where(attn > 0.01)<br/>→ SparseAttentionHead"]
+        PromptFwd_C --> PBasin_C["Basin score<br/>middle/boundary ratio<br/>→ basin_scores per head"]
+        PromptFwd_C --> PTransform_C["Layer transformation<br/>cos_sim(h_n, h_{n-1})<br/>→ layer_transformations"]
+        PromptFwd_C --> PSurprisal_C["Prompt surprisal<br/>CrossEntropyLoss(none)<br/>→ prompt_surprisals"]
+    end
+
+    PSparse_C --> PopPrompt_C["Populate PromptAnalysis"]
+    PBasin_C --> PopPrompt_C
+    PTransform_C --> PopPrompt_C
+    PSurprisal_C --> PopPrompt_C
+
+    PopPrompt_C --> Generate_C
+
+    subgraph SG_Gen_C["model.generate (existing)"]
+        Generate_C["model.generate()<br/>output_scores, output_hidden_states<br/>output_attentions"]
+    end
+
+    Generate_C --> AllocBuf_C
+
+    subgraph SG_Buf_C["🔴 Phase-1c: Allocate transient buffer"]
+        AllocBuf_C["buffer = [] # capacity 5<br/>Last-layer hidden states<br/>FIFO, never serialized"]
+    end
+
+    AllocBuf_C --> PerStep
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% SEQ2SEQ PATH
+    %% ═══════════════════════════════════════════════════════════════════
+
+    TypeCheck -->|Seq2Seq| PromptFwd_S
+
+    subgraph SG_Prompt_S["🟠 Phase-1b: Seq2Seq Encoder Reuse"]
+        direction TB
+        PromptFwd_S["model.encoder(input_ids)<br/>output_hidden_states=True<br/>output_attentions=True<br/>(reuse for generate)"]
+        PromptFwd_S --> PSparse_S["Sparse extraction<br/>→ SparseAttentionHead"]
+        PromptFwd_S --> PBasin_S["Basin score<br/>→ basin_scores"]
+        PromptFwd_S --> PTransform_S["Layer transformation<br/>→ layer_transformations"]
+        PromptFwd_S --> PSurprisal_S["Prompt surprisal<br/>→ prompt_surprisals"]
+    end
+
+    PSparse_S --> PopPrompt_S["Populate PromptAnalysis"]
+    PBasin_S --> PopPrompt_S
+    PTransform_S --> PopPrompt_S
+    PSurprisal_S --> PopPrompt_S
+
+    PopPrompt_S --> Generate_S
+
+    subgraph SG_Gen_S["decoder loop (existing)"]
+        Generate_S["Manual decoder loop<br/>pass encoder_outputs"]
+    end
+
+    Generate_S --> AllocBuf_S
+
+    subgraph SG_Buf_S["🔴 Phase-1c: Allocate transient buffer"]
+        AllocBuf_S["buffer = [] # capacity 5"]
+    end
+
+    AllocBuf_S --> PerStep
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% PER-STEP PROCESSING (shared path, both CausalLM and Seq2Seq converge)
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SG_Step["Per-Step Processing (for each generated token)"]
+        direction TB
+
+        PerStep["Extract step data<br/>(logits, hidden_states, attentions)"]
+
+        subgraph SG_Logit["🟢 1a: Logit Metrics"]
+            direction LR
+            L1["log_softmax → entropy"]
+            L2["topk → margin, agreement"]
+            L3["max(probs) → max_prob"]
+            L4["entropy → perplexity"]
+            L5["-log₂(p_actual) → surprisal"]
+        end
+
+        subgraph SG_Attn_Step["🟢 1a: Attention Metrics"]
+            direction LR
+            A1["per_head_entropy<br/>→ mean/min/max<br/>→ collapsed/focused count"]
+            A2["per_head_max<br/>→ concentration_max/min"]
+        end
+
+        subgraph SG_Hidden_Step["🟢 1a: Hidden State Metrics"]
+            direction LR
+            H1["L2 norm, Std, Mean"]
+        end
+
+        subgraph SG_Anomaly_Step["🟢 1a: NaN/Inf Detection"]
+            direction LR
+            N1["isnan/isinf on logits, hidden, attn<br/>→ TensorAnomalies"]
+        end
+
+        subgraph SG_Buffer_Step["🔴 1c: Buffer Update"]
+            direction LR
+            B1["Append last-layer hidden<br/>to transient buffer (FIFO)"]
+        end
+
+        PerStep --> SG_Logit
+        PerStep --> SG_Attn_Step
+        PerStep --> SG_Hidden_Step
+        PerStep --> SG_Anomaly_Step
+        PerStep --> SG_Buffer_Step
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% POST-GENERATION: HEALTH FLAGS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    SG_Step --> PostGen
+
+    subgraph SG_Health["🔴 Phase-1c: Health Flag Post-Processing"]
+        direction TB
+        PostGen["All steps complete"]
+        PostGen --> Rep["Repetition detection<br/>cos_sim(buffer) > 0.99"]
+        PostGen --> Mid["Mid-layer anomaly<br/>5× early-layer baseline"]
+        PostGen --> Agg["Aggregate flags<br/>nan/inf + collapse +<br/>high_entropy_steps"]
+        Rep --> HF["HealthFlags"]
+        Mid --> HF
+        Agg --> HF
+        HF --> Kill["del buffer<br/>torch.cuda.empty_cache()"]
+    end
+
+    Kill --> BuildReport
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% REPORT BUILD & EXTENSIONS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SG_Report["Report Build"]
+        BuildReport["ReportBuilder.build()<br/>Schema v0.3.0"]
+        BuildReport --> AttachPrompt["Attach prompt_analysis"]
+        BuildReport --> AttachHealth["Attach health_flags"]
+        AttachPrompt --> BuildExt
+        AttachHealth --> BuildExt
+    end
+
+    subgraph SG_Extensions["🟡 Phase-2-7: Extensions Computation"]
+        direction TB
+        BuildExt["Report assembled"]
+        BuildExt --> Risk["Phase-2: Risk Score<br/>compute_risk_score()<br/>compute_layer_blame()"]
+        BuildExt --> Fingerprint["Phase-3: Fingerprint<br/>compute_fingerprint_vector()<br/>compute_prompt_hash()"]
+        BuildExt --> EarlyWarn["Phase-4: Early Warning<br/>compute_early_warning()"]
+        BuildExt --> Narrative["Phase-7: Narrative<br/>build_narrative()"]
+        Risk --> OnRisk{"on_risk triggered?<br/>(risk >= threshold<br/>or health flags)"}
+        OnRisk -->|yes| AttachFull["Attach full timeline layers<br/>+ full prompt_analysis"]
+        OnRisk -->|no| SkipFull["Keep summary mode"]
+        AttachFull --> FinalReport
+        SkipFull --> FinalReport
+        Fingerprint --> FinalReport
+        EarlyWarn --> FinalReport
+        Narrative --> FinalReport
+    end
+
+    FinalReport --> PerfInject
+
+    subgraph SG_Perf["Performance Injection (if --perf)"]
+        PerfInject["mark_run_end()"]
+        PerfInject --> PerfSum["build_summary_dict()"]
+        PerfInject --> PerfDet["write detailed file<br/>(if detailed/strict)"]
+        PerfSum --> PerfAttach["report.extensions.performance = summary"]
+        PerfDet --> PerfAttach
+    end
+
+    PerfAttach --> SinkWrite
+
+    subgraph SG_Sink["Sink Write"]
+        SinkWrite{sink type?}
+        SinkWrite -->|sqlite| SQLite["SQLiteSink.write()<br/>INSERT OR REPLACE reports<br/>(compact JSON or gzip blob)"]
+        SinkWrite -->|local_file| LocalFile["LocalFileSink.write()<br/>write JSON file"]
+        SinkWrite -->|datadog| Datadog["DatadogSink.write()<br/>send metrics/events"]
+        SinkWrite -->|prometheus| Prom["PrometheusSink.write()<br/>expose /metrics"]
+        SQLite --> Otel
+        LocalFile --> Otel
+        Datadog --> Otel
+        Prom --> Otel
+    end
+
+    subgraph SG_Otel["Optional: OpenTelemetry Export"]
+        Otel{config.otel.export_otel?}
+        Otel -->|yes| OtelExp["export_run_to_otel()<br/>OTLP gRPC"]
+        Otel -->|no| Done
+        OtelExp --> Done
+    end
+
+    Done([Done])
+
+    %% ─── PERF MONITORING OVERLAY ───
+    %% Every computation block wrapped with monitor.start_operation / end_operation
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% STYLING
+    %% ═══════════════════════════════════════════════════════════════════
+
+    %% Existing (blue)
+    style SG_Load fill:#1e3a5f15,stroke:#60a5fa
+    style LoadModel fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style SG_Gen_C fill:#1e3a5f15,stroke:#60a5fa
+    style Generate_C fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style SG_Gen_S fill:#1e3a5f15,stroke:#60a5fa
+    style Generate_S fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style TypeCheck fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    %% Phase-1a (green)
+    style SG_Logit fill:#14532d15,stroke:#4ade80
+    style SG_Attn_Step fill:#14532d15,stroke:#4ade80
+    style SG_Hidden_Step fill:#14532d15,stroke:#4ade80
+    style SG_Anomaly_Step fill:#14532d15,stroke:#4ade80
+    style L1 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style L2 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style L3 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style L4 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style L5 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style A1 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style A2 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style H1 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style N1 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+
+    %% Phase-1b (orange)
+    style SG_Prompt_C fill:#7c2d1215,stroke:#fb923c
+    style SG_Prompt_S fill:#7c2d1215,stroke:#fb923c
+    style PromptFwd_C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PSparse_C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PBasin_C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PTransform_C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PSurprisal_C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PopPrompt_C fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PromptFwd_S fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PSparse_S fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PBasin_S fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PTransform_S fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PSurprisal_S fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style PopPrompt_S fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    %% Phase-1c (red/pink)
+    style SG_Buf_C fill:#83184315,stroke:#f472b6
+    style SG_Buf_S fill:#83184315,stroke:#f472b6
+    style AllocBuf_C fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style AllocBuf_S fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style SG_Buffer_Step fill:#83184315,stroke:#f472b6
+    style B1 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style SG_Health fill:#83184315,stroke:#f472b6
+    style PostGen fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style Rep fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style Mid fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style Agg fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style HF fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style Kill fill:#831843,stroke:#f472b6,color:#fbcfe8
+
+    %% Report/Extensions
+    style SG_Report fill:#92400e15,stroke:#f59e0b
+    style BuildReport fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style AttachPrompt fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style AttachHealth fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style SG_Extensions fill:#7c2d1215,stroke:#fb923c
+    style BuildExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Risk fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Fingerprint fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style EarlyWarn fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Narrative fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style OnRisk fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style AttachFull fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style SkipFull fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style FinalReport fill:#92400e,stroke:#f59e0b,color:#fde68a
+    %% Performance
+    style SG_Perf fill:#0e749015,stroke:#22d3ee
+    style PerfInject fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style PerfSum fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style PerfDet fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style PerfAttach fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    %% Sink
+    style SG_Sink fill:#0e749015,stroke:#22d3ee
+    style SinkWrite fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style SQLite fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style LocalFile fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Datadog fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style Prom fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    %% OTLP
+    style SG_Otel fill:#0e749015,stroke:#22d3ee
+    style Otel fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style OtelExp fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+
+    %% Per-step processing container
+    style SG_Step fill:#0f172a,stroke:#334155
+
+    style Start fill:#059669,color:#d1fae5
+    style Done fill:#059669,color:#d1fae5

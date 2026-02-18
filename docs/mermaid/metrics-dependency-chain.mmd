@@ -1,0 +1,158 @@
+%% Phase-1 Metrics: Dependencies & Shared Data
+%% Shows which metrics depend on other metrics' outputs (thick arrows)
+%% and which metrics share the same raw data source (thin grouped edges).
+%% Ref: docs/Phase1 metrics analysis.md
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+graph TB
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% SHARED DATA GROUPS — metrics that consume the same raw tensor
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph G_LOGITS["Share: logits tensor"]
+        direction LR
+        M1["M1: Shannon Entropy ⭐⭐⭐⭐⭐"]
+        M2["M2: Top-K Margin ⭐⭐⭐⭐"]
+        M3["M3: Voter Agreement ⭐⭐⭐"]
+        M4["M4: Max Probability ⭐⭐⭐"]
+        M12_L["M12: NaN/Inf<br/>(logits check)"]
+    end
+
+    subgraph G_ATTN["Share: attention_weights tensor"]
+        direction LR
+        M5["M5: Attn Entropy ⭐⭐⭐⭐⭐"]
+        M6["M6: Concentration ⭐⭐⭐⭐"]
+        M12_A["M12: NaN/Inf<br/>(attention check)"]
+    end
+
+    subgraph G_HIDDEN["Share: hidden_states tensor"]
+        direction LR
+        M8["M8: L2 Norm ⭐⭐⭐⭐"]
+        M9["M9: Std Dev ⭐⭐⭐"]
+        M11["M11: Mean ⭐⭐"]
+        M12_H["M12: NaN/Inf<br/>(hidden check)"]
+    end
+
+    subgraph G_PROMPT["Share: prompt forward pass outputs"]
+        direction LR
+        M7a["M7a: Sparse Extraction ⭐⭐⭐⭐⭐"]
+        M7b["M7b: Basin Score ⭐⭐⭐⭐⭐"]
+        M10["M10: Layer Transform ⭐⭐⭐⭐"]
+        M13_5b["M13.5b: Prompt Surprisal ⭐⭐⭐⭐"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% SHARED INTERMEDIATE COMPUTATIONS
+    %% Metrics that reuse the same intermediate result
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph CALC_SHARE["Shared Intermediate Calculations"]
+        direction TB
+        C1(["log_softmax(logits)"])
+        C2(["softmax(logits) = exp(log_softmax)"])
+        C3(["topk(probs, k=10)"])
+        C4(["per_head_entropy(attn)"])
+        C5(["per_head_max(attn)"])
+    end
+
+    %% log_softmax chain
+    C1 -.-> M1
+    C1 --> C2
+    C2 -.-> M4
+    C2 --> C3
+    C3 -.-> M2
+    C3 -.-> M3
+
+    %% attention chain
+    C4 -.-> M5
+    C5 -.-> M6
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% METRIC → METRIC DEPENDENCIES (thick arrows)
+    %% These are TRUE dependencies: metric B requires metric A's output
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph DERIVED["Derived Metrics"]
+        direction LR
+        M13["M13: Perplexity ⭐⭐⭐"]
+        M13_5a["M13.5a: Surprisal (gen) ⭐⭐⭐⭐"]
+    end
+
+    M1 ==>|"entropy"| M13
+
+    subgraph HEALTH["Health Flags (M14) — Post-Processing Aggregator"]
+        direction TB
+        M14["M14: Health Flags ⭐⭐⭐⭐⭐"]
+        M14a["M14a: Repetition Loop"]
+        M14b["M14b: Mid-Layer Anomaly"]
+    end
+
+    %% Health Flags depend on multiple metrics' outputs
+    M12_L ==>|"nan/inf"| M14
+    M12_A ==>|"nan/inf"| M14
+    M12_H ==>|"nan/inf"| M14
+    M5 ==>|"collapsed_head_count"| M14
+    M1 ==>|"entropy > 4.0"| M14
+
+    %% Repetition loop depends on hidden states (transient buffer)
+    M14a ==> M14
+
+    %% Mid-layer anomaly depends on L2 norms + NaN/Inf + attention collapse
+    M8 ==>|"early-layer baseline"| M14b
+    M12_H ==>|"mid-layer check"| M14b
+    M5 ==>|"mid-layer collapse"| M14b
+    M14b ==> M14
+
+    %% ═══════════════════════════════════════════════════════════════════
+    %% STYLING
+    %% ═══════════════════════════════════════════════════════════════════
+
+    %% Group backgrounds
+    style G_LOGITS fill:#312e8120,stroke:#818cf8,color:#c7d2fe
+    style G_ATTN fill:#7c2d1220,stroke:#fb923c,color:#fed7aa
+    style G_HIDDEN fill:#14532d20,stroke:#4ade80,color:#bbf7d0
+    style G_PROMPT fill:#1e3a5f20,stroke:#60a5fa,color:#93c5fd
+    style CALC_SHARE fill:#134e4a20,stroke:#2dd4bf,color:#99f6e4
+    style DERIVED fill:#713f1220,stroke:#facc15,color:#fef9c3
+    style HEALTH fill:#83184320,stroke:#f472b6,color:#fbcfe8
+
+    %% Logit metrics
+    style M1 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M2 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M3 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style M4 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+
+    %% Attention metrics
+    style M5 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style M6 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style M7a fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style M7b fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    %% Hidden state metrics
+    style M8 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style M9 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style M10 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style M11 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+
+    %% NaN/Inf (appears in multiple groups)
+    style M12_L fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style M12_A fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style M12_H fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    %% Derived
+    style M13 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style M13_5a fill:#713f12,stroke:#facc15,color:#fef9c3
+    style M13_5b fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    %% Health flags
+    style M14 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style M14a fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style M14b fill:#831843,stroke:#f472b6,color:#fbcfe8
+
+    %% Shared calculations
+    style C1 fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style C2 fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style C3 fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style C4 fill:#134e4a,stroke:#2dd4bf,color:#99f6e4
+    style C5 fill:#134e4a,stroke:#2dd4bf,color:#99f6e4

@@ -11,9 +11,11 @@
 #   2026-01-13: Initial LocalFileSink for Phase-0
 #   2026-02-04: Phase-0.75 - added note: performance data is injected by CLI after write
 #   2026-02-06: Performance data now arrives inside report.extensions before write()
+#   2026-02-11: JSON size optimization — use compact format (indent=None) for smaller files
 # ============================================================================
 
 from pathlib import Path
+from typing import Optional
 
 from CoreVital.errors import SinkError
 from CoreVital.logging_utils import get_logger
@@ -29,15 +31,17 @@ class LocalFileSink(Sink):
     Sink that writes reports to local JSON files.
     """
 
-    def __init__(self, output_dir: str = "runs"):
+    def __init__(self, output_dir: str = "runs", indent: Optional[int] = None):
         """
         Initialize local file sink.
 
         Args:
             output_dir: Directory path for output files
+            indent: JSON indentation (None=compact, 2=pretty). Pretty produces larger files.
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.indent = indent
         logger.info(f"LocalFileSink initialized: {self.output_dir}")
 
     def write(self, report: Report) -> str:
@@ -61,8 +65,8 @@ class LocalFileSink(Sink):
             filename = f"trace_{trace_id_str[:safe_length]}.json"
             filepath = self.output_dir / filename
 
-            # Serialize report to JSON (includes extensions.performance if --perf enabled)
-            json_str = serialize_report_to_json(report, indent=2)
+            # Serialize report to JSON (compact by default; indent for human-readable when requested)
+            json_str = serialize_report_to_json(report, indent=self.indent)
 
             # Write to file
             with open(filepath, "w") as f:

@@ -25,7 +25,7 @@ entropy = -torch.sum(probs * log_probs) / math.log(2)  # Convert ln to log2
 ```
 
 **Implementation Decision:**
-> ⚠️ **CRITICAL:** Use `log_softmax` instead of `softmax` → `log`. The log-sum-exp trick in `log_softmax` is numerically stable and avoids catastrophic cancellation when probabilities are very small. This is standard PyTorch practice for entropy computation.
+> **CRITICAL:** Use `log_softmax` instead of `softmax` --> `log`. The log-sum-exp trick in `log_softmax` is numerically stable and avoids catastrophic cancellation when probabilities are very small. This is standard PyTorch practice for entropy computation.
 
 **Dashboard Visualization:**
 - **Line chart:** Entropy over generation timeline
@@ -57,7 +57,7 @@ entropy = -torch.sum(probs * log_probs) / math.log(2)  # Convert ln to log2
 - **Storage:** 4 bytes per timeline step (float32)
 - **Total overhead:** Negligible (<0.01% of inference time)
 
-**Usefulness Rating: ⭐⭐⭐⭐⭐ (5/5) - CRITICAL**
+**Usefulness Rating: (5/5) - CRITICAL**
 
 **Justification:**
 - Most established uncertainty metric in LLM research
@@ -115,7 +115,7 @@ margin = top_k_probs[0] - top_k_probs[1]
 - **Storage:** 4 bytes per timeline step
 - **Total overhead:** Free if top-k sampling enabled, negligible otherwise
 
-**Usefulness Rating: ⭐⭐⭐⭐ (4/5) - HIGH VALUE**
+**Usefulness Rating: (4/5) - HIGH VALUE**
 
 **Justification:**
 - Complements entropy with different signal (shape vs spread)
@@ -171,7 +171,7 @@ agreement = torch.sum(top_k_probs)
 - **Storage:** 4 bytes per timeline step
 - **Total overhead:** Free with top-k sampling
 
-**Usefulness Rating: ⭐⭐⭐ (3/5) - MODERATE VALUE**
+**Usefulness Rating: (3/5) - MODERATE VALUE**
 
 **Justification:**
 - Somewhat redundant with entropy (high correlation)
@@ -217,7 +217,7 @@ max_prob = torch.max(probs)
 - **Storage:** 4 bytes per timeline step
 - **Total overhead:** Negligible
 
-**Usefulness Rating: ⭐⭐⭐ (3/5) - MODERATE VALUE**
+**Usefulness Rating: (3/5) - MODERATE VALUE**
 
 **Justification:**
 - **Already implemented** in CoreVital (LogitsSummary.max_prob)
@@ -252,7 +252,7 @@ collapsed_head_count = (per_head_entropy < 0.1).sum()  # Critical: count failure
 ```
 
 **Implementation Decision:**
-> ⚠️ **CRITICAL SIGNAL LOSS FIX:** Do NOT only store `mean()`. Transformer heads are specialized - "induction heads" look back, "sink heads" focus on BOS. Scenario: 31 heads normal (entropy 2.5), 1 head collapses (entropy 0.01). Mean = 2.42 (looks healthy), but the collapse is hidden. **Solution:** Store min/max/count to catch outlier head failures.
+> **CRITICAL SIGNAL LOSS FIX:** Do NOT only store `mean()`. Transformer heads are specialized - "induction heads" look back, "sink heads" focus on BOS. Scenario: 31 heads normal (entropy 2.5), 1 head collapses (entropy 0.01). Mean = 2.42 (looks healthy), but the collapse is hidden. **Solution:** Store min/max/count to catch outlier head failures.
 
 **Dashboard Visualization:**
 - **Heatmap:** Per-layer attention entropy over time (layers × steps)
@@ -299,7 +299,7 @@ class AttentionSummary(BaseModel):
 - **Leading indicator (EMNLP 2025):** "Variance Sensitivity Induces Attention Entropy Collapse in Transformers" proves high variance in attention logits (pre-softmax) is a leading indicator of collapse. Exponential nature of Softmax makes attention highly sensitive to logit variance.
 
 **Optional Enhancement - Pre-Softmax Variance (Leading Indicator):**
-> ⚡ **ADVANCED DETECTION:** If attention scores (pre-softmax logits) are available, tracking their variance can predict entropy collapse before it happens.
+> **ADVANCED DETECTION:** If attention scores (pre-softmax logits) are available, tracking their variance can predict entropy collapse before it happens.
 > 
 > ```python
 > # If attention_scores (pre-softmax) available:
@@ -307,7 +307,7 @@ class AttentionSummary(BaseModel):
 > variance_spike_detected = (attention_variance > threshold).any()
 > ```
 > 
-> **Why:** Research shows variance spike → entropy collapse. Variance is a leading indicator (spikes before entropy drops).
+> **Why:** Research shows variance spike --> entropy collapse. Variance is a leading indicator (spikes before entropy drops).
 > 
 > **Cost:** Depends on model output. If `output_attentions=True` only returns post-softmax weights, this requires model modification (expensive). If pre-softmax scores already computed, this is cheap (~1ms).
 > 
@@ -325,14 +325,14 @@ class AttentionSummary(BaseModel):
 > Increase: 20 bytes × 32 layers × 100 steps = 64KB per trace
 > **Justification:** Prevents catastrophic signal loss when individual heads fail
 
-**Usefulness Rating: ⭐⭐⭐⭐⭐ (5/5) - CRITICAL**
+**Usefulness Rating: (5/5) - CRITICAL**
 
 **Justification:**
 - **Strongest research backing** of all attention metrics
 - Direct predictor of model instability and failure
 - Enables critical failure modes detection:
-  - Attention collapse → generation quality crash
-  - Entropic overload → poor context utilization
+  - Attention collapse --> generation quality crash
+  - Entropic overload --> poor context utilization
 - Actionable: Entropy < 0.5 in any layer = immediate alert
 - Phase-2 enabler: `risk_score += 0.2 * (attention_entropy < 1.0 ? 1.0 : 0.0)`
 - Small cost, massive signal value
@@ -376,7 +376,7 @@ focused_head_count = (per_head_concentration > 0.9).sum()
   - **Consequence:** Context loss, poor generation
 
 **Relationship to Attention Entropy:**
-- **Inverse correlation:** High concentration → Low entropy
+- **Inverse correlation:** High concentration --> Low entropy
 - **Complementary signal:** Concentration identifies *which* token, entropy measures spread
 - Concentration > 0.95 ≈ Entropy < 0.5
 
@@ -396,7 +396,7 @@ focused_head_count = (per_head_concentration > 0.9).sum()
 - **Storage:** 4 bytes per layer per step
 - **Total overhead:** ~2ms for 32-layer model
 
-**Usefulness Rating: ⭐⭐⭐⭐ (4/5) - HIGH VALUE**
+**Usefulness Rating: (4/5) - HIGH VALUE**
 
 **Justification:**
 - **Already implemented** in CoreVital
@@ -499,7 +499,7 @@ with torch.no_grad():
 ```
 
 **Implementation Decision - SPARSE STORAGE (HIGH FIDELITY):**
-> 🔄 **ARCHITECTURE CHANGE:** Replace compressed vectors with sparse exact storage.
+> **ARCHITECTURE CHANGE:** Replace compressed vectors with sparse exact storage.
 > 
 > **Old approach (3 vectors):**
 > - Entropy, sink, local vectors
@@ -524,9 +524,7 @@ with torch.no_grad():
 > 
 > **Why sparse works:**
 > - Attention after softmax is naturally sparse (most weights near zero)
-> - Peaked attention: ~5 connections/query = 0.5 MB total ✅
-> - Moderate: ~15 connections/query = 1.5 MB total ✅
-> - Diffuse but above threshold: ~50 connections/query = 5 MB total (still acceptable)
+> - Peaked attention: ~5 connections/query = 0.5 MB total> - Moderate: ~15 connections/query = 1.5 MB total> - Diffuse but above threshold: ~50 connections/query = 5 MB total (still acceptable)
 > - Extremely diffuse (all weights < 0.01): 0 stored (model not using attention anyway)
 > 
 > **What we gain:**
@@ -542,19 +540,19 @@ with torch.no_grad():
 > - Better cache locality, faster iteration
 
 **Implementation Decision - BASIN SCORE DIMENSIONALITY FIX:**
-> 🔴 **CRITICAL FIX:** Original proposal stored basin_score as a vector (per-token), which is logically wrong and wasteful.
+> **CRITICAL FIX:** Original proposal stored basin_score as a vector (per-token), which is logically wrong and wasteful.
 > 
 > **The Problem:** Basin score characterizes the HEAD's behavior across the entire prompt, not individual tokens. Storing the same scalar 500 times wastes ~2MB and makes no semantic sense.
 > 
 > **The Fix:** Basin score is now a **per-head scalar aggregate**:
 > - Measures: How much does this head, on average across all queries, attend to middle vs boundaries?
 > - Storage: 1 float per head per layer (32 × 32 = 1024 scalars = 4KB)
-> - Logic: "Head 5 in Layer 10 has basin_score = 0.25 → it systematically ignores middle tokens"
+> - Logic: "Head 5 in Layer 10 has basin_score = 0.25 --> it systematically ignores middle tokens"
 > 
 > **Alternative (even cheaper):** Could calculate basin_score on-the-fly in dashboard from stored attention weights, but 4KB of pre-computed scalars is cheap and avoids recomputation.
 
 **Implementation Decision - ATTENTION BASIN DETECTION:**
-> ➕ **NEW METRIC ADDED:** "Attention Basin" phenomenon (arXiv:2508.05128, Aug 2025)
+> **NEW METRIC ADDED:** "Attention Basin" phenomenon (arXiv:2508.05128, Aug 2025)
 > 
 > **The Pattern:** Models naturally attend heavily to:
 > - **Start** of prompt (sink_score - tracking per token)
@@ -579,7 +577,7 @@ with torch.no_grad():
 > **Research Citation:** "Attention Basin: Why Contextual Position Matters in Large Language Models" proves models systematically neglect middle of context window.
 
 **Implementation Decision - THE STORAGE BOMB FIX (SPARSE STORAGE):**
-> 🚨 **CRITICAL COMPRESSION REQUIRED:**
+> **CRITICAL COMPRESSION REQUIRED:**
 > 
 > **Original naive approach:**
 > - Store full attention matrix: `[32 layers × 32 heads × 500 tokens × 500 tokens]`
@@ -595,14 +593,11 @@ with torch.no_grad():
 > **Storage calculation:**
 > ```
 > Peaked attention (~5 connections/query):
->   500 queries × 5 × 6 bytes × 32 heads × 32 layers = 0.5 MB ✅
-> 
+>   500 queries × 5 × 6 bytes × 32 heads × 32 layers = 0.5 MB> 
 > Moderate attention (~15 connections/query):
->   500 queries × 15 × 6 bytes × 32 heads × 32 layers = 1.5 MB ✅
-> 
+>   500 queries × 15 × 6 bytes × 32 heads × 32 layers = 1.5 MB> 
 > Diffuse attention (~50 connections/query):
->   500 queries × 50 × 6 bytes × 32 heads × 32 layers = 5.0 MB ✅
-> 
+>   500 queries × 50 × 6 bytes × 32 heads × 32 layers = 5.0 MB> 
 > Plus basin scalars: 4 KB
 > Typical total: 1.5 MB
 > ```
@@ -699,7 +694,7 @@ phrase_connections = [
 - **Storage:** 1.5MB typical
 - **Total overhead:** ~15ms + 1.5MB storage
 
-**Usefulness Rating: ⭐⭐⭐⭐⭐ (5/5) - CRITICAL**
+**Usefulness Rating: (5/5) - CRITICAL**
 
 **Justification:**
 - **Unique capability:** Only metric that captures prompt processing patterns
@@ -707,7 +702,7 @@ phrase_connections = [
   - "Lost in the Middle" detection (research-proven phenomenon)
   - Attention sink identification (BOS token over-reliance)
   - Layer blame attribution during prompt
-- **Compression makes it viable:** 1GB → 6MB while keeping 90% of diagnostic value
+- **Compression makes it viable:** 1GB --> 6MB while keeping 90% of diagnostic value
 - Phase-2 enabler: Predict generation quality from prompt attention patterns
 - Opt-out available (--no-prompt-telemetry) for cost-sensitive users
 - Nearly free for Seq2Seq models (reuse encoder)
@@ -763,7 +758,7 @@ l2_norm = torch.norm(hidden_states, p=2, dim=-1).mean()
 - **Storage:** 4 bytes per layer per step
 - **Total overhead:** ~5ms for 32-layer model
 
-**Usefulness Rating: ⭐⭐⭐⭐ (4/5) - HIGH VALUE**
+**Usefulness Rating: (4/5) - HIGH VALUE**
 
 **Justification:**
 - **Already implemented** in CoreVital
@@ -817,7 +812,7 @@ std = torch.std(hidden_states, dim=-1).mean()
 - **Storage:** 4 bytes per layer per step
 - **Total overhead:** ~10ms for 32-layer model
 
-**Usefulness Rating: ⭐⭐⭐ (3/5) - MODERATE VALUE**
+**Usefulness Rating: (3/5) - MODERATE VALUE**
 
 **Justification:**
 - **Already implemented** in CoreVital
@@ -852,13 +847,13 @@ for layer_idx, hidden in enumerate(all_hidden_states):
 ```
 
 **Implementation Decision - TERMINOLOGY CLARIFICATION:**
-> 🔄 **RENAMED from "drift" to "layer_transformation"**
+> **RENAMED from "drift" to "layer_transformation"**
 > 
 > **Why the rename:** The term "drift" implies instability or wandering, but layer-to-layer transformation is actually the layer *doing its job*. High transformation means the layer is performing meaningful computation.
 > 
 > **Interpretation flip:**
-> - **High transformation (>0.5):** Layer is doing significant work ✅ (Good!)
-> - **Low transformation (<0.1):** Layer is nearly identity function ⚠️ (Possible deadness)
+> - **High transformation (>0.5):** Layer is doing significant work (Good!)
+> - **Low transformation (<0.1):** Layer is nearly identity function (Possible deadness)
 > 
 > **What "drift" actually means:** Temporal drift = model changing its mind across generation steps (different metric, not implemented in Phase-1)
 > 
@@ -867,7 +862,7 @@ for layer_idx, hidden in enumerate(all_hidden_states):
 > - Measures if model is revising its understanding during generation
 
 **Dashboard Visualization:**
-- **Line chart:** Layer transformation per transition (layer N → N+1)
+- **Line chart:** Layer transformation per transition (layer N --> N+1)
 - **Heatmap:** Transformation matrix (prompt tokens × layers)
 - **Alert zones:** Transformation < 0.1 (dead layer) OR > 0.8 (potential corruption)
 - **Layer comparison:** Identify layers with high vs low transformation
@@ -900,7 +895,7 @@ for layer_idx, hidden in enumerate(all_hidden_states):
 - **Storage:** 4 bytes per layer per prompt token
 - **Total overhead:** ~150ms for 32-layer × 100-token prompt
 
-**Usefulness Rating: ⭐⭐⭐⭐ (4/5) - HIGH VALUE (Prompt Only)**
+**Usefulness Rating: (4/5) - HIGH VALUE (Prompt Only)**
 
 **Justification:**
 - **Research-backed signal:** Strong correlation with model behavior
@@ -946,7 +941,7 @@ mean = torch.mean(hidden_states, dim=-1).mean()
 - **Storage:** 4 bytes per layer per step
 - **Total overhead:** ~5ms for 32-layer model
 
-**Usefulness Rating: ⭐⭐ (2/5) - LOW VALUE**
+**Usefulness Rating: (2/5) - LOW VALUE**
 
 **Justification:**
 - **Already implemented** in CoreVital
@@ -1004,7 +999,7 @@ has_inf = torch.isinf(tensor_flat).any().item()
 - **Storage:** 1 bit per layer per tensor type (hidden + attention)
 - **Total overhead:** ~5ms for 32-layer model
 
-**Usefulness Rating: ⭐⭐⭐⭐⭐ (5/5) - CRITICAL**
+**Usefulness Rating: (5/5) - CRITICAL**
 
 **Justification:**
 - **Highest signal-to-cost ratio** of any metric
@@ -1050,7 +1045,7 @@ perplexity = 2 ** entropy
 - **Storage:** 4 bytes per timeline step
 - **Total overhead:** Negligible
 
-**Usefulness Rating: ⭐⭐⭐ (3/5) - MODERATE VALUE**
+**Usefulness Rating: (3/5) - MODERATE VALUE**
 
 **Justification:**
 - **Redundant with entropy:** perplexity = 2^entropy (also called "effective support")
@@ -1105,7 +1100,7 @@ with torch.no_grad():
 ```
 
 **Implementation Decision - PROMPT SURPRISAL FIX:**
-> 🔴 **CRITICAL FIX:** `outputs.loss_per_token` does not exist in standard Hugging Face models. `CausalLMOutput` only returns `loss` (scalar mean).
+> **CRITICAL FIX:** `outputs.loss_per_token` does not exist in standard Hugging Face models. `CausalLMOutput` only returns `loss` (scalar mean).
 > 
 > **The Fix:** Compute per-token loss manually from logits using `CrossEntropyLoss(reduction='none')`. Since we're already grabbing logits for the prompt pass, this adds negligible cost.
 > 
@@ -1115,7 +1110,7 @@ with torch.no_grad():
 > - Convert from nats (natural log) to bits (log2)
 
 **Implementation Decision - PROMPT SURPRISAL OPTIMIZATION:**
-> 🟡 **OPTIMIZATION:** Since we're already doing a forward pass for prompt attention profiles, we can extract prompt surprisal with minimal additional cost.
+> **OPTIMIZATION:** Since we're already doing a forward pass for prompt attention profiles, we can extract prompt surprisal with minimal additional cost.
 > 
 > **Value:** High surprisal on prompt tokens means the model finds the user's input:
 > - Confusing or contradictory
@@ -1125,8 +1120,8 @@ with torch.no_grad():
 > **Cost:** ~5ms additional (CrossEntropyLoss computation), already have logits
 > 
 > **Use cases:**
-> - **Prompt quality check:** High average prompt surprisal → user's prompt is unclear
-> - **OOD detection:** Spikes in prompt surprisal → unusual input
+> - **Prompt quality check:** High average prompt surprisal --> user's prompt is unclear
+> - **OOD detection:** Spikes in prompt surprisal --> unusual input
 > - **Debugging:** Which part of user's prompt confused the model?
 
 **Dashboard Visualization:**
@@ -1159,7 +1154,7 @@ with torch.no_grad():
 - **Storage:** 4 bytes per timeline step
 - **Total overhead:** Negligible
 
-**Usefulness Rating: ⭐⭐⭐⭐ (4/5) - HIGH VALUE**
+**Usefulness Rating: (4/5) - HIGH VALUE**
 
 **Justification:**
 - **Complements entropy:** Entropy = pre-decision uncertainty, surprisal = post-decision surprise
@@ -1228,7 +1223,7 @@ health_flags = HealthFlags(
 ```
 
 **Implementation Decision - REPETITION LOOP FIX:**
-> 🔧 **CRITICAL FIX:** Originally proposed using L2 norm difference, but **L2 norm measures magnitude, not direction**. 
+> **CRITICAL FIX:** Originally proposed using L2 norm difference, but **L2 norm measures magnitude, not direction**. 
 > 
 > **The Problem:** Tokens "cat" and "dog" might have very similar L2 norms (magnitude of activation) but completely different vector directions (meanings). Original logic would falsely flag "The cat saw the dog" as repetition because norms are stable.
 > 
@@ -1238,16 +1233,16 @@ health_flags = HealthFlags(
 > 
 > **Trade-off:** Requires storing full hidden state vector (or at least last layer's vector) in timeline, not just summary stats. Alternative: Store last N hidden states in memory during generation, discard after health check.
 
-> ⚠️ **IMPLEMENTATION UPDATE (Phase-1c):** Threshold raised from `0.99` to **`0.9995`**. E2E testing with GPT-2 on CUDA float16 showed non-repetitive tokens ("picture", "below", ",", "are", "actually") produce cosine sims of 0.992–0.999 due to last-layer anisotropy. True repetition gives ~1.0. Threshold of 0.9995 cleanly separates normal text from repetition with margin on both sides.
+> **IMPLEMENTATION UPDATE (Phase-1c):** Threshold raised from `0.99` to **`0.9995`**. E2E testing with GPT-2 on CUDA float16 showed non-repetitive tokens ("picture", "below", ",", "are", "actually") produce cosine sims of 0.992–0.999 due to last-layer anisotropy. True repetition gives ~1.0. Threshold of 0.9995 cleanly separates normal text from repetition with margin on both sides.
 
 **Implementation Decision - MID-LAYER ANOMALY DETECTION:**
-> ➕ **NEW FLAG ADDED:** Recent research (Dec 2025) shows hallucinations concentrate in middle layers.
+> **NEW FLAG ADDED:** Recent research (Dec 2025) shows hallucinations concentrate in middle layers.
 > 
 > **Research:** "Hallucination Detection via Internal Representations" found probing layers 16-18 (in 32-layer models) yields ~83% accuracy for detecting hallucinations. Early/late layers perform significantly worse.
 > 
 > **Detection logic:** Track anomalies specifically in middle third of model (e.g., layers 10-22 in 32-layer model). ~~Weight middle-layer entropy spikes, norm explosions, or attention collapse more heavily than boundary layers.~~
 
-> ⚠️ **IMPLEMENTATION UPDATE (Phase-1c):** Two corrections from E2E testing:
+> **IMPLEMENTATION UPDATE (Phase-1c):** Two corrections from E2E testing:
 > 1. **Attention collapse removed from mid-layer check.** GPT-2 has 62 collapsed-head occurrences across 10 steps — this is model architecture (well-documented in "Are Sixteen Heads Really Better Than One?"), not a runtime anomaly. Already captured separately by `attention_collapse_detected`. Mid-layer anomaly now checks NaN/Inf and L2 explosion only.
 > 2. **Per-step L2 baselines, not global.** CausalLM step 0 processes the full prompt (shape `(1, seq_len, hidden_dim)`), giving L2 norms 10× higher than single-token steps 1+ (which use KV cache). A global baseline false-triggered on step 0. Per-step baselines correctly normalize each step's early layers against its own mid-layers.
 > 3. **L2 explosion multiplier raised from 5× to 8×.** Original 5× calibrated on GPT-2 (max 3.1× mid/early ratio). flan-t5-small (8 layers, only 2 early layers) peaks at 5.7× due to ~70% per-layer growth — just above 5×. 8× accommodates diverse architectures while still catching genuine explosions (100×+).
@@ -1294,7 +1289,7 @@ def _detect_mid_layer_anomaly(timeline: List[TimelineStep]) -> bool:
 ```
 
 **Implementation Decision - DYNAMIC L2 NORM THRESHOLD:**
-> 🟡 **CONSISTENCY FIX:** L2 norm grows exponentially with depth (~4-5% per layer per Turntrout research).
+> **CONSISTENCY FIX:** L2 norm grows exponentially with depth (~4-5% per layer per Turntrout research).
 > 
 > **The Problem:** Hard threshold of `100` doesn't account for model architecture:
 > - Layer 1 might be 10 (normal)
@@ -1345,7 +1340,7 @@ class HealthFlags(BaseModel):
 - **Storage:** ~28 bytes (6 fields: 5 bools + 1 int)
 - **Total overhead:** ~10ms compute + 20KB transient memory
 
-**Usefulness Rating: ⭐⭐⭐⭐⭐ (5/5) - CRITICAL**
+**Usefulness Rating: (5/5) - CRITICAL**
 
 **Justification:**
 - **Essential for production:** Single boolean check = healthy?
@@ -1368,7 +1363,7 @@ h_projected = h @ R
 Where R is a random projection matrix (d_hidden × d_target).
 
 **Purpose:**
-Reduce hidden state dimensionality for storage (4096 → 128 dims = 32x reduction).
+Reduce hidden state dimensionality for storage (4096 --> 128 dims = 32x reduction).
 
 **When to Use:**
 - Trace file size becomes prohibitive (> 100MB per trace)
@@ -1388,7 +1383,7 @@ Reduce hidden state dimensionality for storage (4096 → 128 dims = 32x reductio
 - **Memory:** ~512KB for projection matrix
 - **Storage:** 4 bytes × 128 dims = 512 bytes per layer per step (vs 16KB)
 
-**Usefulness Rating: ⭐⭐ (2/5) - DEFER**
+**Usefulness Rating: (2/5) - DEFER**
 
 **Justification:**
 - **Optimization, not feature:** Doesn't add new signal
@@ -1451,7 +1446,7 @@ plot_reliability_diagram(predictions)
 - **Temperature tuning:** Use calibration metrics to adjust model confidence
 - **Ensemble calibration:** If using multiple models, calibrate their combination
 
-**Usefulness Rating: ⭐⭐⭐⭐⭐ (5/5) - CRITICAL FOR PRODUCTION (Phase-2/3)**
+**Usefulness Rating: (5/5) - CRITICAL FOR PRODUCTION (Phase-2/3)**
 
 **Justification:**
 - **Essential for deployment:** Uncalibrated models mislead users
@@ -1466,25 +1461,25 @@ plot_reliability_diagram(predictions)
 ## PHASE-1 TECHNICAL REFINEMENTS
 ### Based on 2025 Research
 
-### 🔧 Refinement 1: Repetition Loop Detection — Cosine over L2
+### Refinement 1: Repetition Loop Detection — Cosine over L2
 
 > **Full implementation and rationale:** See **Metric 14 — Health Flags** (Repetition Loop Detection section). The original L2-norm-difference approach was replaced with cosine similarity to detect directional alignment (semantic repetition) rather than magnitude similarity. Threshold: ~~`cosine_sim > 0.99`~~ **`cosine_sim > 0.9995`** (see Metric 14 implementation update — 0.99 false-positives on float16 due to anisotropy). Requires transient buffer of last 5 hidden state vectors (~20KB), discarded after health check. Research basis: standard NLP practice.
 
 ---
 
-### 🎯 Refinement 2: Mid-Layer Anomaly Detection — Dynamic Threshold
+### Refinement 2: Mid-Layer Anomaly Detection — Dynamic Threshold
 
 > **Full implementation and rationale:** See **Metric 14 — Health Flags** (Mid-Layer Anomaly Detection section). Targets the "hallucination sweet spot" (middle third of layers). Uses dynamic L2 threshold (5x early-layer baseline, **per-step** not global — see Metric 14 implementation update) — **not** a hardcoded constant. Attention collapse excluded from this check (structural, not runtime). Research basis: "Hallucination Detection via Internal Representations" (Dec 2025) — 83% accuracy probing layers 16-18 in 32-layer models.
 
 ---
 
-### 🌊 Refinement 3: Basin Score — Per-Head Scalar
+### Refinement 3: Basin Score — Per-Head Scalar
 
 > **Full implementation and rationale:** See **Metric 7 — Prompt Attention Profiles** (Basin Score section). Per-head scalar aggregate quantifying "Lost in the Middle" U-shape pattern. `basin_score < 0.3` = head ignores middle tokens. Cost: 4KB total (1 float × 32 heads × 32 layers). Research basis: "Attention Basin: Why Contextual Position Matters" (arXiv:2508.05128, Aug 2025).
 
 ---
 
-### ⚡ Refinement 4: Pre-Softmax Variance (Leading Indicator) - OPTIONAL PHASE-2
+### Refinement 4: Pre-Softmax Variance (Leading Indicator) - OPTIONAL PHASE-2
 
 **Research Finding:**
 - "Variance Sensitivity Induces Attention Entropy Collapse in Transformers" (EMNLP 2025)
@@ -1506,7 +1501,7 @@ class AttentionSummary(BaseModel):
 ```
 
 **Why It Matters:**
-- **Leading vs lagging**: Variance spikes → then entropy collapses
+- **Leading vs lagging**: Variance spikes --> then entropy collapses
 - Allows earlier intervention before collapse degrades generation
 
 **Cost Decision:**
@@ -1544,12 +1539,12 @@ class AttentionSummary(BaseModel):
 **Implementation Priority:**
 
 **Phase-1 Must-Do:**
-1. ✅ Fix repetition detection (cosine not L2 norm)
-2. ✅ Add mid-layer anomaly detection
-3. ✅ Add basin_score to prompt profiles
+1. Fix repetition detection (cosine not L2 norm)
+2. Add mid-layer anomaly detection
+3. Add basin_score to prompt profiles
 
 **Phase-2 Consider:**
-4. ⚡ Pre-softmax variance (only if accessible without cost)
+4. Pre-softmax variance (only if accessible without cost)
 
 **Research Citations:**
 
@@ -1576,29 +1571,29 @@ class AttentionSummary(BaseModel):
 ### Phase-1 Priority Matrix
 
 **Tier 1 - Must Implement (Critical, Low Cost):**
-1. ✅ Shannon Entropy (already have) **+ numerical stability fix**
-2. ✅ Attention Entropy (already have) **+ min/max/count aggregation**
-3. ✅ Concentration Max (already have) **+ min aggregation**
-4. ✅ L2 Norm (already have)
-5. ➕ **Top-K Margin** (NEW - trivial add)
-6. ➕ **Voter Agreement** (NEW - trivial add)
-7. ➕ **NaN/Inf Detection** (NEW - critical signal)
-8. ➕ **Health Flags with Repetition Loop** (NEW - aggregation + hallucination detection)
+1. Shannon Entropy (already have) **+ numerical stability fix**
+2. Attention Entropy (already have) **+ min/max/count aggregation**
+3. Concentration Max (already have) **+ min aggregation**
+4. L2 Norm (already have)
+5. **Top-K Margin** (NEW - trivial add)
+6. **Voter Agreement** (NEW - trivial add)
+7. **NaN/Inf Detection** (NEW - critical signal)
+8. **Health Flags with Repetition Loop** (NEW - aggregation + hallucination detection)
 
 **Tier 2 - Strong Value (Phase-1 Features):**
-9. ➕ **Prompt Attention Profiles (Compressed)** (NEW - 6MB not 1GB, unique capability)
-10. ➕ **Layer Transformation (Prompt Only)** (NEW - renamed from "drift", layer health diagnosis)
-11. ➕ **Perplexity** (NEW - interpretability aid, effective support size)
-12. ➕ **Surprisal** (NEW - per-token surprise, complements entropy, CoT pruning research)
+9. **Prompt Attention Profiles (Compressed)** (NEW - 6MB not 1GB, unique capability)
+10. **Layer Transformation (Prompt Only)** (NEW - renamed from "drift", layer health diagnosis)
+11. **Perplexity** (NEW - interpretability aid, effective support size)
+12. **Surprisal** (NEW - per-token surprise, complements entropy, CoT pruning research)
 
 **Tier 3 - Keep Existing:**
-13. ✅ Max Probability (already have)
-14. ✅ Standard Deviation (already have)
-15. ✅ Mean (already have)
+13. Max Probability (already have)
+14. Standard Deviation (already have)
+15. Mean (already have)
 
 **Tier 4 - Defer to Phase-2+:**
-16. ❌ Random Projections (optimization, Phase-2+)
-17. 📊 **Calibration Metrics** (ECE, Brier Score, Reliability Diagrams - CRITICAL for Phase-2, requires ground truth)
+16. Random Projections (optimization, Phase-2+)
+17. **Calibration Metrics** (ECE, Brier Score, Reliability Diagrams - CRITICAL for Phase-2, requires ground truth)
 
 ### Total Cost Estimate (32-layer model, 100-token generation, 500-token prompt)
 
@@ -1620,23 +1615,23 @@ class AttentionSummary(BaseModel):
 - Schema v0.3.0 total: **~1.6MB per trace** (typical)
 
 **Critical Fixes & Enhancements Applied:**
-1. ✅ **Storage Bomb Prevented:** Sparse storage 1GB → 1.5MB typical (680x reduction)
-2. ✅ **Full Fidelity Upgrade:** Exact attention weights with arbitrary query capability (not just derived summaries)
-3. ✅ **Structure of Arrays:** 40% storage overhead reduction vs array-of-structs
-4. ✅ **Prompt Surprisal Fixed:** Manual computation from logits (outputs.loss_per_token doesn't exist)
-5. ✅ **Signal Loss Prevented:** Added min/max/count aggregation (catches individual head failures)
-6. ✅ **Numerical Stability:** Use log_softmax for entropy computation
-7. ✅ **Terminology Fixed:** "drift" → "layer_transformation" (interpretation corrected)
-8. ✅ **Repetition Detection FIXED:** Use cosine similarity (direction) not L2 norm (magnitude)
-9. ✅ **Mid-Layer Anomaly Detection:** Target hallucination sweet spot with dynamic L2 threshold
-10. ✅ **Basin Score:** Per-head scalar aggregate for U-shape detection
-11. 📋 **Pre-Softmax Variance:** Phase-2 leading indicator (only if accessible without cost)
+1. **Storage Bomb Prevented:** Sparse storage 1GB --> 1.5MB typical (680x reduction)
+2. **Full Fidelity Upgrade:** Exact attention weights with arbitrary query capability (not just derived summaries)
+3. **Structure of Arrays:** 40% storage overhead reduction vs array-of-structs
+4. **Prompt Surprisal Fixed:** Manual computation from logits (outputs.loss_per_token doesn't exist)
+5. **Signal Loss Prevented:** Added min/max/count aggregation (catches individual head failures)
+6. **Numerical Stability:** Use log_softmax for entropy computation
+7. **Terminology Fixed:** "drift" --> "layer_transformation" (interpretation corrected)
+8. **Repetition Detection FIXED:** Use cosine similarity (direction) not L2 norm (magnitude)
+9. **Mid-Layer Anomaly Detection:** Target hallucination sweet spot with dynamic L2 threshold
+10. **Basin Score:** Per-head scalar aggregate for U-shape detection
+11. **Pre-Softmax Variance:** Phase-2 leading indicator (only if accessible without cost)
 
 **2025 Research Papers Integrated:**
-- ✅ Ali et al. (2025) - Entropy-Lens framework
-- ✅ Hallucination Detection via Internal Representations (Dec 2025) - Mid-layer targeting
-- ✅ Attention Basin (arXiv:2508.05128, Aug 2025) - U-shape pattern
-- ✅ Variance Sensitivity (EMNLP 2025) - Pre-softmax collapse predictor
+- Ali et al. (2025) - Entropy-Lens framework
+- Hallucination Detection via Internal Representations (Dec 2025) - Mid-layer targeting
+- Attention Basin (arXiv:2508.05128, Aug 2025) - U-shape pattern
+- Variance Sensitivity (EMNLP 2025) - Pre-softmax collapse predictor
 
 ### Research-Backed Value Proposition
 
@@ -1650,15 +1645,15 @@ class AttentionSummary(BaseModel):
 7. **Calibration (Phase-2)** - Research shows LLMs have 12-39% ECE, critical for production trust
 
 **Research Validation of Our Decisions:**
-- ✅ **Compression approach validated:** Barbero et al. (2024) confirms attention sinks (our `sink_score`), Cohen (2023) confirms first token special behavior
-- ✅ **Min/max/count validated:** Voita et al. (2019) shows heads are specialists with ~80% max weight - mean-only would hide failures
-- ✅ **Exponential norm growth:** Turntrout confirms 4-5% per layer growth in GPT-2 - validates our L2 norm tracking
-- ✅ **Voter agreement validated:** Liang et al. (2023) shows top-K mass collapse during DPO fine-tuning - confirms diagnostic value
-- ✅ **Random projections sound:** Johnson-Lindenstrauss lemma confirms distance preservation (deferred correctly to Phase-2+)
-- ✅ **Mid-layer hallucination:** "Hallucination Detection via Internal Representations" (Dec 2025) - 83% accuracy probing layers 16-18
-- ✅ **Attention basins:** arXiv:2508.05128 (Aug 2025) - models systematically neglect middle of context window
-- ✅ **Variance sensitivity:** EMNLP 2025 - high variance in pre-softmax logits predicts entropy collapse
-- ✅ **Cosine similarity fix:** Standard practice in NLP - L2 norm measures magnitude not meaning
+- **Compression approach validated:** Barbero et al. (2024) confirms attention sinks (our `sink_score`), Cohen (2023) confirms first token special behavior
+- **Min/max/count validated:** Voita et al. (2019) shows heads are specialists with ~80% max weight - mean-only would hide failures
+- **Exponential norm growth:** Turntrout confirms 4-5% per layer growth in GPT-2 - validates our L2 norm tracking
+- **Voter agreement validated:** Liang et al. (2023) shows top-K mass collapse during DPO fine-tuning - confirms diagnostic value
+- **Random projections sound:** Johnson-Lindenstrauss lemma confirms distance preservation (deferred correctly to Phase-2+)
+- **Mid-layer hallucination:** "Hallucination Detection via Internal Representations" (Dec 2025) - 83% accuracy probing layers 16-18
+- **Attention basins:** arXiv:2508.05128 (Aug 2025) - models systematically neglect middle of context window
+- **Variance sensitivity:** EMNLP 2025 - high variance in pre-softmax logits predicts entropy collapse
+- **Cosine similarity fix:** Standard practice in NLP - L2 norm measures magnitude not meaning
 
 **Key 2025 Research Papers Incorporated:**
 1. **Ali et al. (2025)** - Entropy-Lens: Entropy profiles correlate with prompt type and correctness
@@ -1683,7 +1678,7 @@ calibrated_confidence = apply_calibration_curve(risk_score, ece_model)
 ```
 
 **Production Monitoring Readiness:**
-- Health flags → Datadog/Prometheus alerts
+- Health flags --> Datadog/Prometheus alerts
 - Per-metric thresholds well-documented in research
 - Actionable insights (not just numbers)
 - **Phase-2:** Add calibration layer using ECE/Brier score to ensure risk scores correlate with actual failure rates
@@ -1761,7 +1756,7 @@ calibrated_confidence = apply_calibration_curve(risk_score, ece_model)
    - **Justification:** 31 healthy heads + 1 collapsed = mean looks fine, but system fails
 
 3. **Numerical Stability (Metric 1)**
-   - Rejected: softmax → log (catastrophic cancellation risk)
+   - Rejected: softmax --> log (catastrophic cancellation risk)
    - Implemented: log_softmax (log-sum-exp trick)
    - **Justification:** Standard PyTorch practice, prevents NaN in entropy
 
@@ -1783,7 +1778,7 @@ calibrated_confidence = apply_calibration_curve(risk_score, ece_model)
 **Rationale:**
 - Maximize research-backed value (4 new 2025 papers integrated)
 - Minimize cost (<5% inference overhead)
-- **Prevent catastrophic storage issues** (1GB → 1.75MB typical via sparse storage)
+- **Prevent catastrophic storage issues** (1GB --> 1.75MB typical via sparse storage)
 - **Prevent signal loss** (individual head detection)
 - **Prevent false positives** (cosine similarity for repetition, not L2 norm)
 - **Target hallucination sweet spot** (mid-layer anomaly detection)
@@ -1795,7 +1790,7 @@ calibrated_confidence = apply_calibration_curve(risk_score, ece_model)
 **User's Strategy Alignment:**
 > "better to do all the heavy lifting in phase-1 and then we could spend the rest of the phases making sense of the metrics, optimizing performance, and working on perfecting presentation"
 
-✅ This recommendation aligns perfectly - implement all valuable metrics now with critical fixes, optimize/present later.
+This recommendation aligns perfectly - implement all valuable metrics now with critical fixes, optimize/present later.
 
 **Storage Impact Summary:**
 - Prompt (500 tokens): ~1.5MB typical (sparse attention profiles with SoA format, range: 0.5-5MB)
@@ -1807,7 +1802,7 @@ calibrated_confidence = apply_calibration_curve(risk_score, ece_model)
 > **Note:** Earlier drafts of this document referenced "8MB compressed profiles with 4 vectors" — that was the intermediate compressed vector approach. The sparse storage approach (see Metric 7 - Prompt Attention Profiles) superseded it, achieving 1.5MB typical with *better* fidelity (exact weights + arbitrary query capability vs derived summaries only).
 
 **Next Steps:**
-1. Implement schema changes (v0.2.0 → v0.3.0)
+1. Implement schema changes (v0.2.0 --> v0.3.0)
    - New models: `TensorAnomalies`, `HealthFlags`, `SparseAttentionHead` (SoA format), `PromptAttentionLayer`, `PromptAnalysis`
    - `LogitsSummary` additions: `voter_agreement`, `perplexity`, `surprisal`
    - `AttentionSummary` additions: `entropy_max`, `concentration_min`, `collapsed_head_count`, `focused_head_count`
@@ -1840,14 +1835,14 @@ calibrated_confidence = apply_calibration_curve(risk_score, ece_model)
 
 | Decision | Why | Research Citation | Impact |
 |----------|-----|-------------------|--------|
-| **Sparse attention storage 1GB→1.5MB** | Full fidelity + query capability | Natural sparsity post-softmax | 680x reduction + gained features |
+| **Sparse attention storage 1GB-->1.5MB** | Full fidelity + query capability | Natural sparsity post-softmax | 680x reduction + gained features |
 | **Structure of Arrays (SoA)** | Reduce serialization overhead | Storage optimization | 40% overhead reduction |
 | **Prompt surprisal manual computation** | outputs.loss_per_token doesn't exist | HuggingFace API limitation | Required manual CrossEntropyLoss |
 | **Basin score per-head scalar** | Basin characterizes head, not tokens | Dimensionality logic | Correct aggregation level |
 | **Min/max/count aggregation** | Mean hides individual head failures | Voita et al. (2019) - heads are specialists | Catches collapsed heads |
 | **Cosine similarity for repetition** | L2 norm = magnitude not meaning | Standard NLP practice | Prevents false positives |
 | **Mid-layer anomaly (dynamic threshold)** | Hallucinations in layers 16-18 | Dec 2025 paper - 83% accuracy | Targets truth processing |
-| **log_softmax not softmax→log** | Numerical stability (catastrophic cancellation) | Standard PyTorch practice | Prevents NaN in entropy |
+| **log_softmax not softmax-->log** | Numerical stability (catastrophic cancellation) | Standard PyTorch practice | Prevents NaN in entropy |
 | **"layer_transformation" not "drift"** | High transformation = layer working | Cohen (2023), Jiang et al. (2024) | Correct interpretation |
 | **Defer calibration to Phase-2** | Requires labeled ground truth | ECE research shows 12-39% miscalibration | Production critical later |
 
@@ -1882,24 +1877,31 @@ TOTAL PERSISTED: ~1.75 MB per trace (typical)
 TOTAL TRANSIENT: ~30 KB (discarded)
 ```
 
-**For 100 traces: ~175 MB** (easily fits in memory, dashboard-friendly)
+> **Note on File Sizes:** The above estimates refer to **compact JSON data size**. Trace files are saved in compact format (no indentation, minimal separators, `exclude_none=True`) for optimal file size. This achieves:
+> - **~63% reduction** vs pretty-printed JSON (no indent/whitespace)
+> - **~19 KB savings** per file from excluding None fields
+> - **Total on-disk size:** ~1.3-1.5 MB typical (vs ~3.5-5 MB with pretty-printing)
+> 
+> If you want to inspect formatted JSON, use the dashboard's "Raw JSON" section which provides on-demand pretty-printing. For even smaller files, consider gzip compression (typically 70-80% reduction).
+
+**For 100 traces: ~175 MB** (compact data size, easily fits in memory, dashboard-friendly)
 
 **Storage by Attention Sparsity:**
 - Peaked attention (~5 connections/query): 0.65 MB per trace
-- Moderate attention (~15 connections/query): 1.75 MB per trace ← typical
+- Moderate attention (~15 connections/query): 1.75 MB per trace <-- typical
 - Diffuse attention (~50 connections/query): 5.25 MB per trace
 
 **Comparison to Naive Approach:**
-- Naive (full attention): 1.02 GB per trace → 102 GB for 100 traces (CRASHES)
-- Sparse (Phase-1): 1.75 MB per trace → 175 MB for 100 traces ✅
+- Naive (full attention): 1.02 GB per trace --> 102 GB for 100 traces (CRASHES)
+- Sparse (Phase-1): 1.75 MB per trace --> 175 MB for 100 traces
 - **Reduction: 583x smaller (typical case)**
 
 **Key Benefits of Sparse Storage:**
-- ✅ Full fidelity (exact weights, not derived summaries)
-- ✅ Arbitrary queries ("What attended to token X?")
-- ✅ Graph visualization capability
-- ✅ Variable size adapts to attention patterns
-- ✅ Can compute derived metrics (entropy, sink) on-the-fly if needed
+- Full fidelity (exact weights, not derived summaries)
+- Arbitrary queries ("What attended to token X?")
+- Graph visualization capability
+- Variable size adapts to attention patterns
+- Can compute derived metrics (entropy, sink) on-the-fly if needed
 
 ---
 
@@ -1909,7 +1911,7 @@ Review notes captured before implementation begins. These address performance co
 
 ---
 
-### 🔧 Review Note 1: Sparse Extraction Must Be Vectorized
+### Review Note 1: Sparse Extraction Must Be Vectorized
 
 **The Concern:**
 
@@ -1980,7 +1982,7 @@ for head_idx in range(num_heads):
 
 ---
 
-### 🔧 Review Note 2: Transient Hidden State Buffer — Never Serialize
+### Review Note 2: Transient Hidden State Buffer — Never Serialize
 
 **The Concern:**
 
@@ -2009,7 +2011,7 @@ The current CoreVital architecture stores everything in the `InstrumentationResu
 
 ---
 
-### 🔧 Review Note 3: Schema Dependency Chain
+### Review Note 3: Schema Dependency Chain
 
 **The Concern:**
 
@@ -2032,13 +2034,13 @@ This depends on:
 
 ```
 Schema v0.3.0 (define new models/fields)
-    ↓
+    |
 Enhanced summaries.py (compute new metrics: min/max/count, NaN/Inf)
-    ↓
+    |
 Updated collector.py (wire new metrics into InstrumentationResults)
-    ↓
+    |
 Updated report_builder.py (populate new fields on Report)
-    ↓
+    |
 Health flags (consume the populated fields)
 ```
 
@@ -2053,7 +2055,7 @@ If health flags are implemented before the schema and computation pipeline, they
 
 ---
 
-### 🔧 Review Note 4: Perplexity as Lowest-Priority Metric
+### Review Note 4: Perplexity as Lowest-Priority Metric
 
 **The Observation:**
 
@@ -2075,7 +2077,7 @@ It should be implemented — the cost is genuinely zero — but it should be the
 
 ---
 
-### 🔧 Review Note 5: `torch_dtype` Deprecation Warning
+### Review Note 5: `torch_dtype` Deprecation Warning
 
 **The Observation:**
 
@@ -2115,7 +2117,7 @@ model = model_class.from_pretrained(
 
 ---
 
-### 🔧 Review Note 6: Layer Transformation Storage Scope
+### Review Note 6: Layer Transformation Storage Scope
 
 **The Observation:**
 
@@ -2143,7 +2145,7 @@ The full per-token breakdown is valuable for prompt analysis (identifying which 
 
 ---
 
-### 🔧 Review Note 7: Seq2Seq Prompt Telemetry — Reuse, Don't Recompute
+### Review Note 7: Seq2Seq Prompt Telemetry — Reuse, Don't Recompute
 
 **The Observation:**
 
@@ -2189,7 +2191,7 @@ else:
 | **Transient buffer never serialized** | Architecture | Prevents 80KB raw tensor leak per trace |
 | **Schema dependency chain** | Implementation order | Prevents silent false-negative health checks |
 | **Perplexity lowest priority** | Prioritization | First metric to cut if running long |
-| **`torch_dtype` → `dtype`** | Maintenance | Prevents future breakage, cleans up logs |
+| **`torch_dtype` --> `dtype`** | Maintenance | Prevents future breakage, cleans up logs |
 | **Layer transformation scope** | Storage | Confirms per-token granularity (62KB) is worth it |
 | **Seq2Seq reuse encoder outputs** | Performance | Zero-cost prompt telemetry for Seq2Seq models |
 
