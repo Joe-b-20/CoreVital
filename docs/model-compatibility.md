@@ -1,26 +1,44 @@
-# CoreVital Model Compatibility (Foundation F4)
+# CoreVital Model Compatibility
 
-CoreVital is tested and designed to work with production-oriented open-weight models. This document notes model-specific quirks and suggested config.
+CoreVital is tested with production-oriented open-weight models. This document covers supported architectures, attention capture, quantization, and model-specific notes.
 
-## Tested With
+## Tested Models
 
 | Family | Example model IDs | Notes |
 |--------|-------------------|--------|
-| **Llama 3** | `meta-llama/Llama-3.2-1B`, `meta-llama/Llama-3.2-3B` | CausalLM; SDPA by default — for full attention capture you may need `attn_implementation="eager"` when loading. |
-| **Mistral** | `mistralai/Mistral-7B-v0.1` | CausalLM; standard attention. |
-| **Mixtral** | `mistralai/Mixtral-8x7B-v0.1` | MoE CausalLM; higher memory. |
-| **Qwen2** | `Qwen/Qwen2-0.5B`, `Qwen/Qwen2-7B` | CausalLM; standard. |
+| **Llama 3** | `meta-llama/Llama-3.2-1B`, `meta-llama/Llama-3.1-8B-Instruct` | CausalLM; SDPA by default -- for full attention capture use `attn_implementation="eager"` when loading. |
+| **Mistral** | `mistralai/Mistral-7B-v0.1`, `mistralai/Mistral-7B-Instruct-v0.2` | CausalLM; standard attention. |
+| **Mixtral** | `mistralai/Mixtral-8x7B-v0.1`, `mistralai/Mixtral-8x7B-Instruct-v0.1` | MoE CausalLM; higher memory. |
+| **Qwen2** | `Qwen/Qwen2-0.5B`, `Qwen/Qwen2-0.5B-Instruct` | CausalLM; standard. |
+| **GPT-2** | `gpt2` | CausalLM; used for CI smoke tests (small, no gating). |
+| **T5 / Flan-T5** | `google/flan-t5-small` | Seq2Seq; full encoder/decoder/cross-attention support. |
 
 Smoke tests: `tests/test_models_production.py` (run with `pytest -m slow` or `-m "slow and gpu"`).
 
+## Supported Architectures
+
+**Causal Language Models (GPT-2, Llama, Mistral, Qwen, etc.):**
+Fully supported with automatic detection. CoreVital automatically switches attention implementation from SDPA to `eager` for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
+
+**Sequence-to-Sequence Models (T5, BART, etc.):**
+Fully supported with automatic detection and deep instrumentation. CoreVital uses manual generation to capture hidden states and attentions, as Seq2Seq models don't return these via the standard `generate()` method. For Seq2Seq models, the tool captures:
+- **Encoder outputs**: Encoder hidden states and encoder self-attention (computed once, fixed for the entire run)
+- **Decoder outputs**: Decoder hidden states and decoder self-attention (computed at each generation step)
+- **Cross-attention**: How the decoder attends to encoder outputs at each generation step
+
+**Other Models:**
+Models using eager attention by default will work without modification. Models that don't support attention output will log warnings and attention summaries will be empty or partial.
+
 ## Attention Capture
 
-- **SDPA / Flash Attention:** Some models use scaled dot-product attention that does not return full attention weights. To get per-head attention in the report, load with `attn_implementation="eager"` (or the model’s equivalent option). This can increase memory and runtime.
+- **SDPA / Flash Attention:** Some models use scaled dot-product attention that does not return full attention weights. To get per-head attention in the report, load with `attn_implementation="eager"` (or the model's equivalent option). This can increase memory and runtime.
 - **Default:** CoreVital works with whatever the model returns; if attention tensors are omitted, attention summaries will be empty or partial.
 
 ## Quantization
 
 - **4-bit / 8-bit:** Use `--quantize-4` or `--quantize-8` with CUDA. Reported `dtype` may show as `quantized_unknown`; health checks (e.g. NaN/Inf) still apply.
+- Quantization requires CUDA and will automatically fall back to CPU without quantization if CUDA is unavailable.
+- The quantization status is reflected in the report's `model.quantization` field.
 
 ## Device
 
@@ -29,5 +47,5 @@ Smoke tests: `tests/test_models_production.py` (run with `pytest -m slow` or `-m
 
 ## References
 
-- Execution plan: `docs/phase-2-through-8-execution-plan.md` (Foundation F4).
-- Phase-1 metrics: `docs/Phase1 metrics analysis.md`.
+- Phase-1 metrics research: [Phase1 metrics analysis](Phase1%20metrics%20analysis.md)
+- Design decisions: [Design Journey](design-journey.md)

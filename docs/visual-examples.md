@@ -113,6 +113,6 @@ Use the **Compare** view to see differences:
 
 ## See Also
 
-- [Metrics Guide](../docs/Phase1%20metrics%20analysis.md) — Detailed metric explanations
+- [Metrics Guide](Phase1%20metrics%20analysis.md) -- Detailed metric explanations
 - [Dashboard](../dashboard.py) — Interactive visualization
 - [Case Studies](case-studies/) — Real-world examples

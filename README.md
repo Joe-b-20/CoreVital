@@ -21,44 +21,38 @@
 
 **Status:** CoreVital is in active development (v0.3.0). The core instrumentation and reporting features are production-ready and tested. Some advanced features (streaming API, full metrics export) are in development. See [Roadmap](#roadmap) for details.
 
-## Try CoreVital Live
+## Try CoreVital
 
-**One-click: run it in your browser** -- no install, no clone, no GPU required:
+**Run it now in Google Colab** -- zero setup, no GPU needed, under 2 minutes:
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Joe-b-20/CoreVital?quickstart=1)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Joe-b-20/CoreVital/blob/release/showcase/notebooks/try_corevital.ipynb)
 
-Once the Codespace starts (auto-installs dependencies), type any prompt and watch CoreVital work:
+The notebook installs CoreVital, runs GPT-2 with your prompt, and prints the risk score, health flags, and per-step entropy. Change the prompt to anything you want.
 
-```bash
-corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
-
-pip install -e ".[dashboard]"
-streamlit run dashboard.py
-```
-
-Open the forwarded URL for port 8501. Select **Database** to see your run, or **Demo sample** to explore a bundled Llama-3.1-8B-Instruct report with real metrics.
-
-**Install locally** (alternative):
+**Install locally** (for CLI, dashboard, and production use):
 
 ```bash
-pip install -e .
+pip install git+https://github.com/Joe-b-20/CoreVital.git
 corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
 ```
 
-See [docs/demo/](docs/demo/) for more options, or deploy the dashboard to [Streamlit Cloud](#live-demo-setup) / [Hugging Face Spaces](#live-demo-setup).
+To publish on PyPI so users can simply `pip install corevital`, see [Publishing to PyPI](#publishing-to-pypi).
 
 ## Quick Start
 
 ### Installation
 
-**From PyPI (when published):** `pip install corevital` (or `pip install corevital[dashboard]` for the Streamlit dashboard). No clone required.
-
-**From source (development):**
 ```bash
+# Install from GitHub (recommended)
+pip install git+https://github.com/Joe-b-20/CoreVital.git
+
+# Or clone and install in editable mode (for development)
 git clone https://github.com/Joe-b-20/CoreVital.git
 cd CoreVital
 pip install -e .
 ```
+
+Optional extras: `pip install "CoreVital[dashboard]"` (Streamlit dashboard), `pip install "CoreVital[otel]"` (OpenTelemetry), `pip install "CoreVital[all]"` (everything).
 
 ### Basic Usage
 ```bash
@@ -170,7 +164,7 @@ Options:
 
 ## Output Format
 
-Each run produces a JSON trace file in `./runs/` with this structure:
+Each run produces a structured report. By default, reports are stored in SQLite (`runs/corevital.db`). Use `--sink local` to write individual JSON files to `runs/`, or `--write-json` with the SQLite sink to get both. The report structure:
 ```json
 {
   "schema_version": "0.3.0",
@@ -308,16 +302,9 @@ Example performance output in summary:
 }
 ```
 
-### Model Compatibility Notes
+### Model Compatibility
 
-- **Causal Language Models (GPT-2, LLaMA, etc.)**: Fully supported with automatic detection. The tool automatically switches attention implementation from SDPA to 'eager' for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
-- **Sequence-to-Sequence Models (T5, BART, etc.)**: Fully supported with automatic detection and deep instrumentation. The tool uses manual generation to capture hidden states and attentions, as Seq2Seq models don't return these via the standard `generate()` method. For Seq2Seq models, the tool captures:
-  - **Encoder outputs**: Encoder hidden states and encoder self-attention (computed once, fixed for the entire run)
-  - **Decoder outputs**: Decoder hidden states and decoder self-attention (computed at each generation step)
-  - **Cross-attention**: How the decoder attends to encoder outputs at each generation step, showing how the model "listens" to the encoded input
-- **Other Models**: Models using eager attention by default will work without modification. Models that don't support attention output will log warnings.
-- **Quantization**: 4-bit and 8-bit quantization via bitsandbytes is supported for models that are compatible. Quantization requires CUDA and will automatically fall back to CPU without quantization if CUDA is unavailable. The quantization status is reflected in the output JSON report.
-- **Production models (Llama, Mistral, Mixtral, Qwen)**: See [Model compatibility](docs/model-compatibility.md) for tested variants and optional eager attention for full capture.
+See [docs/model-compatibility.md](docs/model-compatibility.md) for tested models, attention capture details, quantization notes, and Seq2Seq support.
 
 ## Architecture
 
@@ -402,7 +389,7 @@ CoreVital is designed for minimal overhead. Performance measurements from real r
 - **Sampling**: Instrument only a subset of requests (e.g., 1% random or every N-th request)
 - **Report building scales**: For very large models, consider skipping prompt telemetry (`--no-prompt-telemetry`) or reducing attention detail
 
-See [Performance Monitoring](docs/phase-0.75-journey.md) for detailed analysis and benchmarking methodology.
+See [Design Journey](docs/design-journey.md) for the performance monitoring design rationale.
 
 ## Comparison with Alternatives
 
@@ -429,7 +416,7 @@ CoreVital focuses on **internal inference health monitoring**—instrumenting th
 - You need application-level tracing -- use Langfuse/Langtrace
 - You need output guardrails -- use Aporia
 
-See [Competitive Landscape](docs/competitive-landscape-and-ip.md) for detailed analysis.
+See [Competitive Landscape](docs/competitive-landscape.md) for detailed analysis.
 
 ## Use Cases
 
@@ -536,46 +523,17 @@ corevital compare --db runs/corevital.db
 
 **Cross-Attention:** (Seq2Seq only) How the decoder attends to encoder outputs. Shows which parts of the input the model "listens to" during generation.
 
-## Live Demo Setup
+## Publishing to PyPI
 
-Deploy the CoreVital dashboard to Streamlit Cloud or Hugging Face Spaces for a live demo:
+To make CoreVital installable via `pip install corevital`:
 
-### Streamlit Cloud
-
-1. **Fork the repository** on GitHub
-2. **Go to [Streamlit Cloud](https://streamlit.io/cloud)**
-3. **Click "New app"**, select your fork, set main file to `dashboard.py`
-4. **Configure:**
-   - Python version: 3.12
-   - Dependencies: Add `requirements.txt` or use `pyproject.toml` (Streamlit will auto-detect)
-5. **Deploy** -- your dashboard will be live at `https://your-app.streamlit.app`
-
-**Note:** Streamlit Cloud has resource limits. For large models, consider Hugging Face Spaces with GPU.
-
-### Hugging Face Spaces
-
-1. **Create a new Space** on [Hugging Face](https://huggingface.co/spaces)
-2. **Select "Streamlit"** SDK
-3. **Upload files:**
-   - `dashboard.py`
-   - `src/` directory (CoreVital package)
-   - `docs/demo/sample_report.json` (for demo sample)
-   - `requirements.txt` or `pyproject.toml`
-4. **Configure `README.md`** for the Space (optional)
-5. **Deploy** -- your dashboard will be live at `https://huggingface.co/spaces/your-username/your-space`
-
-**Requirements file example:**
-```txt
-streamlit>=1.30.0
-plotly>=5.18.0
-torch>=2.0.0
-transformers>=4.30.0
-numpy>=1.24.0
-pyyaml>=6.0
-pydantic>=2.0.0
+```bash
+pip install build twine
+python -m build
+twine upload dist/*
 ```
 
-**Note:** For demo purposes, you can use the sample report (`docs/demo/sample_report.json`) without running models. Users can also upload their own reports.
+This uses the metadata in `pyproject.toml`. After publishing, users can install with `pip install corevital` (or `pip install corevital[dashboard]` for the Streamlit dashboard) without cloning the repo.
 
 ## Development
 
@@ -662,7 +620,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
   - `models/`: Model loading, management, and `ModelCapabilities` registry
   - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
   - `reporting/`: Schema (v0.3.0), validation, and report building
-  - `sinks/`: Persistence backends (LocalFile, HTTP, Datadog, Prometheus)
+  - `sinks/`: Persistence backends (SQLite, LocalFile, HTTP, Datadog, Prometheus)
   - `utils/`: Shared utilities
 - `.github/workflows/`: CI/CD pipeline (test.yaml)
 - `configs/`: YAML configuration files
@@ -698,14 +656,14 @@ All phases are complete. See [Design Journey](docs/design-journey.md) for archit
 - bitsandbytes (for quantization support)
 - accelerate (required by bitsandbytes)
 
-**Optional extras** (`pip install -e ".[dashboard]"` or `.[otel]"` or `.[all]"`):
+**Optional extras** (e.g. `pip install "CoreVital[dashboard]"`):
 - `dashboard`: Streamlit + Plotly for the web dashboard
 - `datadog`: Datadog API client for `--sink datadog`
 - `prometheus`: Prometheus client for `--sink prometheus`
 - `otel`: OpenTelemetry SDK + OTLP exporter for `--export-otel`
-- `all`: dashboard + datadog + prometheus
+- `all`: dashboard + datadog + prometheus + otel
 
-**Dev dependencies** (`pip install -e ".[dev]"`):
+**Dev dependencies** (`pip install "CoreVital[dev]"`):
 - pytest
 - ruff
 - mypy
