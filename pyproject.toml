@@ -1,16 +1,23 @@
+# =============================================================================
+# CoreVital — LLM inference health monitor
+# =============================================================================
+
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# -----------------------------------------------------------------------------
+# Project metadata
+# -----------------------------------------------------------------------------
 [project]
 name = "CoreVital"
 version = "0.3.0"
 description = "Instrumentation and monitoring toolkit for Large Language Model inference health"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "Apache-2.0"}
+license = { text = "Apache-2.0" }
 authors = [
-    {name = "JB", email = "joebachir20@gmail.com"}
+    { name = "JB", email = "joebachir20@gmail.com" },
 ]
 keywords = ["llm", "monitoring", "transformers", "instrumentation", "health"]
 classifiers = [
@@ -31,6 +38,9 @@ dependencies = [
     "pydantic>=2.0.0",
 ]
 
+# -----------------------------------------------------------------------------
+# Optional dependency groups
+# -----------------------------------------------------------------------------
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
@@ -45,6 +55,7 @@ quantization = [
 dashboard = [
     "streamlit>=1.30.0",
     "plotly>=5.18.0",
+    "pandas>=2.0.0",
 ]
 datadog = [
     "datadog-api-client>=2.20.0",
@@ -61,6 +72,9 @@ all = [
     "CoreVital[quantization,dashboard,datadog,prometheus,otel]",
 ]
 
+# -----------------------------------------------------------------------------
+# Entry points
+# -----------------------------------------------------------------------------
 [project.scripts]
 CoreVital = "CoreVital.cli:main"
 corevital = "CoreVital.cli:main"
@@ -70,9 +84,15 @@ Homepage = "https://github.com/Joe-b-20/CoreVital"
 Repository = "https://github.com/Joe-b-20/CoreVital"
 Issues = "https://github.com/Joe-b-20/CoreVital/issues"
 
+# -----------------------------------------------------------------------------
+# Build — src layout
+# -----------------------------------------------------------------------------
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -84,6 +104,9 @@ markers = [
     "slow: marks slow tests e.g. production model smoke (deselect with '-m \"not slow\"')",
 ]
 
+# -----------------------------------------------------------------------------
+# Linting (Ruff)
+# -----------------------------------------------------------------------------
 [tool.ruff]
 target-version = "py312"
 line-length = 120
@@ -91,17 +114,16 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "B"]
-# E: pycodestyle errors
-# F: pyflakes
-# I: isort (import sorting)
-# W: pycodestyle warnings
-# B: flake8-bugbear (catches common bugs)
-per-file-ignores = { "dashboard.py" = ["E501", "W291"] }
-# dashboard.py: long metric-guide and caption strings (user-facing text), markdown line breaks
+
+[tool.ruff.lint.per-file-ignores]
+"dashboard.py" = ["E501", "W291"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["CoreVital"]
 
+# -----------------------------------------------------------------------------
+# Type checking (MyPy)
+# -----------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true

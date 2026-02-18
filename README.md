@@ -21,7 +21,7 @@ Use it to debug why a model repeats itself, monitor inference health in producti
 
 **Tested with:** Llama 3 (e.g. meta-llama/Llama-3.2-1B), Mistral 7B, Mixtral 8x7B, Qwen2. See [Model compatibility](docs/model-compatibility.md) and smoke tests in `tests/test_models_production.py` (run with `pytest -m slow`).
 
-**Status (v0.3.0):** This showcase branch includes full implementations of Phases 0--8 (instrumentation, metrics, risk scoring, fingerprinting, early warning, health-aware decoding, cross-model comparison, narratives, library API). Streaming is post-run replay; real-time per-step streaming is planned. See [Roadmap](#roadmap).
+**Status (v0.3.0, showcase branch):** Phases 0--2 (instrumentation, metrics, risk scoring) and the dashboard are fully implemented and tested. Phases 3--8 (fingerprinting, early warning, health-aware decoding, comparison, narratives, library API) have working implementations that are iterative -- functional but expected to evolve. Streaming (Phase 4) is post-run replay; real-time per-step events are planned. See [Roadmap](#roadmap).
 
 ## Try CoreVital
 
@@ -666,7 +666,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-This showcase branch includes implementations of all phases. Streaming (Phase 4) is currently post-run replay; real-time per-step events are the main planned improvement. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs.
+Phases 0--2 and the dashboard are fully implemented and tested. Phases 3--8 have working implementations that are iterative. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs.
 
 | Phase | Focus | Key deliverables |
 |-------|-------|-----------------|
