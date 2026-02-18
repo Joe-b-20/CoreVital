@@ -469,12 +469,14 @@ if source == "Database" and db_path:
             # Side-by-side comparison when 2+ selected
             if len(selected_ids) >= 2:
                 reports: List[Dict[str, Any]] = []
+                loaded_ids: List[str] = []
                 for tid in selected_ids:
                     r = SQLiteSink.load_report(st.session_state.db_path, tid)
                     if r:
                         reports.append(r)
+                        loaded_ids.append(tid)
                 if len(reports) >= 2:
-                    _render_compare_side_by_side(reports, selected_ids)
+                    _render_compare_side_by_side(reports, loaded_ids)
                 else:
                     st.warning("Could not load one or more reports.")
             elif len(selected_labels) == 1:
@@ -957,7 +959,8 @@ if perf_data:
     )
     # Total time (support both total_wall_time_ms and legacy total_ms)
     total_ms = perf_data.get("total_wall_time_ms") or perf_data.get("total_ms")
-    unaccounted = perf_data.get("unaccounted_time")
+    unaccounted_raw = perf_data.get("unaccounted_time")
+    unaccounted = unaccounted_raw.get("ms") if isinstance(unaccounted_raw, dict) else unaccounted_raw
     st.metric("Total wall time", f"{total_ms:.1f}ms" if isinstance(total_ms, (int, float)) else str(total_ms))
     if unaccounted is not None and isinstance(unaccounted, (int, float)):
         st.caption(f"Unaccounted: {unaccounted:.1f}ms")
@@ -985,7 +988,7 @@ if perf_data:
                             y=times,
                             marker_color="mediumpurple",
                             text=[
-                                f"{t:.1f}ms" + (f" ({p * 100:.1f}%)" if p is not None else "")
+                                f"{t:.1f}ms" + (f" ({p:.1f}%)" if p is not None else "")
                                 for t, p in zip(times, pcts or [None] * len(times), strict=True)
                             ],
                             textposition="outside",
@@ -1015,7 +1018,7 @@ if perf_data:
                     st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 for i, name in enumerate(names):
-                    pct_str = f" ({pcts[i] * 100:.1f}%)" if pcts and pcts[i] is not None else ""
+                    pct_str = f" ({pcts[i]:.1f}%)" if pcts and pcts[i] is not None else ""
                     st.write(f"- **{name}:** {times[i]:.1f}ms{pct_str}")
 
     # Detailed breakdown from file (nested children)

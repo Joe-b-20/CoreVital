@@ -210,6 +210,9 @@ class Config(BaseModel):
         with open(yaml_path, "r") as f:
             data = yaml.safe_load(f)
 
+        if data is None:
+            data = {}
+
         # Apply environment variable overrides
         data = cls._apply_env_overrides(data)
 

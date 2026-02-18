@@ -335,8 +335,10 @@ class ReportBuilder:
         # Use revision from bundle if available, otherwise fall back to config
         revision = bundle.revision if bundle.revision else self.config.model.revision
 
-        # Build quantization info from config
-        quantization_enabled = self.config.model.load_in_4bit or self.config.model.load_in_8bit
+        # Derive quantization from actual model state, not config flags.
+        # bundle.dtype_str is only set by hf_loader when quantization was
+        # actually applied; it stays None on the CPU-fallback path.
+        quantization_enabled = bundle.dtype_str is not None
         quantization_method = None
         if quantization_enabled:
             if self.config.model.load_in_4bit:
@@ -778,8 +780,6 @@ class ReportBuilder:
         # --- Kill: explicit buffer teardown ---
         del hidden_state_buffer
         del buffer_steps
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
 
         # --- Aggregate from layer data (use override when capture_mode is summary/on_risk) ---
         layers_to_aggregate = (
