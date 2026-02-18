@@ -31,8 +31,7 @@ The notebook installs CoreVital, runs GPT-2 with your prompt, and prints the ris
 
 **Live Dashboard** -- browse real Llama-3.1 and GPT-2 traces without installing anything:
 
-<!-- TODO: replace URL after deploying to Streamlit Community Cloud -->
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://corevital.streamlit.app)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://corevital-dwwtkbigm89mp5opxioez3.streamlit.app/)
 
 The hosted dashboard ships with a curated demo database (5 traces, two models, varying risk levels). Select "Database" in the sidebar to explore.
 
@@ -658,15 +657,14 @@ All phases are complete. See [Design Journey](docs/design-journey.md) for archit
 - Transformers (Hugging Face)
 - PyYAML
 - Pydantic
-- bitsandbytes (for quantization support)
-- accelerate (required by bitsandbytes)
 
 **Optional extras** (e.g. `pip install "CoreVital[dashboard]"`):
+- `quantization`: bitsandbytes + accelerate for 4-bit / 8-bit inference (requires CUDA)
 - `dashboard`: Streamlit + Plotly for the web dashboard
 - `datadog`: Datadog API client for `--sink datadog`
 - `prometheus`: Prometheus client for `--sink prometheus`
 - `otel`: OpenTelemetry SDK + OTLP exporter for `--export-otel`
-- `all`: dashboard + datadog + prometheus + otel
+- `all`: everything above
 
 **Dev dependencies** (`pip install "CoreVital[dev]"`):
 - pytest
