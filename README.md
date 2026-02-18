@@ -69,25 +69,20 @@ Full reports include per-layer hidden-state and attention summaries for every ge
 
 ## How It Works
 
-```
-Prompt
-  |
-  v
-HF generate() with PyTorch forward hooks
-  |
-  +---> Hidden states, attention weights, logits (per layer, per step)
-  |
-  v
-Summary computation (mean, std, entropy, L2 norm -- raw tensors discarded)
-  |
-  v
-Report builder (risk score, health flags, layer blame, fingerprint, narrative)
-  |
-  v
-Sink (SQLite | JSON | Datadog | Prometheus | OpenTelemetry)
-  |
-  v
-Dashboard (Streamlit: timeline charts, attention heatmaps, Compare view)
+```mermaid
+flowchart TD
+    A[Prompt] --> B["HF generate() with PyTorch forward hooks"]
+    B --> C["Hidden states, attention weights, logits\n(per layer, per step)"]
+    C --> D["Summary computation\nmean, std, entropy, L2 norm\n(raw tensors discarded)"]
+    D --> E["Report builder\nrisk score, health flags, layer blame,\nfingerprint, narrative"]
+    E --> F{Sink}
+    F --> G[SQLite]
+    F --> H[JSON]
+    F --> I[Datadog]
+    F --> J[Prometheus]
+    F --> K[OpenTelemetry]
+    G --> L["Dashboard\nTimeline charts, attention heatmaps, Compare view"]
+    H --> L
 ```
 
 ## Measured Overhead
