@@ -795,6 +795,13 @@ class ReportBuilder:
 
         for tl_step in timeline:
             # High entropy check (per-step logits entropy)
+            # Threshold: 4.0 bits flags steps where the model considers ~16+ equally
+            # likely next tokens (2^4 = 16). This is model-agnostic — it works across
+            # vocabulary sizes because entropy measures distributional uncertainty, not
+            # vocabulary coverage. For reference, max possible entropy is log2(vocab_size):
+            # ~15.6 bits for GPT-2 (50k vocab), ~17.0 bits for LLaMA-3 (128k vocab).
+            # A step at 4.0 bits uses <0.03% of that range, indicating genuine confusion.
+            # Future: could be made configurable per model family via config.yaml.
             if tl_step.logits_summary and tl_step.logits_summary.entropy is not None:
                 if tl_step.logits_summary.entropy > 4.0:
                     high_entropy_steps += 1

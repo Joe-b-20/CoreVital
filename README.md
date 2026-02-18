@@ -567,6 +567,20 @@ corevital compare --db runs/corevital.db
 
 **Cross-Attention:** (Seq2Seq only) How the decoder attends to encoder outputs. Shows which parts of the input the model "listens to" during generation.
 
+**Voter Agreement:** Fraction of top-k tokens whose cumulative probability exceeds a threshold. High voter agreement means the model's top candidates all point the same direction. Low voter agreement suggests the model is split between very different continuations.
+
+**Basin Scores:** Measure of how much each attention head focuses on nearby (local) tokens versus distant ones. High basin score = head attends mostly to neighbors (local pattern). Low basin score = head attends broadly across the sequence (global pattern). Useful for detecting degenerate attention that ignores positional structure.
+
+**Layer Transformations:** Geometric change between consecutive layers' hidden state representations. Computed as the ratio of L2 norms (magnitude change) and cosine similarity (direction change) between layer N and layer N+1. Large magnitude jumps or sharp direction changes can indicate layers where the model "makes decisions."
+
+**Mid-Layer Anomaly:** L2 norm explosion detected specifically in the middle third of model layers. Research (e.g., Meng et al.) suggests middle layers are where factual recall and "truth processing" occur. Anomalies here may indicate the model is struggling with factual content.
+
+**Concentration:** The maximum attention weight any single token receives from a query in an attention head. High concentration (>0.5) means the head is "focused" on specific tokens. Extremely high concentration (>0.95) indicates potential attention collapse.
+
+**Fingerprint:** A compact 9-element numeric vector summarizing a run's behavior (mean/max entropy, risk score, health flag booleans). Used for clustering similar runs and detecting patterns. Includes a SHA256 prompt hash for exact duplicate detection.
+
+**L2 Norm:** The Euclidean length (magnitude) of a vector. In CoreVital, L2 norm of hidden states tracks how "large" representations become across layers and steps. Sudden L2 norm growth ("explosion") can indicate numerical instability.
+
 ## Development
 
 ### Running Tests
@@ -686,6 +700,50 @@ Phases 0--2 and the dashboard are fully implemented and tested. Phases 3--8 have
 | Phase 6 | Cross-model comparison | Dashboard Compare view; `corevital compare`; SQLite filters |
 | Phase 7 | Narratives | Template-based `build_narrative` |
 | Phase 8 | Packaging | Dashboard polish; Library API (`CoreVitalMonitor`); OpenTelemetry integration |
+
+## Known Limitations & What's Next
+
+CoreVital v0.3.0 is a working implementation of internal inference monitoring for Hugging Face transformers. The following are known limitations and planned improvements — contributions welcome.
+
+### Serving Framework Support
+
+CoreVital currently instruments models loaded via Hugging Face `transformers` (`AutoModelForCausalLM`, `AutoModelForSeq2SeqLM`). It does **not** yet support optimized serving frameworks:
+
+- **vLLM** — Uses PagedAttention and custom CUDA kernels that bypass standard PyTorch forward hooks. Integration would require vLLM's `SamplerOutput` hooks or a custom sampler plugin.
+- **TGI (Text Generation Inference)** — Rust/Python hybrid server; would need a middleware layer that captures activations before the optimized kernels.
+- **llama.cpp / GGUF** — C++ inference with quantized formats outside PyTorch; out of scope for the current hook-based approach.
+
+**Path forward:** Abstract the instrumentation interface so backends other than HF `transformers` can plug in. vLLM's `Logprob` output and custom `LogitsProcessor` are likely starting points.
+
+### Real-Time Intervention
+
+The `should_intervene()` API and early warning system currently operate **post-run** — they analyze the complete generation after it finishes. Real-time per-step intervention (halting generation mid-stream when risk exceeds a threshold) is architecturally supported by the manual decoder loop in `collector.py` but not yet wired:
+
+- The decoder loop already computes summaries per step.
+- Health flags could be evaluated incrementally.
+- A `StopCondition` callback that checks risk per step is the planned approach.
+
+**Status:** Streaming API (Phase 4) currently replays steps post-run. Real-time per-step events with mid-generation halt are the next major feature.
+
+### Risk Threshold Calibration
+
+Risk scores and health flag thresholds (`risk.py`, `report_builder.py`) are hand-crafted heuristics based on observed model behavior during development:
+
+- NaN/Inf → risk 1.0 (always catastrophic)
+- Repetition loop → 0.9 (strong indicator of degenerate output)
+- Mid-layer anomaly → 0.7 (suggests factual processing failure)
+- Attention collapse → 0.3 (common in healthy runs; not always problematic)
+- High entropy threshold: 4.0 bits (see comment in `report_builder.py`)
+
+These have **not** been validated on a large labeled dataset of good vs. bad generations. Calibration against benchmarks (e.g., TruthfulQA, HaluEval) is planned.
+
+### Decoding Strategies
+
+The manual decoder loop supports **greedy decoding** and **sampling** (temperature, top-k, top-p). **Beam search** is not implemented — it requires tracking multiple hypotheses simultaneously, which complicates per-step instrumentation. Most production LLM deployments use sampling, but beam search support may be added if there is demand.
+
+### GPU Overhead Benchmarks
+
+The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on CPU. Benchmarks on production-scale models (Llama-3.1-8B, Mixtral-8x7B) with GPU are planned and will be added to the table. Early testing suggests overhead is dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
 
 ## Requirements
 

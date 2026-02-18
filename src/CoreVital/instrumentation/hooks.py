@@ -53,8 +53,16 @@ def register_hooks(model: nn.Module) -> Tuple[List[Any], HookStorage]:
 
     logger.debug("Registering forward hooks (backup mechanism)")
 
-    # This is kept minimal as Phase-0 primarily uses model's built-in outputs
-    # Hooks can be extended in future phases if needed
+    # CoreVital's primary instrumentation uses the model's native output parameters
+    # (output_hidden_states=True, output_attentions=True) passed during forward().
+    # This provides per-layer hidden states and attention weights without custom hooks.
+    #
+    # This hook-based system is retained as a fallback path for future use cases:
+    # - Custom model architectures that don't support output_hidden_states/output_attentions
+    # - Selective layer capture (hooking specific layers instead of requesting all)
+    # - Non-HuggingFace models where native output params aren't available
+    #
+    # Currently unused by design. See collector.py for the active instrumentation path.
 
     return handles, storage
 
