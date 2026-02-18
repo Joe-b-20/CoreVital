@@ -39,7 +39,7 @@ Use the same list as in `docs/model-compatibility.md` and `tests/test_models_pro
 3. **Environment:** Set `HF_TOKEN` if using gated models (Llama, etc.).
 4. **Run the test script** (see below). It should:
    - Create a single SQLite DB (e.g. `runs/corevital.db`) and a log file (e.g. `runs/runtime_metrics.log`).
-   - For each model: load → run a fixed set of prompts (2–3 short instruct prompts) → write to DB only (no per-run JSON).
+   - For each model: load, run a fixed set of prompts (2-3 short instruct prompts), write to DB only (no per-run JSON).
    - Log runtime metrics (time per step, memory, any `--perf` output) to the log file.
    - Not fail silently: exit non-zero and print clear errors if something breaks.
 5. **Optional: sync to S3**  

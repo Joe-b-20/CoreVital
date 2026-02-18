@@ -1,4 +1,4 @@
-# CoreVital demo
+# CoreVital Demo
 
 ## Try CoreVital in 5 minutes
 
@@ -9,9 +9,9 @@
 
 2. **Run one monitored inference** (CPU, no GPU required)
    ```bash
-   corevital run --model gpt2 --prompt "Explain why the sky is blue in one sentence." --max_new_tokens 20 --device auto
+   corevital run --model gpt2 --prompt "Explain why the sky is blue in one sentence." --max_new_tokens 20
    ```
-   Output is written to `runs/` (SQLite by default: `runs/corevital.db`, or JSON if you use `--sink local`).
+   Output is written to `runs/corevital.db` (SQLite, default) or JSON if you use `--sink local`.
 
 3. **View the report in the dashboard**
    ```bash
@@ -20,17 +20,15 @@
    ```
    Open the app, choose **Database** as source (if you used the default SQLite sink) or **Local file** and pick a trace from `runs/`.
 
-4. **Optional: try without running a model**
-   This folder contains a minimal pre-generated report so you can open the dashboard without running a model:
-   - **File:** [sample_report.json](sample_report.json)  
-   In the dashboard, select **Demo sample** in the sidebar (or use **Upload** and choose `docs/demo/sample_report.json`).
+4. **Try without running a model**
+   This folder contains a real Llama-3.1-8B-Instruct report so you can explore the dashboard immediately:
+   - **File:** [sample_report.json](sample_report.json)
+   - **Model:** meta-llama/Llama-3.1-8B-Instruct (32 layers, 32 attention heads)
+   - **Prompt:** "The capital of France is"
+   - **Risk score:** 0.39 (attention collapse detected, 3 high-entropy steps)
 
-## Regenerating the sample report
+   In the dashboard, select **Demo sample** in the sidebar.
 
-From the repo root (with the project installed, e.g. `conda activate llm_hm`):
+## About the sample report
 
-```bash
-python scripts/gen_demo_report.py
-```
-
-This overwrites `docs/demo/sample_report.json` with a minimal schema-valid report including health flags and risk.
+The bundled `sample_report.json` is a real CoreVital report from a Llama-3.1-8B-Instruct run (not synthetic). It includes full per-layer summaries for all 32 layers across 10 generation steps, prompt analysis, health flags, risk scoring, fingerprinting, narrative, and performance data.

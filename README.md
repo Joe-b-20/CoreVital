@@ -21,26 +21,31 @@
 
 **Status:** CoreVital is in active development (v0.3.0). The core instrumentation and reporting features are production-ready and tested. Some advanced features (streaming API, full metrics export) are in development. See [Roadmap](#roadmap) for details.
 
-## Try CoreVital in 5 minutes
+## Try CoreVital Live
 
-**Option A — Try without installing (no clone, no Streamlit Cloud)**  
-Open the repo in **GitHub Codespaces** (click **Code → Codespaces → Create codespace on main**). In the terminal run:
+**One-click: run it in your browser** -- no install, no clone, no GPU required:
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Joe-b-20/CoreVital?quickstart=1)
+
+Once the Codespace starts (auto-installs dependencies), type any prompt and watch CoreVital work:
 
 ```bash
-./scripts/try_demo.sh
+corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
+
+pip install -e ".[dashboard]"
+streamlit run dashboard.py
 ```
 
-Then open the **forwarded URL** for port 8501 (Codespaces will show a “Open in Browser” link). Use **Demo sample** in the sidebar to view a sample report, or run an inference in a second terminal (`corevital run --model gpt2 --prompt "Your prompt" --max_new_tokens 20`) and reload the dashboard to see the run.
+Open the forwarded URL for port 8501. Select **Database** to see your run, or **Demo sample** to explore a bundled Llama-3.1-8B-Instruct report with real metrics.
 
-**Option B — Install locally**
+**Install locally** (alternative):
 
-1. **Install:** `pip install -e .` (or `pip install corevital` once [published on PyPI](https://pypi.org/project/corevital/))
-2. **Run one inference:** `corevital run --model gpt2 --prompt "Explain why the sky is blue in one sentence." --max_new_tokens 20 --device auto`
-3. **View the report:** `pip install -e ".[dashboard]"` then `streamlit run dashboard.py` — open the app and load the run from the database or from `runs/`.
+```bash
+pip install -e .
+corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
+```
 
-To try the dashboard without running a model, select **Demo sample** in the dashboard sidebar, or upload [docs/demo/sample_report.json](docs/demo/sample_report.json). See [docs/demo/](docs/demo/).
-
-**Live Demo:** Deploy the dashboard to Streamlit Cloud or Hugging Face Spaces (see [Live Demo Setup](#live-demo-setup) below).
+See [docs/demo/](docs/demo/) for more options, or deploy the dashboard to [Streamlit Cloud](#live-demo-setup) / [Hugging Face Spaces](#live-demo-setup).
 
 ## Quick Start
 
@@ -405,11 +410,11 @@ CoreVital focuses on **internal inference health monitoring**—instrumenting th
 
 | Tool | Focus | Internal Instrumentation | Health Signals | Storage Model |
 |------|-------|-------------------------|----------------|---------------|
-| **CoreVital** | Internal inference health | ✅ Yes (hooks into forward pass) | Entropy, repetition, attention collapse, NaN/Inf | Summary-only (no raw tensors) |
-| **LangSmith** | LLM application tracing | ❌ No (API-level only) | Output quality scores | Full traces (prompts/responses) |
-| **OpenLIT / Langtrace** | LLM observability | ❌ No (OpenTelemetry at API level) | Latency, cost, token counts | Request/response traces |
-| **Aporia** | AI observability & guardrails | ❌ No (application-level) | Output guardrails, drift | Application metrics |
-| **Langfuse** | LLM tracing & evals | ❌ No (API-level tracing) | Eval scores on outputs | Full traces |
+| **CoreVital** | Internal inference health | Yes (hooks into forward pass) | Entropy, repetition, attention collapse, NaN/Inf | Summary-only (no raw tensors) |
+| **LangSmith** | LLM application tracing | No (API-level only) | Output quality scores | Full traces (prompts/responses) |
+| **OpenLIT / Langtrace** | LLM observability | No (OpenTelemetry at API level) | Latency, cost, token counts | Request/response traces |
+| **Aporia** | AI observability & guardrails | No (application-level) | Output guardrails, drift | Application metrics |
+| **Langfuse** | LLM tracing & evals | No (API-level tracing) | Eval scores on outputs | Full traces |
 
 **CoreVital's differentiator:** Only CoreVital instruments **inside** the model's forward pass to capture hidden states, attention patterns, and logits during generation. This enables detection of issues that manifest internally (e.g., attention collapse, repetition loops) before they appear in outputs.
 
@@ -420,9 +425,9 @@ CoreVital focuses on **internal inference health monitoring**—instrumenting th
 - You need to compare models or track degradation over time
 
 **When to use alternatives:**
-- You're using API-based LLMs (OpenAI, Anthropic) → use LangSmith/OpenLIT
-- You need application-level tracing → use Langfuse/Langtrace
-- You need output guardrails → use Aporia
+- You're using API-based LLMs (OpenAI, Anthropic) -- use LangSmith/OpenLIT
+- You need application-level tracing -- use Langfuse/Langtrace
+- You need output guardrails -- use Aporia
 
 See [Competitive Landscape](docs/competitive-landscape-and-ip.md) for detailed analysis.
 
@@ -435,10 +440,10 @@ See [Case Studies](docs/case-studies/) for real-world examples of CoreVital in p
 **Problem:** Model produces repetitive or nonsensical output, but you don't know why.
 
 **Solution:** Run CoreVital to see:
-- **Repetition loop detected:** Last-layer hidden states became nearly identical → model is stuck
-- **High entropy steps:** Model was confused at specific tokens → check input context
-- **Attention collapse:** Some heads put all weight on one token → possible training issue
-- **NaN/Inf detected:** Numerical instability → check inputs or model weights
+- **Repetition loop detected:** Last-layer hidden states became nearly identical -- model is stuck
+- **High entropy steps:** Model was confused at specific tokens -- check input context
+- **Attention collapse:** Some heads put all weight on one token -- possible training issue
+- **NaN/Inf detected:** Numerical instability -- check inputs or model weights
 
 **Example:**
 ```bash
@@ -539,11 +544,11 @@ Deploy the CoreVital dashboard to Streamlit Cloud or Hugging Face Spaces for a l
 
 1. **Fork the repository** on GitHub
 2. **Go to [Streamlit Cloud](https://streamlit.io/cloud)**
-3. **Click "New app"** → Select your fork → Set main file to `dashboard.py`
+3. **Click "New app"**, select your fork, set main file to `dashboard.py`
 4. **Configure:**
    - Python version: 3.12
    - Dependencies: Add `requirements.txt` or use `pyproject.toml` (Streamlit will auto-detect)
-5. **Deploy** → Your dashboard will be live at `https://your-app.streamlit.app`
+5. **Deploy** -- your dashboard will be live at `https://your-app.streamlit.app`
 
 **Note:** Streamlit Cloud has resource limits. For large models, consider Hugging Face Spaces with GPU.
 
@@ -557,7 +562,7 @@ Deploy the CoreVital dashboard to Streamlit Cloud or Hugging Face Spaces for a l
    - `docs/demo/sample_report.json` (for demo sample)
    - `requirements.txt` or `pyproject.toml`
 4. **Configure `README.md`** for the Space (optional)
-5. **Deploy** → Your dashboard will be live at `https://huggingface.co/spaces/your-username/your-space`
+5. **Deploy** -- your dashboard will be live at `https://huggingface.co/spaces/your-username/your-space`
 
 **Requirements file example:**
 ```txt
@@ -666,47 +671,22 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-Phases are implemented in order; for a clean git history, use one branch per phase and merge to `main` before starting the next. See [Phase Branch Strategy](docs/phase-branch-strategy.md).
+All phases are complete. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs across each phase.
 
-**Pre-Phase-1** (Complete): Cleanup & Tooling
-- ✅ Schema v0.2.0 → v0.3.0, `ModelCapabilities` registry, CI/CD (pytest, Ruff, MyPy), sinks (SQLite default, LocalFile, Datadog, Prometheus), dtype detection, codebase lint/format
-
-**Phase-0** (Complete): HF instrumentation + JSON trace + Sink interface
-- ✅ Capture hidden states, attention, logits; lightweight summaries; LocalFileSink; SDPA → eager for attention; Seq2Seq manual generation; 4-bit/8-bit quantization; mock testing suite
-
-**Phase-0.5** (Complete): Hardening & Future-Proofing
-- ✅ Extensions on Report/TimelineStep/LayerSummary; encoder_layers separation; Seq2Seq detection; quantization validation; memory optimizations; logging levels; persistence tests
-
-**Phase-0.75** (Complete): Performance Monitoring
-- ✅ `--perf` (summary/detailed/strict); operation timing; nested hierarchy; per-step stats; warmup/baseline; `extensions.performance`
-
-**Phase-1** (Complete): Prompt telemetry, health flags, dashboard, SQLite default
-- ✅ Phase-1a: Schema + enhanced metrics. Phase-1b: Prompt telemetry (sparse attention, basin scores, layer transformations, surprisal). Phase-1c: Health flags (repetition loop, mid-layer anomaly, transient buffer). Phase-1d: Dashboard, SQLite default sink. See `docs/phase-1-execution-plan.md`.
-
-**Phase-2** (Complete): Risk scores + layer blame
-- ✅ `compute_risk_score`, `compute_layer_blame`; `extensions.risk`; on_risk capture trigger
-
-**Phase-3** (Complete): Prompt fingerprints
-- ✅ `compute_fingerprint_vector`, `compute_prompt_hash`; `extensions.fingerprint`
-
-**Phase-4** (Complete): Early warning
-- ✅ `compute_early_warning`; `extensions.early_warning`; streaming API (post-run replay)
-
-**Phase-5** (Complete): Health-aware decoding
-- ✅ `should_intervene()`; `CoreVitalMonitor.intervene_on_risk_above` / `intervene_on_signals`
-
-**Phase-6** (Complete): Cross-model comparison
-- ✅ Dashboard Compare view; `corevital compare`; SQLite list/filter by model_id, prompt_hash
-
-**Phase-7** (Complete): Human-readable narratives
-- ✅ Template-based `build_narrative`; `extensions.narrative`
-
-**Phase-8** (Complete): Dashboard + packaging
-- ✅ Dashboard filters, export (JSON/CSV); packaging extras (dashboard, datadog, prometheus, otel); Library API: `CoreVitalMonitor` (run, wrap_generation, stream, get_risk_score, get_summary, should_intervene)
-- ✅ Integrations: OpenTelemetry (optional `[otel]` extra)
-- Optional / deferred: true online streaming during generation, CLI `--models` for compare
-
-Full phase details: `docs/phase-2-through-8-execution-plan.md`.
+| Phase | Focus | Key deliverables |
+|-------|-------|-----------------|
+| Pre-Phase-1 | Cleanup and tooling | Schema v0.3.0, `ModelCapabilities` registry, CI/CD, dtype detection |
+| Phase 0 | HF instrumentation | Hidden states, attention, logits capture; summaries; Seq2Seq; quantization |
+| Phase 0.5 | Hardening | Extensions model, encoder/decoder separation, memory optimizations |
+| Phase 0.75 | Performance monitoring | `--perf` (summary/detailed/strict); operation timing; warmup/baseline |
+| Phase 1 | Metrics and telemetry | Enhanced metrics, prompt telemetry, health flags, dashboard, SQLite default |
+| Phase 2 | Risk scoring | `compute_risk_score`, `compute_layer_blame`; `on_risk` capture trigger |
+| Phase 3 | Fingerprinting | `compute_fingerprint_vector`, `compute_prompt_hash` |
+| Phase 4 | Early warning | `compute_early_warning`; streaming API |
+| Phase 5 | Health-aware decoding | `should_intervene()`; configurable risk threshold |
+| Phase 6 | Cross-model comparison | Dashboard Compare view; `corevital compare`; SQLite filters |
+| Phase 7 | Narratives | Template-based `build_narrative` |
+| Phase 8 | Packaging | Dashboard polish; Library API (`CoreVitalMonitor`); OpenTelemetry integration |
 
 ## Requirements
 

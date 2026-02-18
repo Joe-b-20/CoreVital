@@ -30,7 +30,7 @@ Existing observability tools (LangSmith, Langfuse, OpenLIT) work at the API leve
 
 **Decision:** Pydantic-validated schema with explicit versioning (`schema_version: "0.3.0"`). Every report field is typed and documented. Optional `extensions` dicts on Report, TimelineStep, and LayerSummary allow future metrics without breaking the schema.
 
-**Lesson learned:** The schema evolved twice (0.1.0 → 0.2.0 → 0.3.0) before stabilizing. Breaking changes early (removing deprecated fields, restructuring encoder/decoder separation) were worth the pain — they prevented confusion later when health flags and risk scores needed clean extension points.
+**Lesson learned:** The schema evolved twice (0.1.0 to 0.2.0 to 0.3.0) before stabilizing. Breaking changes early (removing deprecated fields, restructuring encoder/decoder separation) were worth the pain — they prevented confusion later when health flags and risk scores needed clean extension points.
 
 ---
 
@@ -87,13 +87,13 @@ Existing observability tools (LangSmith, Langfuse, OpenLIT) work at the API leve
 
 **Compute summaries, not tensors.** Every metric in CoreVital is a lightweight summary of the underlying tensor. We never store raw activations. This keeps storage small, overhead low, and avoids the privacy/security concerns of persisting model internals.
 
-**Pluggable sinks.** The `Sink` interface (one method: `write(report) → location`) allows swapping persistence backends without changing instrumentation logic. Built-in: SQLite, local JSON, Datadog, Prometheus, HTTP, OpenTelemetry.
+**Pluggable sinks.** The `Sink` interface (one method: `write(report) -> location`) allows swapping persistence backends without changing instrumentation logic. Built-in: SQLite, local JSON, Datadog, Prometheus, HTTP, OpenTelemetry.
 
 **Schema-first development.** Every feature starts with the schema change — define the Pydantic model, the field names, the types, and the semantics. Then implement the computation. This prevents schema drift and ensures the dashboard, CLI, and library API all agree on the data shape.
 
 **Graceful degradation.** Optional dependencies (Plotly, Datadog client, OpenTelemetry SDK) are handled with try/except imports. Missing features show "install X for Y" messages rather than crashes. Quantization falls back to CPU without quantization if CUDA is unavailable.
 
-**Test without models.** The mock testing suite (`tests/conftest.py`) provides mock `ModelBundle` fixtures that return properly shaped tensors. This enables fast CI testing of the full instrumentation → report → sink pipeline without downloading or loading any model.
+**Test without models.** The mock testing suite (`tests/conftest.py`) provides mock `ModelBundle` fixtures that return properly shaped tensors. This enables fast CI testing of the full instrumentation-to-report-to-sink pipeline without downloading or loading any model.
 
 ---
 

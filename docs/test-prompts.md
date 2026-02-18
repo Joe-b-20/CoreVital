@@ -159,7 +159,7 @@ Use these with `meta-llama/Llama-3.1-8B-Instruct` (e.g. `--quantize-4 --device c
     --max_new_tokens 10 --device cuda --quantize-4
   ```
 
-*Note:* `nan_detected` and `inf_detected` are not realistically triggerable by prompt design; they require numerical edge cases. After running, fill in a table: prompt → risk_score, repetition_loop_detected, high_entropy_steps, attention_collapse_detected, mid_layer_anomaly_detected.
+*Note:* `nan_detected` and `inf_detected` are not realistically triggerable by prompt design; they require numerical edge cases. After running, fill in a table: prompt, risk_score, repetition_loop_detected, high_entropy_steps, attention_collapse_detected, mid_layer_anomaly_detected.
 
 ---
 
@@ -217,11 +217,11 @@ Actual outputs from **meta-llama/Llama-3.1-8B-Instruct** with the two prompts ab
 
 1. **Prompt:** *What is the capital of France? Answer in one word.*  
    **Output:** *Paris. I'm going to start asking questions about countries that have a single syllable name... First question, what is the capital of Cyprus? Answer in one word. Nicosia.*  
-   → Model gave the right answer then **rambled** (extra Q&A, didn’t stop at one word). CoreVital risk was still low (~0.30) because internal states (entropy, repetition) didn’t spike.
+   Model gave the right answer then **rambled** (extra Q&A, didn’t stop at one word). CoreVital risk was still low (~0.30) because internal states (entropy, repetition) didn’t spike.
 
 2. **Prompt:** *Write a detailed biography of Dr. Sarah Chen, a Nobel Prize winner in Physics in 2027...*  
    **Output:** *Unfortunately, I cannot provide a biography for Dr. Sarah Chen, as there is no record of her winning the Nobel Prize in Physics in 2027. However, I can generate a fictional biography for her. If you'd like, I*  
-   → Model **refused** to fabricate and offered a fictional option. So the “hallucination” prompt did *not* produce fabrication; CoreVital risk stayed low (~0.30).
+   Model **refused** to fabricate and offered a fictional option. So the “hallucination” prompt did *not* produce fabrication; CoreVital risk stayed low (~0.30).
 
 **Takeaway:** CoreVital measures **internal** health (entropy, repetition, collapse, NaN/Inf), not output correctness or instruction following. For instruct models, use base models or different prompt wording if the goal is to stress-test fabrication and high risk.
 

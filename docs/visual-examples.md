@@ -22,9 +22,9 @@ This guide shows what healthy and unhealthy model runs look like in the CoreVita
 - Concentration max: 0.3-0.7 (attention spread across multiple tokens)
 
 **Bad:**
-- Many collapsed heads (>5 per layer) → attention collapse detected
-- Concentration max near 1.0 → heads focusing on single tokens
-- Very low attention entropy (<0.5) → attention collapse
+- Many collapsed heads (>5 per layer) -- attention collapse detected
+- Concentration max near 1.0 -- heads focusing on single tokens
+- Very low attention entropy (<0.5) -- attention collapse
 
 ### Health Flags
 **Good:**
@@ -33,11 +33,11 @@ This guide shows what healthy and unhealthy model runs look like in the CoreVita
 - No NaN/Inf detected
 
 **Bad:**
-- `nan_detected: true` → **Critical:** Stop and debug
-- `repetition_loop_detected: true` → Model is stuck repeating
-- `attention_collapse_detected: true` → Many heads collapsed
-- `high_entropy_steps > 5` → Model confused for many steps
-- Risk score: >0.7 → High risk of poor output
+- `nan_detected: true` -- **Critical:** Stop and debug
+- `repetition_loop_detected: true` -- Model is stuck repeating
+- `attention_collapse_detected: true` -- Many heads collapsed
+- `high_entropy_steps > 5` -- Model confused for many steps
+- Risk score: >0.7 -- High risk of poor output
 
 ## Example Scenarios
 
