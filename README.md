@@ -23,12 +23,6 @@
 
 ## Try CoreVital
 
-**Run it now in Google Colab** -- zero setup, no GPU needed, under 2 minutes:
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Joe-b-20/CoreVital/blob/release/showcase/notebooks/try_corevital.ipynb)
-
-The notebook installs CoreVital, runs GPT-2 with your prompt, and prints the risk score, health flags, and per-step entropy. Change the prompt to anything you want.
-
 **Live Dashboard** -- browse real Llama-3.1 and GPT-2 traces without installing anything:
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://corevital-dwwtkbigm89mp5opxioez3.streamlit.app/)
