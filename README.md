@@ -34,7 +34,7 @@ The hosted dashboard ships with a curated demo database (5 traces, two models, v
 **Install locally** (for CLI, dashboard, and production use):
 
 ```bash
-pip install "git+https://github.com/Joe-b-20/CoreVital.git@release/showcase"
+pip install "git+https://github.com/Joe-b-20/CoreVital.git"
 corevital run --model gpt2 --prompt "Explain why the sky is blue" --max_new_tokens 20
 ```
 
@@ -103,10 +103,10 @@ Report building scales as O(steps x layers x heads). For production use, `--capt
 
 ```bash
 # Install from GitHub
-pip install "git+https://github.com/Joe-b-20/CoreVital.git@release/showcase"
+pip install "git+https://github.com/Joe-b-20/CoreVital.git"
 
 # Or clone and install in editable mode (for development)
-git clone -b release/showcase https://github.com/Joe-b-20/CoreVital.git
+git clone https://github.com/Joe-b-20/CoreVital.git
 cd CoreVital
 pip install -e .
 ```
@@ -223,7 +223,11 @@ Options:
 
 ## Output Format
 
-Each run produces a structured report. By default, reports are stored in SQLite (`runs/corevital.db`). Use `--sink local` to write individual JSON files to `runs/`, or `--write-json` with the SQLite sink to get both. The report structure:
+Each run produces a structured report with schema version `0.3.0`. Reports are stored in SQLite by default (`runs/corevital.db`). Use `--sink local` for individual JSON files, or `--write-json` with SQLite to get both.
+
+**Schema upgrade note:** v0.3.0 adds health_flags, extensions (risk, fingerprint, early_warning, narrative, performance), and prompt telemetry fields that did not exist in v0.2.0. Old v0.2.0 traces remain readable but will not contain these fields. Use `corevital migrate` to import legacy JSON traces into the SQLite database.
+
+Report structure:
 ```json
 {
   "schema_version": "0.3.0",
@@ -617,7 +621,7 @@ GitHub Actions runs on every push and pull request to `main`:
 The Streamlit dashboard can be hosted publicly via [Streamlit Community Cloud](https://share.streamlit.io):
 
 1. Sign in at [share.streamlit.io](https://share.streamlit.io) with the GitHub account that owns this repo.
-2. Click **New app**, select the `CoreVital` repo, branch `release/showcase`, main file `dashboard.py`.
+2. Click **New app**, select the `CoreVital` repo, branch `main`, main file `dashboard.py`.
 3. Deploy. The `requirements.txt` at the repo root handles all dependencies.
 
 The bundled demo database (`docs/demo/corevital_demo.db`) ships with 5 curated traces (GPT-2 and Llama-3.1-8B-Instruct at varying risk levels). On the hosted app, select **Database** in the sidebar to browse them -- no local setup required.
