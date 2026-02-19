@@ -11,7 +11,7 @@
 #   2026-01-13: Initial package setup for Phase-0
 # ============================================================================
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Joe Bachir"
 __license__ = "Apache-2.0"
 

@@ -281,7 +281,7 @@ def main() -> None:
     fingerprint_vec = [round(0.25 * (i % 5) - 0.5, 4) for i in range(16)]
 
     report = Report(
-        schema_version="0.3.0",
+        schema_version="0.4.0",
         trace_id="demo-sample-5min",
         created_at_utc="2026-02-11T12:00:00Z",
         model=ModelInfo(

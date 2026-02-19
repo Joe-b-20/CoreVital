@@ -38,7 +38,7 @@ def test_full_pipeline_gpt2_cpu(tmp_path: Path) -> None:
     # 2) Report build
     builder = ReportBuilder(config)
     report = builder.build(results, "Hi")
-    assert report.schema_version == "0.3.0"
+    assert report.schema_version == "0.4.0"
     assert report.trace_id
     assert report.model.hf_id == "gpt2"
     assert report.summary.prompt_tokens > 0

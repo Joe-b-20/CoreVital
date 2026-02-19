@@ -228,7 +228,7 @@ class ReportBuilder:
         # Assemble final Report (tracked as child of report_build)
         with _op("assemble Report"):
             report = Report(
-                schema_version="0.3.0",
+                schema_version="0.4.0",
                 trace_id=trace_id,
                 created_at_utc=created_at,
                 model=model_info,
@@ -894,7 +894,7 @@ def _test_report_builder():
     print(f"  Timeline steps: {len(report.timeline)}")
     print(f"  Warnings: {len(report.warnings)}")
 
-    assert report.schema_version == "0.3.0"
+    assert report.schema_version == "0.4.0"
     assert len(report.timeline) > 0
 
     print("✓ All report builder tests passed!\n")

@@ -98,7 +98,7 @@ class TestMockCausalLMInstrumentation:
 
         # Verify report structure
         assert isinstance(report, Report)
-        assert report.schema_version == "0.3.0"
+        assert report.schema_version == "0.4.0"
         assert report.trace_id is not None
         assert report.model.hf_id == "mock-causal"
         assert report.model.num_layers == mock_model_bundle.num_layers
@@ -154,7 +154,7 @@ class TestMockCausalLMInstrumentation:
 
         # Parse JSON to verify it's valid
         json_data = json.loads(json_str)
-        assert json_data["schema_version"] == "0.3.0"
+        assert json_data["schema_version"] == "0.4.0"
         assert "trace_id" in json_data
         assert "model" in json_data
         assert "timeline" in json_data
@@ -377,7 +377,7 @@ class TestMockSeq2SeqInstrumentation:
 
         # Verify report structure
         assert isinstance(report, Report)
-        assert report.schema_version == "0.3.0"
+        assert report.schema_version == "0.4.0"
         assert report.trace_id is not None
         assert report.model.hf_id == "mock-seq2seq"
         assert report.summary.prompt_tokens > 0
@@ -405,7 +405,7 @@ class TestMockSeq2SeqInstrumentation:
 
         # Parse JSON to verify it's valid
         json_data = json.loads(json_str)
-        assert json_data["schema_version"] == "0.3.0"
+        assert json_data["schema_version"] == "0.4.0"
         assert "encoder_layers" in json_data
         assert len(json_data["encoder_layers"]) == mock_model_bundle.num_layers
         assert "health_flags" in json_data

@@ -17,11 +17,11 @@ Use it to debug why a model repeats itself, monitor inference health in producti
 -  **Configurable**: YAML configuration with environment variable overrides
 -  **CPU/CUDA Support**: Automatic device detection or manual override
 -  **Quantization Support**: 4-bit and 8-bit quantization via bitsandbytes for memory-efficient inference
--  **Structured Artifacts**: JSON trace files with schema version `0.3.0` for future compatibility
+-  **Structured Artifacts**: JSON trace files with schema version `0.4.0` for future compatibility
 
 **Tested with:** Llama 3 (e.g. meta-llama/Llama-3.2-1B), Mistral 7B, Mixtral 8x7B, Qwen2. See [Model compatibility](docs/model-compatibility.md) and smoke tests in `tests/test_models_production.py` (run with `pytest -m slow`).
 
-**Status (v0.3.0, showcase branch):** Phases 0--2 (instrumentation, metrics, risk scoring) and the dashboard are fully implemented and tested. Phases 3--8 (fingerprinting, early warning, health-aware decoding, comparison, narratives, library API) have working implementations that are iterative -- functional but expected to evolve. Streaming (Phase 4) is post-run replay; real-time per-step events are planned. See [Roadmap](#roadmap).
+**Status (v0.4.0):** Phases 0--2 (instrumentation, metrics, risk scoring) and the dashboard are fully implemented and tested. Phases 3--8 (fingerprinting, early warning, health-aware decoding, comparison, narratives, library API) have working implementations that are iterative -- functional but expected to evolve. Streaming (Phase 4) is post-run replay; real-time per-step events are planned. See [Roadmap](#roadmap).
 
 ## Try CoreVital
 
@@ -223,14 +223,14 @@ Options:
 
 ## Output Format
 
-Each run produces a structured report with schema version `0.3.0`. Reports are stored in SQLite by default (`runs/corevital.db`). Use `--sink local` for individual JSON files, or `--write-json` with SQLite to get both.
+Each run produces a structured report with schema version `0.4.0`. Reports are stored in SQLite by default (`runs/corevital.db`). Use `--sink local` for individual JSON files, or `--write-json` with SQLite to get both.
 
-**Schema upgrade note:** v0.3.0 adds health_flags, extensions (risk, fingerprint, early_warning, narrative, performance), and prompt telemetry fields that did not exist in v0.2.0. Old v0.2.0 traces remain readable but will not contain these fields. Use `corevital migrate` to import legacy JSON traces into the SQLite database.
+**Schema upgrade note:** v0.4.0 follows v0.3.0 (health_flags, extensions, prompt telemetry). Validation accepts both 0.3.0 and 0.4.0 when loading from SQLite or JSON (migration path). Use `corevital migrate` to import legacy JSON traces into the SQLite database.
 
 Report structure:
 ```json
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "trace_id": "uuid-here",
   "created_at_utc": "2026-01-11T15:22:08Z",
   "model": {
@@ -383,7 +383,7 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 **Architecture Diagrams:**
 - [Data Flow](docs/mermaid/metrics-data-flow.mmd) — How data flows from model inference to reports
 - [Computation Pipeline](docs/mermaid/phase-1-computation-pipeline.mmd) — Phase-1 metrics computation flow
-- [Schema Structure](docs/mermaid/schema-v03-structure.mmd) — Report schema v0.3.0 organization
+- [Schema Structure](docs/mermaid/schema-v03-structure.mmd) — Report schema v0.4.0 organization
 - [Metrics Dependency Chain](docs/mermaid/metrics-dependency-chain.mmd) — How metrics depend on each other
 - [Signal Interpretation](docs/mermaid/metrics-signal-interpretation.mmd) — What each metric means
 - [Performance Monitoring](docs/mermaid/operations-hierarchy.mmd) — Operation timing hierarchy
@@ -675,7 +675,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 - `src/CoreVital/`: Main package
   - `models/`: Model loading, management, and `ModelCapabilities` registry
   - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
-  - `reporting/`: Schema (v0.3.0), validation, and report building
+  - `reporting/`: Schema (v0.4.0), validation, and report building
   - `sinks/`: Persistence backends (SQLite, LocalFile, HTTP, Datadog, Prometheus, W&B)
   - `utils/`: Shared utilities
 - `.github/workflows/`: CI/CD pipeline (test.yaml)
@@ -692,7 +692,7 @@ Phases 0--2 and the dashboard are fully implemented and tested. Phases 3--8 have
 | Phase 0 | HF instrumentation | Hidden states, attention, logits capture; summaries; Seq2Seq; quantization |
 | Phase 0.5 | Hardening | Extensions model, encoder/decoder separation, memory optimizations |
 | Phase 0.75 | Performance monitoring | `--perf` (summary/detailed/strict); operation timing; warmup/baseline |
-| Pre-Phase-1 | Cleanup and tooling | Schema v0.3.0, `ModelCapabilities` registry, CI/CD, dtype detection |
+| Pre-Phase-1 | Cleanup and tooling | Schema v0.4.0, `ModelCapabilities` registry, CI/CD, dtype detection |
 | Phase 1 | Metrics and telemetry | Enhanced metrics, prompt telemetry, health flags, dashboard, SQLite default |
 | Phase 2 | Risk scoring | `compute_risk_score`, `compute_layer_blame`; `on_risk` capture trigger |
 | Phase 3 | Fingerprinting | `compute_fingerprint_vector`, `compute_prompt_hash` |
@@ -704,7 +704,7 @@ Phases 0--2 and the dashboard are fully implemented and tested. Phases 3--8 have
 
 ## Known Limitations & What's Next
 
-CoreVital v0.3.0 is a working implementation of internal inference monitoring for Hugging Face transformers. The following are known limitations and planned improvements — contributions welcome.
+CoreVital v0.4.0 is a working implementation of internal inference monitoring for Hugging Face transformers. The following are known limitations and planned improvements — contributions welcome.
 
 ### Serving Framework Support
 

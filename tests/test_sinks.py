@@ -68,7 +68,7 @@ def _make_report(*, with_health_flags: bool = True, num_steps: int = 3) -> Repor
         )
 
     return Report(
-        schema_version="0.3.0",
+        schema_version="0.4.0",
         trace_id="sink-test-1234-abcd",
         created_at_utc="2026-02-11T12:00:00Z",
         model=ModelInfo(
@@ -516,7 +516,7 @@ class TestSQLiteSink:
         json_dir = tmp_path / "runs"
         json_dir.mkdir()
         minimal_json = (
-            '{"schema_version":"0.3.0","trace_id":"abc12345-0000-0000-0000-000000000000",'
+            '{"schema_version":"0.4.0","trace_id":"abc12345-0000-0000-0000-000000000000",'
             '"created_at_utc":"2026-01-01T00:00:00Z","model":{"hf_id":"gpt2",'
             '"architecture":"GPT2LMHeadModel","num_layers":12,"hidden_size":768,'
             '"num_attention_heads":12,"tokenizer_hf_id":"gpt2","dtype":"float32",'
