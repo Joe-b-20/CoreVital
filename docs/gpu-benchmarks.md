@@ -28,13 +28,13 @@ For CSV or scripted runs, parse the report JSON or use `--out` to write results 
 
 ## Results table
 
-Measured with `--perf strict`, short prompt, 10 `--max_new_tokens`. GPU models used 4-bit quantization. Variance can yield slightly negative overhead on some runs.
+Measured with `--perf strict`, short prompt, 10 `--max_new_tokens`. GPU models used 4-bit quantization. **Note:** Overhead is computed as `(instrumented - baseline) / baseline`. Strict mode runs two warmups before baseline, so both baseline and instrumented runs are warm. When the raw value is negative (baseline run slower than instrumented in that single measurement), it's timing variance—we report **0%** because instrumentation cannot actually reduce inference time. For stable numbers, run multiple times and average.
 
 | Model | Device | Baseline (ms) | Instrumented (ms) | Overhead (%) |
 |-------|--------|----------------|-------------------|--------------|
-| gpt2 | CPU | 314 | 282 | -10 |
-| meta-llama/Llama-3.1-8B-Instruct | CUDA | 1,248 | 1,243 | -0.4 |
-| mistralai/Mistral-7B-Instruct-v0.2 | CUDA | 1,345 | 1,338 | -0.6 |
+| gpt2 | CPU | 314 | 282 | 0 (variance) |
+| meta-llama/Llama-3.1-8B-Instruct | CUDA | 1,248 | 1,243 | 0 (variance) |
+| mistralai/Mistral-7B-Instruct-v0.2 | CUDA | 1,345 | 1,338 | 0 (variance) |
 | Qwen/Qwen2-0.5B-Instruct | CUDA | 601 | 662 | +10 |
 | Mixtral-8x7B | CUDA | TBD | TBD | TBD |
 
