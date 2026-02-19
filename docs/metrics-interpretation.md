@@ -56,7 +56,7 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 | Basin score | Interpretation |
 |-------------|----------------|
 | < 0.3     | Head largely ignores middle tokens (potential “lost in the middle”). |
-| ~1.0        | Balanced attention across positions. |
+| ~0.5     | Balanced attention across positions (middle third vs two boundary thirds). |
 | > 1.5     | Head focuses more on middle than boundaries. |
 
 **In the dashboard:** Sparse Attention tab shows a layers×heads basin heatmap and per-layer bar chart.
@@ -66,7 +66,7 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 **Definition:** A head is “collapsed” when its entropy over keys is below a threshold (default 0.1); “focused” when concentration (max weight) exceeds a threshold (default 0.9).  
 **Research:** Voita et al. (2019), “Analyzing Multi-Head Self-Attention”: specialist heads often have high concentration; collapse can indicate underuse or failure.
 
-**Health flag:** `attention_collapse_detected` is true when many heads in a layer are collapsed (exact threshold is configurable per model profile).
+**Health flag:** `attention_collapse_detected` is true when any layer has at least one collapsed head (`collapsed_head_count` > 0). Per-head collapse uses `collapsed_head_entropy_threshold` from the model profile (default 0.1).
 
 ---
 

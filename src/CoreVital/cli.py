@@ -116,13 +116,14 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--num_beams",
         type=int,
-        default=1,
-        help="Beam search width (default: 1). > 1 enables beam search (CausalLM only).",
+        default=None,
+        metavar="N",
+        help="Beam search width. > 1 enables beam search (CausalLM only). If omitted, value from config YAML is used.",
     )
     run_parser.add_argument(
         "--early_stopping",
         action="store_true",
-        help="Stop when all beams reach EOS (only with --num_beams > 1).",
+        help="Stop when all beams reach EOS (only with --num_beams > 1). If omitted, value from config YAML is used.",
     )
     run_parser.add_argument(
         "--out",
@@ -334,8 +335,11 @@ def run_command(args: argparse.Namespace) -> int:
             config.generation.temperature = args.temperature
             config.generation.top_k = args.top_k
             config.generation.top_p = args.top_p
-            config.generation.num_beams = getattr(args, "num_beams", 1) or 1
-            config.generation.early_stopping = getattr(args, "early_stopping", False)
+            if getattr(args, "num_beams", None) is not None:
+                config.generation.num_beams = args.num_beams or 1
+                config.generation.early_stopping = getattr(args, "early_stopping", False)
+            elif getattr(args, "early_stopping", False):
+                config.generation.early_stopping = True
             config.model.load_in_4bit = args.quantize_4
             config.model.load_in_8bit = args.quantize_8
 

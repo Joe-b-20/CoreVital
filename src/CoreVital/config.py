@@ -17,6 +17,7 @@
 # ============================================================================
 
 import os
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
@@ -225,8 +226,13 @@ def load_model_profile(
                 with open(path) as f:
                     data = yaml.safe_load(f) or {}
                 return ModelProfile(**data)
-            except Exception:
-                pass
+            except Exception as e:
+                warnings.warn(
+                    f"Model profile file {path} exists but could not be parsed or validated: {e}. "
+                    "Falling back to next profile or defaults; thresholds may not match operator intent.",
+                    UserWarning,
+                    stacklevel=2,
+                )
     return ModelProfile()
 
 

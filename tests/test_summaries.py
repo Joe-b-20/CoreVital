@@ -109,6 +109,7 @@ class TestComputeAttentionSummary:
                 "concentration_min",
                 "collapsed_head_count",
                 "focused_head_count",
+                "max_weight_per_head",
             ],
         )
         # 2 heads, 3x3 attention; one head peaked, one uniform
