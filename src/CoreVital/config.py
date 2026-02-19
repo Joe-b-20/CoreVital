@@ -50,6 +50,9 @@ class GenerationConfig(BaseModel):
     top_k: int = 50
     top_p: float = 0.95
     seed: int = 42
+    # Beam search (CausalLM only; when num_beams > 1, do_sample is ignored by HF for standard beam search)
+    num_beams: int = 1
+    early_stopping: bool = False
 
 
 class SketchConfig(BaseModel):

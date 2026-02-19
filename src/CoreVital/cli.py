@@ -114,6 +114,17 @@ def create_parser() -> argparse.ArgumentParser:
         help="Top-p (nucleus) sampling parameter (default: 0.95)",
     )
     run_parser.add_argument(
+        "--num_beams",
+        type=int,
+        default=1,
+        help="Beam search width (default: 1). > 1 enables beam search (CausalLM only).",
+    )
+    run_parser.add_argument(
+        "--early_stopping",
+        action="store_true",
+        help="Stop when all beams reach EOS (only with --num_beams > 1).",
+    )
+    run_parser.add_argument(
         "--out",
         type=str,
         default=None,
@@ -323,6 +334,8 @@ def run_command(args: argparse.Namespace) -> int:
             config.generation.temperature = args.temperature
             config.generation.top_k = args.top_k
             config.generation.top_p = args.top_p
+            config.generation.num_beams = getattr(args, "num_beams", 1) or 1
+            config.generation.early_stopping = getattr(args, "early_stopping", False)
             config.model.load_in_4bit = args.quantize_4
             config.model.load_in_8bit = args.quantize_8
 

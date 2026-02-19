@@ -269,7 +269,8 @@ class InstrumentationCollector:
                             )
                     else:
                         # Prepare generation config for CausalLM models
-                        gen_config = {
+                        num_beams = getattr(self.config.generation, "num_beams", 1) or 1
+                        gen_config: Dict[str, Any] = {
                             "max_new_tokens": self.config.generation.max_new_tokens,
                             "do_sample": self.config.generation.do_sample,
                             "temperature": self.config.generation.temperature,
@@ -281,6 +282,11 @@ class InstrumentationCollector:
                             "return_dict_in_generate": True,
                             "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
                         }
+                        if num_beams > 1:
+                            gen_config["num_beams"] = num_beams
+                            gen_config["early_stopping"] = getattr(self.config.generation, "early_stopping", False)
+                            # Standard beam search uses do_sample=False
+                            gen_config["do_sample"] = False
                         # Tracked as a child of model_inference (external HF call)
                         with _op("model.generate"):
                             outputs = cast(Any, self.model_bundle.model).generate(
@@ -295,7 +301,12 @@ class InstrumentationCollector:
                         generated_ids = prompt_token_ids + generated_token_ids
                     else:
                         # Type narrowing: outputs is GenerateOutput here, not dict
-                        generated_ids = cast(Any, outputs).sequences[0].tolist()
+                        out_seq = cast(Any, outputs).sequences
+                        # With beam search, sequences can be (batch, num_beams, seq_len); take best beam
+                        if out_seq.dim() == 3:
+                            generated_ids = out_seq[0, 0, :].tolist()
+                        else:
+                            generated_ids = out_seq[0].tolist()
                         generated_token_ids = generated_ids[len(prompt_token_ids) :]
 
                 # === CHILD: decode_generated_text ===
@@ -333,18 +344,24 @@ class InstrumentationCollector:
                         )
 
                 with _op("_process_timeline"):
+                    beam_indices = getattr(outputs, "beam_indices", None) if not isinstance(outputs, dict) else None
+                    num_beams_val = getattr(self.config.generation, "num_beams", 1) or 1 if not is_seq2seq else 1
                     if isinstance(outputs, dict) and "output_obj" in outputs:
                         timeline = self._process_timeline(
                             outputs["output_obj"],
                             prompt_token_ids,
                             generated_token_ids,
                             cross_attentions=outputs.get("cross_attentions"),
+                            beam_indices=beam_indices,
+                            num_beams=num_beams_val,
                         )
                     else:
                         timeline = self._process_timeline(
                             outputs,
                             prompt_token_ids,
                             generated_token_ids,
+                            beam_indices=beam_indices,
+                            num_beams=num_beams_val,
                         )
 
                 # === CHILD: _collect_warnings ===
@@ -411,7 +428,8 @@ class InstrumentationCollector:
         """Baseline CausalLM generation (no output_hidden_states/attentions/scores)."""
         if self.model_bundle is None:
             return
-        gen_config = {
+        num_beams = getattr(self.config.generation, "num_beams", 1) or 1
+        gen_config: Dict[str, Any] = {
             "max_new_tokens": self.config.generation.max_new_tokens,
             "do_sample": self.config.generation.do_sample,
             "temperature": self.config.generation.temperature,
@@ -419,6 +437,10 @@ class InstrumentationCollector:
             "top_p": self.config.generation.top_p,
             "pad_token_id": self.model_bundle.tokenizer.pad_token_id,
         }
+        if num_beams > 1:
+            gen_config["num_beams"] = num_beams
+            gen_config["early_stopping"] = getattr(self.config.generation, "early_stopping", False)
+            gen_config["do_sample"] = False
         cast(Any, self.model_bundle.model).generate(**inputs, **gen_config)
 
     def _run_baseline_seq2seq(self, inputs: Any) -> None:
@@ -866,6 +888,8 @@ class InstrumentationCollector:
         prompt_token_ids: List[int],
         generated_token_ids: List[int],
         cross_attentions: Optional[Any] = None,
+        beam_indices: Optional[Any] = None,
+        num_beams: int = 1,
     ) -> List[StepData]:
         """
         Process model outputs into timeline of steps.
@@ -874,6 +898,9 @@ class InstrumentationCollector:
             outputs: Model generation outputs
             prompt_token_ids: Prompt token IDs
             generated_token_ids: Generated token IDs
+            cross_attentions: Optional cross-attention outputs (Seq2Seq)
+            beam_indices: Optional (batch_size, seq_len) tensor for beam search; which beam produced each token
+            num_beams: Number of beams (when > 1, scores/hidden/attn are indexed by beam)
 
         Returns:
             List of StepData objects
@@ -882,12 +909,14 @@ class InstrumentationCollector:
             raise InstrumentationError("Model bundle not initialized")
 
         timeline = []
+        batch_idx = 0  # We only support batch_size=1 for instrumentation
 
         # Note: Transformers generation outputs can be complex
         # Structure:
         # - scores: tuple of logits tensors, one per generation step
         # - hidden_states: tuple where each element is a tuple of hidden state tensors (one per layer)
         # - attentions: tuple where each element is a tuple of attention tensors (one per layer)
+        # With beam search: scores[t] is (batch*num_beams, vocab_size); use beam_indices to pick best beam
 
         has_scores = hasattr(outputs, "scores") and outputs.scores is not None
         has_hidden = hasattr(outputs, "hidden_states") and outputs.hidden_states is not None
@@ -900,13 +929,35 @@ class InstrumentationCollector:
         if not has_attention:
             logger.warning("Attention weights not available in outputs")
 
+        def _beam_idx(step_idx: int) -> int:
+            """Beam index for this step (for beam search)."""
+            if beam_indices is None or num_beams <= 1:
+                return 0
+            try:
+                if hasattr(beam_indices, "shape") and len(beam_indices.shape) >= 2:
+                    # beam_indices (batch, seq_len); step in generated = prompt_len + step_idx
+                    pos = len(prompt_token_ids) + step_idx
+                    if beam_indices.shape[1] > pos:
+                        return int(beam_indices[batch_idx, pos].item())
+                return 0
+            except (IndexError, AttributeError, TypeError):
+                return 0
+
+        def _slice_beam(tensor: torch.Tensor, step_idx: int) -> torch.Tensor:
+            """Slice to the chosen beam when tensor has shape (batch*num_beams, ...)."""
+            if num_beams <= 1 or tensor is None:
+                return tensor
+            try:
+                if tensor.dim() >= 1 and tensor.shape[0] >= num_beams:
+                    bi = _beam_idx(step_idx)
+                    idx = batch_idx * num_beams + bi
+                    if idx < tensor.shape[0]:
+                        return tensor[idx : idx + 1].clone()
+            except (IndexError, AttributeError, TypeError):
+                pass
+            return tensor
+
         # Process each step
-        # Note: For generation, we typically only get outputs for generated tokens
-        # For prompt tokens, we need to run a separate forward pass if needed
-
-        # For Phase-0 simplification: we'll focus on generated tokens
-        # Full timeline (including prompt) can be added in future phases
-
         for step_idx, token_id in enumerate(generated_token_ids):
             token_text = cast(str, self.model_bundle.tokenizer.decode([token_id]))
 
@@ -924,39 +975,40 @@ class InstrumentationCollector:
             # Extract logits (scores) if available
             try:
                 if has_scores and len(outputs.scores) > step_idx:
-                    # scores[step_idx] is the logits tensor for this generation step
-                    step_data.logits = outputs.scores[step_idx]
+                    score_t = outputs.scores[step_idx]
+                    step_data.logits = _slice_beam(score_t, step_idx) if num_beams > 1 else score_t
             except (IndexError, AttributeError, TypeError) as e:
                 logger.debug(f"Could not extract logits for step {step_idx}: {e}")
 
             # Extract hidden states if available
-            # hidden_states is a tuple where each element corresponds to a generation step
-            # Each element is itself a tuple of tensors (one per layer)
             try:
                 if has_hidden and len(outputs.hidden_states) > step_idx:
-                    # Convert tuple of tensors to list for easier handling
                     step_hidden = outputs.hidden_states[step_idx]
                     if isinstance(step_hidden, (tuple, list)):
-                        step_data.hidden_states = list(step_hidden)
+                        if num_beams > 1:
+                            step_data.hidden_states = [_slice_beam(t, step_idx) for t in step_hidden]
+                        else:
+                            step_data.hidden_states = list(step_hidden)
                     else:
-                        step_data.hidden_states = [step_hidden]
+                        step_data.hidden_states = (
+                            [_slice_beam(step_hidden, step_idx)] if num_beams > 1 else [step_hidden]
+                        )
             except (IndexError, AttributeError, TypeError) as e:
                 logger.debug(f"Could not extract hidden states for step {step_idx}: {e}")
 
             # Extract attentions if available
-            # attentions is a tuple where each element corresponds to a generation step
-            # Each element is itself a tuple of tensors (one per layer)
             try:
                 if has_attention and len(outputs.attentions) > step_idx:
-                    # Convert tuple of tensors to list for easier handling
                     step_attn = outputs.attentions[step_idx]
                     if isinstance(step_attn, (tuple, list)):
-                        step_data.attentions = list(step_attn)
+                        if num_beams > 1:
+                            step_data.attentions = [_slice_beam(t, step_idx) for t in step_attn]
+                        else:
+                            step_data.attentions = list(step_attn)
                         if len(step_data.attentions) > 0:
                             logger.debug(f"Extracted {len(step_data.attentions)} attention tensors for step {step_idx}")
                     else:
-                        step_data.attentions = [step_attn]
-                        logger.debug(f"Extracted single attention tensor for step {step_idx}")
+                        step_data.attentions = [_slice_beam(step_attn, step_idx)] if num_beams > 1 else [step_attn]
                 elif has_attention:
                     logger.debug(f"Attention available but step_idx {step_idx} >= len {len(outputs.attentions)}")
                 else:

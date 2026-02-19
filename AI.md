@@ -102,6 +102,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 | Narrative | narrative.py → build_narrative(); report_builder puts in report (or extensions); human-readable summary of risk/flags |
 | Fingerprint | fingerprint.py → compute_fingerprint_vector(); report_builder; used for comparison (extensions / compare view) |
 | Backends | backends/base.py → Backend (ABC), BackendCapabilities; HuggingFaceBackend (default); VLLMBackend, LlamaCppBackend, TGIBackend stubs in backends/*. Collector accepts backend= in __init__; run() delegates to backend.run() or _run_impl. |
+| Beam search | generation.num_beams > 1 (config / --num_beams); CausalLM only. collector passes num_beams/early_stopping to generate(); _process_timeline uses beam_indices to index scores/hidden/attn for best beam. |
 
 ---
 

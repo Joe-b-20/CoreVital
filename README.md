@@ -744,7 +744,7 @@ These defaults have **not** been validated on a large labeled dataset of good vs
 
 ### Decoding Strategies
 
-The manual decoder loop supports **greedy decoding** and **sampling** (temperature, top-k, top-p). **Beam search** is not implemented — it requires tracking multiple hypotheses simultaneously, which complicates per-step instrumentation. Most production LLM deployments use sampling, but beam search support may be added if there is demand.
+The manual decoder loop supports **greedy decoding**, **sampling** (temperature, top-k, top-p), and **beam search** (CausalLM only). Use `--num_beams N` (N > 1) and optionally `--early_stopping` to enable beam search; the timeline reports metrics for the best beam.
 
 ### GPU Overhead Benchmarks
 
