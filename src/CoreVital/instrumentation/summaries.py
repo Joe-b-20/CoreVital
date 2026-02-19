@@ -281,9 +281,11 @@ def compute_attention_summary(
 
         # Per-head max weight: strongest single connection per head (Voita et al. 2019, #6)
         # Specialist heads often have ~80% max weight; mean-only aggregation hides failures
-        num_heads = attention.size(0)
-        max_per_head = attention.view(num_heads, -1).max(dim=1)[0]  # (heads,)
-        summary["max_weight_per_head"] = [round(float(x), 6) for x in max_per_head.tolist()]
+        # Gated by config.stats so trimming attention stats actually disables this field
+        if "max_weight_per_head" in config.stats:
+            num_heads = attention.size(0)
+            max_per_head = attention.view(num_heads, -1).max(dim=1)[0]  # (heads,)
+            summary["max_weight_per_head"] = [round(float(x), 6) for x in max_per_head.tolist()]
 
         return summary
 
