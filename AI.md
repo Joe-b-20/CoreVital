@@ -33,8 +33,12 @@ src/CoreVital/
   fingerprint.py      # compute_fingerprint_vector()
   early_warning.py    # early warning signals
   errors.py           # CoreVitalError, SinkError, ValidationError
+  backends/
+    base.py           # Backend (ABC), BackendCapabilities; run(config, prompt, monitor) → InstrumentationResults
+    huggingface.py   # HuggingFaceBackend (default path; full hidden_states/attentions/prompt_telemetry)
+    vllm_backend.py  # VLLMBackend (stub); llama_cpp_backend.py, tgi_backend.py (stubs)
   instrumentation/
-    collector.py      # InstrumentationCollector.run(prompt) → InstrumentationResults; HF hooks; manual decoder
+    collector.py      # InstrumentationCollector(config, backend=None).run(prompt) → InstrumentationResults; delegates to backend or _run_impl (HF)
     hooks.py          # register hooks, capture hidden/attn/logits
     summaries.py      # compute_logits_summary, compute_attention_summary, extract_sparse_attention,
                       # compute_basin_scores, compute_prompt_surprisal, detect_repetition_loop,
@@ -71,7 +75,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 
 ## 4. Data flow (pin down logic)
 
-- **End-to-end:** prompt → `InstrumentationCollector.run(prompt)` → `InstrumentationResults` → `ReportBuilder.build(results, prompt)` → `Report` → `sink.write(report)`.
+- **End-to-end:** prompt → `InstrumentationCollector(config, backend?).run(prompt)` → (if backend set, `backend.run(config, prompt)` else built-in HF `_run_impl`) → `InstrumentationResults` → `ReportBuilder.build(results, prompt)` → `Report` → `sink.write(report)`.
 - **risk_score:** `risk.compute_risk_score(health_flags, summary)`; called in `report_builder.build()`; result in `report.extensions["risk"]["risk_score"]`.
 - **health_flags:** `report_builder._build_health_flags()` (report_builder.py ~L757) aggregates: nan_detected/inf_detected from layer anomalies; attention_collapse_detected from timeline attention summaries; high_entropy_steps from timeline logits; repetition_loop_detected = `summaries.detect_repetition_loop(hidden_state_buffer)`; mid_layer_anomaly_detected = `summaries.detect_mid_layer_anomaly(layers_to_aggregate, num_layers)`. Buffer for repetition is built inside _build_health_flags from last-layer hidden states.
 - **timeline:** `report_builder._build_timeline()` from collector results; each step = logits_summary (summaries.compute_logits_summary), layers[] (compute_hidden_summary, compute_attention_summary). Raw data from collector hooks.
@@ -97,6 +101,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 | Model profile | config.py load_model_profile(architecture); configs/model_profiles/<key>.yaml (gpt2, llama, mistral, t5, bart, default) |
 | Narrative | narrative.py → build_narrative(); report_builder puts in report (or extensions); human-readable summary of risk/flags |
 | Fingerprint | fingerprint.py → compute_fingerprint_vector(); report_builder; used for comparison (extensions / compare view) |
+| Backends | backends/base.py → Backend (ABC), BackendCapabilities; HuggingFaceBackend (default); VLLMBackend, LlamaCppBackend, TGIBackend stubs in backends/*. Collector accepts backend= in __init__; run() delegates to backend.run() or _run_impl. |
 
 ---
 

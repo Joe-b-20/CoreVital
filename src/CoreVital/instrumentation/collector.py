@@ -40,6 +40,9 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
+if TYPE_CHECKING:
+    from CoreVital.backends.base import Backend
+
 import torch
 
 from CoreVital.config import Config
@@ -113,19 +116,25 @@ class InstrumentationCollector:
     and collects all necessary data for report generation.
     """
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, backend: Optional["Backend"] = None):
         """
-        Initialize collector with configuration.
+        Initialize collector with configuration and optional backend.
 
         Args:
             config: Configuration object
+            backend: If set, run() delegates to this backend; otherwise uses
+                     built-in Hugging Face implementation (_run_impl).
         """
         self.config = config
+        self._backend = backend
         self.model_bundle: Optional[ModelBundle] = None
 
     def run(self, prompt: str, monitor: Optional["PerformanceMonitor"] = None) -> InstrumentationResults:
         """
         Run instrumented inference on the given prompt.
+
+        If a backend was provided at construction, delegates to backend.run().
+        Otherwise runs the built-in Hugging Face implementation.
 
         Args:
             prompt: Input prompt text
@@ -137,6 +146,12 @@ class InstrumentationCollector:
         Raises:
             InstrumentationError: If inference fails
         """
+        if self._backend is not None:
+            return self._backend.run(self.config, prompt, monitor)
+        return self._run_impl(prompt, monitor)
+
+    def _run_impl(self, prompt: str, monitor: Optional["PerformanceMonitor"] = None) -> InstrumentationResults:
+        """Built-in Hugging Face instrumented run. Used when no external backend is set."""
         try:
 
             def _op(name: str):
