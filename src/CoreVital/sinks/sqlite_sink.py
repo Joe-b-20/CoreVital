@@ -9,6 +9,8 @@
 #
 # Changelog:
 #   2026-02-11: Initial SQLite sink — store reports as compact JSON in DB
+#   2026-02-18: Schema 0.4.0 — reports stored with schema_version 0.4.0; validation
+#               accepts 0.3.0 and 0.4.0 when loading (migration path for existing DBs)
 # ============================================================================
 
 import gzip

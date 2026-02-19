@@ -44,8 +44,8 @@ def get_otel_tracer_meter(otel_endpoint: Optional[str] = None) -> Tuple[Optional
             logger.warning("OTLP gRPC exporter not available (%s). Install: pip install CoreVital[otel]", e)
         except Exception as e:
             logger.warning("OTLP provider setup failed (%s); using no-op export", e)
-    tracer = trace_mod.get_tracer("corevital", "0.3.0")
-    meter = metrics_mod.get_meter("corevital", "0.3.0")
+    tracer = trace_mod.get_tracer("corevital", "0.4.0")
+    meter = metrics_mod.get_meter("corevital", "0.4.0")
     return tracer, meter
 
 
@@ -109,7 +109,7 @@ def export_run_to_otel(
 
     try:
         if tracer is None:
-            tracer = trace_mod.get_tracer("corevital", "0.3.0")
+            tracer = trace_mod.get_tracer("corevital", "0.4.0")
         with tracer.start_as_current_span("corevital.run") as span:
             if model_id is not None:
                 span.set_attribute("corevital.model_id", str(model_id))

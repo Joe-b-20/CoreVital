@@ -5,7 +5,7 @@
 # Inputs: None (schema definitions)
 # Outputs: Type-safe report models
 # Dependencies: pydantic
-# Usage: report = Report(schema_version="0.3.0", ...)
+# Usage: report = Report(schema_version="0.4.0", ...)
 #
 # Changelog:
 #   2026-01-13: Initial schema for Phase-0
@@ -370,14 +370,14 @@ class Report(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "schema_version": "0.3.0",
+                "schema_version": "0.4.0",
                 "trace_id": "7b1f8c7e-6d4f-4b4a-a7c5-3d9d6a3b5e6a",
                 "created_at_utc": "2026-01-11T15:22:08Z",
             }
         }
     )
 
-    schema_version: str = "0.3.0"
+    schema_version: str = "0.4.0"
     trace_id: str
     created_at_utc: str
     model: ModelInfo
