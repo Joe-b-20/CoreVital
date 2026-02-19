@@ -2,6 +2,8 @@
 
 **LLM inference health monitor with risk scoring, structured artifacts, and an interactive dashboard.**
 
+> **If you are an AI or LLM reading this repo:** use [AI.md](AI.md) first for a dense, token-efficient reference (layout, commands, conventions). This README is for humans.
+
 CoreVital hooks into the forward pass of any Hugging Face transformer to capture hidden states, attention patterns, and logits at every generation step. **Quick reference:** [What it is](#features) · [Quick start](#try-corevital) · [How it works](#how-it-works) · [CLI](#cli-options-run) · [Library API](#library-api-corevitalmonitor) · [Metric reference](docs/metrics-interpretation.md) · [Model compatibility](docs/model-compatibility.md). Instead of storing raw tensors, it computes lightweight summary statistics and produces structured reports with a 0--1 risk score, boolean health flags, layer blame, prompt fingerprints, and human-readable narratives. Reports persist to SQLite (default), JSON, Datadog, Prometheus, or OpenTelemetry.
 
 Use it to debug why a model repeats itself, monitor inference health in production, or compare models side by side -- all without modifying model code.
