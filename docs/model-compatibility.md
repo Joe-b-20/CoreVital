@@ -61,6 +61,18 @@ See `configs/model_profiles/default.yaml` for the default values and add or edit
 - **Hidden states:** Before computing mean, std, L2 norm, and max abs, values are clamped to `[-1e6, 1e6]` to avoid NaN propagation. When clamping was applied, `hidden_summary.clipped` is `true`.
 - **Attention per-head max:** Each layer's `attention_summary` includes `max_weight_per_head` (one float per head: the maximum attention weight that head assigns to any key). This helps spot specialist heads (e.g. Voita et al. 2019: ~80% max weight) and individual head failures that mean-only aggregation can hide.
 
+## Querying sparse attention
+
+Prompt telemetry stores attention in sparse form (SoA: `query_indices`, `key_indices`, `weights`). Helper functions in `CoreVital.reporting.attention_queries` let you query this data without touching raw arrays:
+
+- **`get_attention_to_token(layer, head_idx, key_idx)`** — which queries attend to a given key (and with what weight)
+- **`get_attention_from_token(layer, head_idx, query_idx)`** — where a given query attends
+- **`get_top_connections(layer, head_idx, n=10)`** — top-N strongest connections for a head
+- **`get_heads_attending_to_range(layers, start, end)`** — which (layer, head) pairs have any connection into token range `[start, end]`
+- **`get_basin_anomalies(layers, threshold=0.3)`** — heads with basin score below threshold (U-shape; see Attention Basin research)
+
+Use these in the dashboard’s Attention Explorer or in your own scripts. Layers/heads can be dicts (from report JSON) or schema objects.
+
 ## References
 
 - Phase-1 metrics research: [Phase1 metrics analysis](Phase1%20metrics%20analysis.md)
