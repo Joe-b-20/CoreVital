@@ -582,9 +582,7 @@ def compute_prompt_surprisal(
 
     # Autoregressive shift: logits[i] predicts token[i+1]
     shift_logits = logits[:-1, :].contiguous()
-    shift_labels = torch.tensor(
-        prompt_token_ids[1:], dtype=torch.long, device=logits.device
-    ).contiguous()
+    shift_labels = torch.tensor(prompt_token_ids[1:], dtype=torch.long, device=logits.device).contiguous()
 
     # CrossEntropyLoss with no reduction → per-token loss in nats
     loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
