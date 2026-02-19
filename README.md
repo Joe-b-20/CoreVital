@@ -294,8 +294,8 @@ Report structure:
 - **prompt**: Contains the input prompt text, number of tokens and token IDs
 - **generated**: Contains the generated output text, number of tokens and token IDs
 - **timeline**: Per-token trace covering generated tokens. Each step contains decoder layer summaries.
-- **hidden_summary**: Mean, std, L2 norm, max abs value, and random projection sketch
-- **attention_summary**: Entropy statistics (entropy_mean, entropy_min) and concentration metrics (concentration_max). 
+- **hidden_summary**: Mean, std, L2 norm, max abs value, random projection sketch; `clipped` is true when values were clamped for numerical stability
+- **attention_summary**: Entropy statistics (entropy_mean, entropy_min), concentration metrics (concentration_max), and per-head max weight (max_weight_per_head) to spot specialist or failing heads. 
   - For decoder layers (in timeline): Contains decoder self-attention
   - For encoder layers (in encoder_layers): Contains encoder self-attention
   - This field ALWAYS contains self-attention, regardless of model type
