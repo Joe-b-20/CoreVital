@@ -172,10 +172,65 @@ class OtelConfig(BaseModel):
     otel_endpoint: Optional[str] = None  # e.g. http://localhost:4317 for OTLP gRPC; env OTEL_EXPORTER_OTLP_ENDPOINT
 
 
+class ModelProfile(BaseModel):
+    """Per-model threshold overrides for detection (Branch 4 / item #27).
+
+    Different architectures have different L2 norms, entropy ranges, and anisotropy;
+    these thresholds can be overridden per model family via configs/model_profiles/*.yaml.
+    """
+
+    l2_explosion_multiplier: float = 8.0  # Mid-layer L2 vs early-layer baseline (flan-t5 ~5.7x)
+    high_entropy_threshold_bits: float = 4.0  # Steps with entropy > this count as high-entropy
+    repetition_cosine_threshold: float = 0.9995  # Cosine sim above this = same direction (float16 anisotropy)
+    collapsed_head_entropy_threshold: float = 0.1  # Head entropy below this = collapsed
+    focused_head_concentration_threshold: float = 0.9  # Per-head max attn above this = focused
+
+
+def _architecture_to_profile_key(architecture: str) -> str:
+    """Map HuggingFace architecture string to profile file name (no extension)."""
+    a = architecture or ""
+    if "GPT2" in a:
+        return "gpt2"
+    if "Llama" in a:
+        return "llama"
+    if "Mistral" in a:
+        return "mistral"
+    if "T5" in a or "T5ForConditional" in a:
+        return "t5"
+    if "Bart" in a:
+        return "bart"
+    return "default"
+
+
+def load_model_profile(
+    architecture: str,
+    base_path: Optional[Path] = None,
+) -> ModelProfile:
+    """Load model profile by architecture; fallback to default.yaml.
+
+    Looks for configs/model_profiles/<key>.yaml then default.yaml.
+    """
+    if base_path is None:
+        base_path = Path(__file__).resolve().parent.parent.parent / "configs" / "model_profiles"
+    key = _architecture_to_profile_key(architecture)
+    for name in (key, "default"):
+        path = base_path / f"{name}.yaml"
+        if path.exists():
+            try:
+                with open(path) as f:
+                    data = yaml.safe_load(f) or {}
+                return ModelProfile(**data)
+            except Exception:
+                pass
+    return ModelProfile()
+
+
 class Config(BaseModel):
     """Root configuration object."""
 
     model: ModelConfig = Field(default_factory=ModelConfig)
+    # Optional per-model profile override; if None, loaded at runtime from architecture.
+    model_profile: Optional[ModelProfile] = Field(default=None)
     # Optional RAG context (Foundation F3); set from CLI --rag-context or API. Not from YAML.
     rag_context: Optional[Dict[str, Any]] = Field(default=None)
     device: DeviceConfig = Field(default_factory=DeviceConfig)
