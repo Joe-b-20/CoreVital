@@ -73,6 +73,11 @@ Prompt telemetry stores attention in sparse form (SoA: `query_indices`, `key_ind
 
 Use these in the dashboard’s Attention Explorer or in your own scripts. Layers/heads can be dicts (from report JSON) or schema objects.
 
+## Limitations
+
+- **Inference backends:** CoreVital currently supports only **Hugging Face Transformers** (PyTorch). It does not yet support vLLM, TGI (Text Generation Inference), or llama.cpp. Support for additional backends is planned (see roadmap).
+- **Attention capture:** Models using SDPA or Flash Attention may not return full attention weights; use `attn_implementation="eager"` where needed (see [Attention Capture](#attention-capture)).
+
 ## References
 
 - Phase-1 metrics research: [Phase1 metrics analysis](Phase1%20metrics%20analysis.md)

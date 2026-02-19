@@ -2,7 +2,7 @@
 
 **LLM inference health monitor with risk scoring, structured artifacts, and an interactive dashboard.**
 
-CoreVital hooks into the forward pass of any Hugging Face transformer to capture hidden states, attention patterns, and logits at every generation step. Instead of storing raw tensors, it computes lightweight summary statistics and produces structured reports with a 0--1 risk score, boolean health flags, layer blame, prompt fingerprints, and human-readable narratives. Reports persist to SQLite (default), JSON, Datadog, Prometheus, or OpenTelemetry.
+CoreVital hooks into the forward pass of any Hugging Face transformer to capture hidden states, attention patterns, and logits at every generation step. **Quick reference:** [What it is](#features) · [Quick start](#try-corevital) · [How it works](#how-it-works) · [CLI](#cli-options-run) · [Library API](#library-api-corevitalmonitor) · [Metric reference](docs/metrics-interpretation.md) · [Model compatibility](docs/model-compatibility.md). Instead of storing raw tensors, it computes lightweight summary statistics and produces structured reports with a 0--1 risk score, boolean health flags, layer blame, prompt fingerprints, and human-readable narratives. Reports persist to SQLite (default), JSON, Datadog, Prometheus, or OpenTelemetry.
 
 Use it to debug why a model repeats itself, monitor inference health in production, or compare models side by side -- all without modifying model code.
 
@@ -393,6 +393,8 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 **Production Deployment:** See [Production Deployment Guide](docs/production-deployment.md) for sampling strategies, database setup, metrics export, and alerting.
 
 **Integration Examples:** See [Integration Examples](docs/integration-examples.md) for Flask, FastAPI, and production patterns.
+
+**Metrics Interpretation:** See [Metrics Interpretation Guide](docs/metrics-interpretation.md) for per-metric definitions, research citations (Shannon entropy, Voita et al. attention, Attention Basin, etc.), threshold tables, and example scenarios.
 
 **Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs. The dashboard includes Prompt Analysis (layer transformations, prompt surprisals, sparse attention with a layers×heads basin heatmap, and an Attention Explorer for querying attention to/from tokens), timeline tabs (entropy, perplexity, surprisal, top-K margin, voter agreement), entropy-vs-position chart, and colored output by uncertainty. Timeline charts show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
 
