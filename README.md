@@ -394,7 +394,7 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 
 **Integration Examples:** See [Integration Examples](docs/integration-examples.md) for Flask, FastAPI, and production patterns.
 
-**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs.
+**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs. Timeline charts (entropy, perplexity, surprisal) show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
 
 ### Sink Interface
 

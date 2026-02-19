@@ -1109,6 +1109,9 @@ with torch.no_grad():
 > - Apply cross-entropy with no reduction to get per-token values
 > - Convert from nats (natural log) to bits (log2)
 
+**Implementation Decision - PROMPT SURPRISAL MEMORY:**
+> **MEMORY:** Raw prompt logits are discarded immediately after computing `prompt_surprisals` and are not stored in the report JSON. Only the per-token surprisal list is persisted.
+
 **Implementation Decision - PROMPT SURPRISAL OPTIMIZATION:**
 > **OPTIMIZATION:** Since we're already doing a forward pass for prompt attention profiles, we can extract prompt surprisal with minimal additional cost.
 > 
