@@ -1108,18 +1108,28 @@ if prompt_analysis:
             st.info("No sparse attention data.")
 
     with pa_tab4:
-        # Attention Explorer (#10): query sparse attention via helpers
+        # Attention Explorer (#10): query sparse attention via helpers.
+        # Only show when sparse head data exists (capture_mode=full or on_risk with full capture).
+        # With capture_mode=summary, layers have basin_scores but heads=[]; queries would always be empty.
         layers_data = prompt_analysis.get("layers", [])
+        has_sparse_heads = bool(
+            layers_data and any(len(lay.get("heads", [])) > 0 for lay in layers_data)
+        )
         if not layers_data:
             st.info("No sparse attention data to query.")
+        elif not has_sparse_heads:
+            st.info(
+                "Sparse head connections were not captured for this run (e.g. capture_mode=summary or on_risk). "
+                "Load a report with full capture to use the Attention Explorer."
+            )
         else:
-            num_heads = len(layers_data[0].get("basin_scores", [])) or len(layers_data[0].get("heads", []))
             layer_idx = st.selectbox(
                 "Layer", range(len(layers_data)), format_func=lambda i: f"Layer {i}", key="qe_layer"
             )
-            head_idx = st.selectbox("Head", range(max(1, num_heads)), format_func=lambda i: f"Head {i}", key="qe_head")
-            token_idx = st.number_input("Token index (key or query)", min_value=0, value=0, step=1, key="qe_token")
             layer = layers_data[layer_idx]
+            num_heads = max(len(layer.get("heads", [])), 1)
+            head_idx = st.selectbox("Head", range(num_heads), format_func=lambda i: f"Head {i}", key="qe_head")
+            token_idx = st.number_input("Token index (key or query)", min_value=0, value=0, step=1, key="qe_token")
             to_token = get_attention_to_token(layer, head_idx, token_idx)
             from_token = get_attention_from_token(layer, head_idx, token_idx)
             top_conn = get_top_connections(layer, head_idx, n=10)
