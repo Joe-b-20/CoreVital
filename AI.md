@@ -189,6 +189,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 ## 14. Docs map (humans + deep dives)
 
 - **README.md** — human intro, quick start, CLI, library API, roadmap.
+- **docs/v0.4.0-launch.md** — technical launch post: what CoreVital is, v0.4.0 features, how to try it.
 - **docs/model-compatibility.md** — HF only; CausalLM vs Seq2Seq; SDPA vs eager; model_profiles; limitations (no vLLM/TGI/llama.cpp).
 - **docs/metrics-interpretation.md** — metric definitions, thresholds, citations (Shannon, Voita, Attention Basin).
 - **docs/visual-examples.md** — good vs bad runs in dashboard.
