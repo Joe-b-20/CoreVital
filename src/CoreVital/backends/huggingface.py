@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional
 
-from CoreVital.backends.base import Backend, BackendCapabilities
+from CoreVital.backends.base import Backend, BackendCapabilities, StepCallback
 from CoreVital.config import Config
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class HuggingFaceBackend(Backend):
         config: Config,
         prompt: str,
         monitor: Optional["PerformanceMonitor"] = None,
-        step_callback: Optional[Any] = None,
+        step_callback: Optional[StepCallback] = None,
     ) -> "InstrumentationResults":
         from CoreVital.instrumentation.collector import InstrumentationCollector
 

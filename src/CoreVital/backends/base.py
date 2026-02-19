@@ -9,13 +9,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 from CoreVital.config import Config
 
 if TYPE_CHECKING:
     from CoreVital.instrumentation.collector import InstrumentationResults
     from CoreVital.instrumentation.performance import PerformanceMonitor
+
+# Real-time intervention: (step, generated_token_ids, last_layer_hidden_buffer, last_logits) -> True to stop
+StepCallback = Callable[
+    [int, List[int], Optional[List[Any]], Optional[Any]],
+    bool,
+]
 
 
 @dataclass(frozen=True)
@@ -44,7 +50,7 @@ class Backend(ABC):
         config: Config,
         prompt: str,
         monitor: Optional["PerformanceMonitor"] = None,
-        step_callback: Optional[Any] = None,
+        step_callback: Optional[StepCallback] = None,
     ) -> "InstrumentationResults":
         """
         Run instrumented inference for the given prompt.
@@ -53,7 +59,7 @@ class Backend(ABC):
             config: CoreVital config (model, generation, capture, etc.).
             prompt: Input prompt text.
             monitor: Optional performance monitor for timing.
-            step_callback: Optional real-time intervention callback (Seq2Seq only in HF backend).
+            step_callback: Optional real-time intervention callback (Seq2Seq only in HF backend). Signature: StepCallback (step, generated_token_ids, last_layer_hidden_buffer, last_logits) -> True to stop.
 
         Returns:
             InstrumentationResults with timeline, token ids, and backend-specific
