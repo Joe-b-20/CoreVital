@@ -1,0 +1,7 @@
+# LLaMA / LlamaForCausalLM family
+# Larger scales may need different L2 norms; adjust if needed
+l2_explosion_multiplier: 8.0
+high_entropy_threshold_bits: 4.0
+repetition_cosine_threshold: 0.9995
+collapsed_head_entropy_threshold: 0.1
+focused_head_concentration_threshold: 0.9

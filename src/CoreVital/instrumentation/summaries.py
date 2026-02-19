@@ -131,6 +131,7 @@ def compute_hidden_summary(
 def compute_attention_summary(
     attention: Any,  # Changed from torch.Tensor to Any for safe checking
     config: "AttentionSummariesConfig",
+    profile: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Compute summary statistics for attention tensor.
@@ -143,6 +144,7 @@ def compute_attention_summary(
     Args:
         attention: Attention tensor (self-attention or cross-attention)
         config: Attention summaries configuration
+        profile: Optional model profile for collapsed/focused thresholds
 
     Returns:
         Dictionary with summary statistics
@@ -150,6 +152,16 @@ def compute_attention_summary(
     Raises:
         SummaryComputationError: If computation fails
     """
+    collapsed_threshold = (
+        float(profile.collapsed_head_entropy_threshold)
+        if profile is not None and hasattr(profile, "collapsed_head_entropy_threshold")
+        else COLLAPSED_HEAD_ENTROPY_THRESHOLD
+    )
+    focused_threshold = (
+        float(profile.focused_head_concentration_threshold)
+        if profile is not None and hasattr(profile, "focused_head_concentration_threshold")
+        else FOCUSED_HEAD_CONCENTRATION_THRESHOLD
+    )
     try:
         if not config.enabled:
             logger.debug("Attention summary computation disabled in config")
@@ -233,9 +245,7 @@ def compute_attention_summary(
                 summary["entropy_max"] = float(per_head_entropy.max().item())
 
             if "collapsed_head_count" in config.stats:
-                summary["collapsed_head_count"] = int(
-                    (per_head_entropy < COLLAPSED_HEAD_ENTROPY_THRESHOLD).sum().item()
-                )
+                summary["collapsed_head_count"] = int((per_head_entropy < collapsed_threshold).sum().item())
 
             # Focused heads: concentration > threshold (using high entropy as proxy)
             # Focused = head has high concentration (entropy > 4.0 = overloaded/diffuse)
@@ -261,7 +271,7 @@ def compute_attention_summary(
                 summary["concentration_min"] = float(max_attn_per_query.min().item())
 
             if "focused_head_count" in config.stats:
-                summary["focused_head_count"] = int((per_head_max > FOCUSED_HEAD_CONCENTRATION_THRESHOLD).sum().item())
+                summary["focused_head_count"] = int((per_head_max > focused_threshold).sum().item())
 
         return summary
 
@@ -597,6 +607,7 @@ def compute_prompt_surprisal(
 def detect_repetition_loop(
     hidden_state_buffer: List[torch.Tensor],
     threshold: float = 0.9995,
+    profile: Optional[Any] = None,
 ) -> bool:
     """Detect if the model is stuck in a repetition loop using cosine similarity.
 
@@ -615,10 +626,13 @@ def detect_repetition_loop(
         hidden_state_buffer: List of 1D hidden state vectors (last layer, last token).
             Typically the last 5 steps. Each tensor shape: (hidden_dim,)
         threshold: Cosine similarity threshold for "same direction" (default 0.9995)
+        profile: Optional model profile; if set, threshold = profile.repetition_cosine_threshold
 
     Returns:
         True if repetition loop detected, False otherwise.
     """
+    if profile is not None and hasattr(profile, "repetition_cosine_threshold"):
+        threshold = float(profile.repetition_cosine_threshold)
     if len(hidden_state_buffer) < 4:
         return False
 
@@ -647,6 +661,8 @@ def detect_repetition_loop(
 def detect_mid_layer_anomaly(
     timeline_layers: List[List[Any]],
     num_layers: int,
+    l2_multiplier: Optional[float] = None,
+    profile: Optional[Any] = None,
 ) -> bool:
     """Detect runtime anomalies in middle layers (hallucination sweet spot).
 
@@ -666,10 +682,17 @@ def detect_mid_layer_anomaly(
         timeline_layers: List of step layers. Each entry is a list of LayerSummary-like
             objects with .anomalies, .hidden_summary attributes.
         num_layers: Total number of layers in the model.
+        l2_multiplier: Override for L2 explosion multiplier (default from profile or constant).
+        profile: Optional model profile; if set, l2_multiplier = profile.l2_explosion_multiplier
 
     Returns:
         True if mid-layer anomaly detected, False otherwise.
     """
+    multiplier = L2_EXPLOSION_MULTIPLIER
+    if l2_multiplier is not None:
+        multiplier = l2_multiplier
+    elif profile is not None and hasattr(profile, "l2_explosion_multiplier"):
+        multiplier = float(profile.l2_explosion_multiplier)
     if not timeline_layers or num_layers < 3:
         return False
 
@@ -699,7 +722,7 @@ def detect_mid_layer_anomaly(
 
         if step_early_norms:
             baseline = sum(step_early_norms) / len(step_early_norms)
-            explosion_threshold = baseline * L2_EXPLOSION_MULTIPLIER
+            explosion_threshold = baseline * multiplier
         else:
             explosion_threshold = 1000.0  # Conservative fallback
 

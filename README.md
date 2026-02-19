@@ -394,7 +394,7 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 
 **Integration Examples:** See [Integration Examples](docs/integration-examples.md) for Flask, FastAPI, and production patterns.
 
-**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs.
+**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs. Timeline charts (entropy, perplexity, surprisal) show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
 
 ### Sink Interface
 
@@ -418,7 +418,7 @@ Built-in sinks:
 
 ### Configuration
 
-Override defaults via `configs/default.yaml` or environment variables:
+Override defaults via `configs/default.yaml` or environment variables. Per-model detection thresholds live in `configs/model_profiles/` (see [model compatibility](docs/model-compatibility.md#per-model-threshold-profiles)).
 ```bash
 export COREVITAL_DEVICE=cuda
 export COREVITAL_SEED=123
@@ -727,15 +727,15 @@ The `should_intervene()` API and early warning system currently operate **post-r
 
 ### Risk Threshold Calibration
 
-Risk scores and health flag thresholds (`risk.py`, `report_builder.py`) are hand-crafted heuristics based on observed model behavior during development:
+Risk scores and health flag thresholds (`risk.py`, `report_builder.py`) use heuristics that can be **overridden per model family** via [per-model threshold profiles](docs/model-compatibility.md#per-model-threshold-profiles) in `configs/model_profiles/` (e.g. `gpt2.yaml`, `llama.yaml`). Defaults:
 
 - NaN/Inf → risk 1.0 (always catastrophic)
 - Repetition loop → 0.9 (strong indicator of degenerate output)
 - Mid-layer anomaly → 0.7 (suggests factual processing failure)
 - Attention collapse → 0.3 (common in healthy runs; not always problematic)
-- High entropy threshold: 4.0 bits (see comment in `report_builder.py`)
+- High entropy threshold: 4.0 bits (configurable via profile `high_entropy_threshold_bits`)
 
-These have **not** been validated on a large labeled dataset of good vs. bad generations. Calibration against benchmarks (e.g., TruthfulQA, HaluEval) is planned.
+These defaults have **not** been validated on a large labeled dataset of good vs. bad generations. Calibration against benchmarks (e.g., TruthfulQA, HaluEval) is planned.
 
 ### Decoding Strategies
 

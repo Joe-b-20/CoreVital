@@ -53,11 +53,11 @@
 # ============================================================================
 
 import uuid
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 
-from CoreVital.config import Config
+from CoreVital.config import Config, load_model_profile
 from CoreVital.early_warning import compute_early_warning
 from CoreVital.fingerprint import compute_fingerprint_vector, compute_prompt_hash
 from CoreVital.instrumentation.collector import InstrumentationResults
@@ -139,6 +139,9 @@ class ReportBuilder:
 
         logger.debug("Building report...")
 
+        # Resolve model profile (per-model thresholds); used in timeline and health flags
+        profile = self.config.model_profile or load_model_profile(results.model_bundle.architecture)
+
         # Performance monitor for nested tracking
         monitor = results.monitor
 
@@ -174,7 +177,7 @@ class ReportBuilder:
         # Build timeline (tracked as child of report_build - corevital logic)
         # Returns (timeline, layers_by_step) for health flags; summary mode omits layers from storage
         with _op("_build_timeline"):
-            timeline, timeline_layers_for_flags = self._build_timeline(results)
+            timeline, timeline_layers_for_flags = self._build_timeline(results, profile)
 
         # Build encoder layers (for Seq2Seq models)
         # encoder_layers represents the encoder pass computed ONCE
@@ -187,6 +190,7 @@ class ReportBuilder:
                         results.encoder_hidden_states,
                         results.encoder_attentions,
                         results.model_bundle.num_layers,
+                        profile=profile,
                     )
                     if encoder_layers:
                         logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
@@ -215,7 +219,10 @@ class ReportBuilder:
         # When capture_mode is summary/on_risk, use timeline_layers_for_flags (not stored in report)
         with _op("_build_health_flags"):
             health_flags = self._build_health_flags(
-                results, timeline, timeline_layers_override=timeline_layers_for_flags
+                results,
+                timeline,
+                timeline_layers_override=timeline_layers_for_flags,
+                profile=profile,
             )
 
         # Assemble final Report (tracked as child of report_build)
@@ -402,7 +409,11 @@ class ReportBuilder:
             ),
         )
 
-    def _build_timeline(self, results: InstrumentationResults) -> Tuple[List[TimelineStep], List[List[LayerSummary]]]:
+    def _build_timeline(
+        self,
+        results: InstrumentationResults,
+        profile: Optional[Any] = None,
+    ) -> Tuple[List[TimelineStep], List[List[LayerSummary]]]:
         """Build timeline from instrumentation results.
 
         Tracks per-step timing for performance monitoring.
@@ -451,6 +462,7 @@ class ReportBuilder:
                     step_data.attentions,
                     results.model_bundle.num_layers,
                     cross_attentions=step_data.cross_attentions,
+                    profile=profile,
                 )
             layers_by_step.append(layers)
 
@@ -486,6 +498,7 @@ class ReportBuilder:
         attentions: Optional[List[torch.Tensor]],
         num_layers: int,
         cross_attentions: Optional[List[torch.Tensor]] = None,
+        profile: Optional[Any] = None,
     ) -> List[LayerSummary]:
         """Build layer summaries from hidden states and attentions."""
         layers = []
@@ -513,6 +526,7 @@ class ReportBuilder:
                                 attn_dict = compute_attention_summary(
                                     attn_tensor,
                                     self.config.summaries.attention,
+                                    profile=profile,
                                 )
                                 if attn_dict:  # Only update if we got a non-empty dict
                                     attention_summary = AttentionSummary(**attn_dict)
@@ -535,6 +549,7 @@ class ReportBuilder:
                                 cross_attn_dict = compute_attention_summary(
                                     cross_attn_tensor,
                                     self.config.summaries.attention,
+                                    profile=profile,
                                 )
                                 if cross_attn_dict:
                                     cross_attention_summary = AttentionSummary(**cross_attn_dict)
@@ -578,6 +593,7 @@ class ReportBuilder:
         encoder_hidden_states: Optional[List[torch.Tensor]],
         encoder_attentions: Optional[List[torch.Tensor]],
         num_layers: int,
+        profile: Optional[Any] = None,
     ) -> Optional[List[LayerSummary]]:
         """
         Build encoder layer summaries from encoder hidden states and attentions.
@@ -586,6 +602,7 @@ class ReportBuilder:
             encoder_hidden_states: List of encoder hidden state tensors (one per layer)
             encoder_attentions: List of encoder attention tensors (one per layer)
             num_layers: Number of layers
+            profile: Optional model profile for attention thresholds
 
         Returns:
             List of LayerSummary objects for encoder layers, or None if no encoder data
@@ -635,6 +652,7 @@ class ReportBuilder:
                             enc_attn_dict = compute_attention_summary(
                                 enc_attn_tensor,
                                 self.config.summaries.attention,
+                                profile=profile,
                             )
                             if enc_attn_dict:
                                 encoder_attention_summary = AttentionSummary(**enc_attn_dict)
@@ -741,6 +759,7 @@ class ReportBuilder:
         results: InstrumentationResults,
         timeline: List[TimelineStep],
         timeline_layers_override: Optional[List[List[LayerSummary]]] = None,
+        profile: Optional[Any] = None,
     ) -> HealthFlags:
         """Build aggregated health flags from timeline data (Phase-1c).
 
@@ -776,7 +795,7 @@ class ReportBuilder:
         # --- Consume: repetition loop detection ---
         repetition_loop_detected = False
         try:
-            repetition_loop_detected = detect_repetition_loop(hidden_state_buffer)
+            repetition_loop_detected = detect_repetition_loop(hidden_state_buffer, profile=profile)
         except Exception as e:
             logger.warning(f"Failed repetition loop detection: {e}")
 
@@ -796,17 +815,14 @@ class ReportBuilder:
         attention_collapse_detected = False
         high_entropy_steps = 0
 
+        high_entropy_threshold = 4.0
+        if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
+            high_entropy_threshold = float(profile.high_entropy_threshold_bits)
         for tl_step in timeline:
             # High entropy check (per-step logits entropy)
-            # Threshold: 4.0 bits flags steps where the model considers ~16+ equally
-            # likely next tokens (2^4 = 16). This is model-agnostic — it works across
-            # vocabulary sizes because entropy measures distributional uncertainty, not
-            # vocabulary coverage. For reference, max possible entropy is log2(vocab_size):
-            # ~15.6 bits for GPT-2 (50k vocab), ~17.0 bits for LLaMA-3 (128k vocab).
-            # A step at 4.0 bits uses <0.03% of that range, indicating genuine confusion.
-            # Future: could be made configurable per model family via config.yaml.
+            # Threshold from profile or 4.0 bits (model-agnostic; 2^4 = 16 equally likely tokens).
             if tl_step.logits_summary and tl_step.logits_summary.entropy is not None:
-                if tl_step.logits_summary.entropy > 4.0:
+                if tl_step.logits_summary.entropy > high_entropy_threshold:
                     high_entropy_steps += 1
 
         for step_layers in layers_to_aggregate:
@@ -828,7 +844,7 @@ class ReportBuilder:
         num_layers = results.model_bundle.num_layers
         if layers_to_aggregate and num_layers >= 3:
             try:
-                mid_layer_anomaly_detected = detect_mid_layer_anomaly(layers_to_aggregate, num_layers)
+                mid_layer_anomaly_detected = detect_mid_layer_anomaly(layers_to_aggregate, num_layers, profile=profile)
             except Exception as e:
                 logger.warning(f"Failed mid-layer anomaly detection: {e}")
 
