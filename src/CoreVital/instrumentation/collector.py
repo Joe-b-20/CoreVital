@@ -269,9 +269,7 @@ class InstrumentationCollector:
                             )
                     else:
                         # Prepare generation config for CausalLM models
-                        num_beams = getattr(
-                            self.config.generation, "num_beams", 1
-                        ) or 1
+                        num_beams = getattr(self.config.generation, "num_beams", 1) or 1
                         gen_config: Dict[str, Any] = {
                             "max_new_tokens": self.config.generation.max_new_tokens,
                             "do_sample": self.config.generation.do_sample,
@@ -286,9 +284,7 @@ class InstrumentationCollector:
                         }
                         if num_beams > 1:
                             gen_config["num_beams"] = num_beams
-                            gen_config["early_stopping"] = getattr(
-                                self.config.generation, "early_stopping", False
-                            )
+                            gen_config["early_stopping"] = getattr(self.config.generation, "early_stopping", False)
                             # Standard beam search uses do_sample=False
                             gen_config["do_sample"] = False
                         # Tracked as a child of model_inference (external HF call)
@@ -349,11 +345,7 @@ class InstrumentationCollector:
 
                 with _op("_process_timeline"):
                     beam_indices = getattr(outputs, "beam_indices", None) if not isinstance(outputs, dict) else None
-                    num_beams_val = (
-                        getattr(self.config.generation, "num_beams", 1) or 1
-                        if not is_seq2seq
-                        else 1
-                    )
+                    num_beams_val = getattr(self.config.generation, "num_beams", 1) or 1 if not is_seq2seq else 1
                     if isinstance(outputs, dict) and "output_obj" in outputs:
                         timeline = self._process_timeline(
                             outputs["output_obj"],
@@ -447,9 +439,7 @@ class InstrumentationCollector:
         }
         if num_beams > 1:
             gen_config["num_beams"] = num_beams
-            gen_config["early_stopping"] = getattr(
-                self.config.generation, "early_stopping", False
-            )
+            gen_config["early_stopping"] = getattr(self.config.generation, "early_stopping", False)
             gen_config["do_sample"] = False
         cast(Any, self.model_bundle.model).generate(**inputs, **gen_config)
 
@@ -996,16 +986,12 @@ class InstrumentationCollector:
                     step_hidden = outputs.hidden_states[step_idx]
                     if isinstance(step_hidden, (tuple, list)):
                         if num_beams > 1:
-                            step_data.hidden_states = [
-                                _slice_beam(t, step_idx) for t in step_hidden
-                            ]
+                            step_data.hidden_states = [_slice_beam(t, step_idx) for t in step_hidden]
                         else:
                             step_data.hidden_states = list(step_hidden)
                     else:
                         step_data.hidden_states = (
-                            [_slice_beam(step_hidden, step_idx)]
-                            if num_beams > 1
-                            else [step_hidden]
+                            [_slice_beam(step_hidden, step_idx)] if num_beams > 1 else [step_hidden]
                         )
             except (IndexError, AttributeError, TypeError) as e:
                 logger.debug(f"Could not extract hidden states for step {step_idx}: {e}")
@@ -1016,19 +1002,13 @@ class InstrumentationCollector:
                     step_attn = outputs.attentions[step_idx]
                     if isinstance(step_attn, (tuple, list)):
                         if num_beams > 1:
-                            step_data.attentions = [
-                                _slice_beam(t, step_idx) for t in step_attn
-                            ]
+                            step_data.attentions = [_slice_beam(t, step_idx) for t in step_attn]
                         else:
                             step_data.attentions = list(step_attn)
                         if len(step_data.attentions) > 0:
                             logger.debug(f"Extracted {len(step_data.attentions)} attention tensors for step {step_idx}")
                     else:
-                        step_data.attentions = (
-                            [_slice_beam(step_attn, step_idx)]
-                            if num_beams > 1
-                            else [step_attn]
-                        )
+                        step_data.attentions = [_slice_beam(step_attn, step_idx)] if num_beams > 1 else [step_attn]
                 elif has_attention:
                     logger.debug(f"Attention available but step_idx {step_idx} >= len {len(outputs.attentions)}")
                 else:
