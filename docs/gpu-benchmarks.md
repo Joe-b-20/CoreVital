@@ -26,15 +26,16 @@ For CSV or scripted runs, parse the report JSON or use `--out` to write results 
 - **Production models (GPU)**: Benchmarks on Llama-3.1-8B, Mixtral-8x7B, etc. are planned. Early testing suggests overhead is dominated by **attention weight materialization** (`output_attentions=True`) rather than CoreVital’s summary computation.
 - **Reducing overhead**: Use `--capture summary` to skip per-layer data and keep overhead low (e.g. under ~5% in many setups).
 
-## Results table (template)
+## Results table
 
-When benchmarks are run, update the table below (or the README table) with measured values.
+Measured with `--perf strict`, short prompt, 10 `--max_new_tokens`. GPU models used 4-bit quantization. Variance can yield slightly negative overhead on some runs.
 
 | Model | Device | Baseline (ms) | Instrumented (ms) | Overhead (%) |
 |-------|--------|----------------|-------------------|--------------|
-| gpt2 | CPU | (see README) | (see README) | (see README) |
-| meta-llama/Llama-3.2-1B | CUDA | TBD | TBD | TBD |
-| Llama-3.1-8B | CUDA | TBD | TBD | TBD |
+| gpt2 | CPU | 314 | 282 | -10 |
+| meta-llama/Llama-3.1-8B-Instruct | CUDA | 1,248 | 1,243 | -0.4 |
+| mistralai/Mistral-7B-Instruct-v0.2 | CUDA | 1,345 | 1,338 | -0.6 |
+| Qwen/Qwen2-0.5B-Instruct | CUDA | 601 | 662 | +10 |
 | Mixtral-8x7B | CUDA | TBD | TBD | TBD |
 
-To contribute numbers: run with `--perf strict`, fixed seed and short `--max_new_tokens`, and fill in the table (or open a PR with updated docs). The report JSON (e.g. with `--sink local_file --out <dir>`) includes `extensions.performance` with `baseline_ms`, `instrumented_inference_ms`, and `inference_overhead_pct`.
+To contribute numbers: run with `--perf strict`, fixed seed and short `--max_new_tokens`, and fill in the table (or open a PR with updated docs). The report JSON (e.g. with `--sink local --out <dir>`) includes `extensions.performance` with `baseline_ms`, `instrumented_inference_ms`, and `inference_overhead_pct`.

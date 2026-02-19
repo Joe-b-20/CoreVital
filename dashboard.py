@@ -62,10 +62,15 @@ so you can spot confusion, repetition, or numerical issues without reading raw l
 
 **Health Flags** (top-level summary)  
 - **NaN/Inf:** Any “not a number” or infinity in the model’s internals → **stop and debug** (bad inputs, precision, or code).  
-- **Attention collapse:** Some attention heads put almost all weight on one token. Common in smaller models; only a problem if generation is clearly broken.  
+- **Attention collapse:** Any layer with at least one collapsed head (entropy over keys &lt; 0.1). Common in smaller models; only a problem if generation is clearly broken.  
 - **High entropy steps:** How many steps had entropy &gt; 4 (model was very uncertain). A few is normal; many suggests confusion.  
 - **Repetition loop:** Last-layer hidden states became nearly identical over 3+ steps → model may be stuck repeating.  
-- **Mid-layer anomaly:** Unusual values (NaN/Inf or huge norms) in the middle layers → possible numerical or training issue.
+- **Mid-layer anomaly:** Unusual values (NaN/Inf or huge L2 norms) in the middle layers → possible numerical or training issue.
+
+---
+
+**Risk score (0–1)**  
+- **&lt; 0.3:** Low risk. **0.3–0.7:** Moderate; worth a look. **&gt; 0.7:** High risk; consider shortening generation or changing prompt. Used by `--capture on_risk` and `should_intervene()`.
 
 ---
 
@@ -86,12 +91,19 @@ so you can spot confusion, repetition, or numerical issues without reading raw l
 - **2–5:** Plausible but not the top choice.  
 - **&gt; 5:** Model was surprised (unlikely token). Spikes show where the model struggled.
 
+**Top-K margin** (per step, when available)  
+- Difference between the top token's probability and the second-most likely. Small margin = model was close to choosing another token; large margin = confident pick.
+
+**Voter agreement** (per step, when available)  
+- Sum of probabilities of the top-K tokens (default K=10). High = most mass on a few candidates; low = spread across many tokens.
+
 ---
 
 **Attention heatmaps** (per layer, per step)  
-- **Entropy mean:** How spread out attention is. Very low (e.g. &lt; 0.5) in a head = “collapse” (all weight on one position).  
-- **Concentration max:** Max weight on any one position. Near 1.0 = one position ate almost all attention.  
-- **Collapsed / focused head count:** How many heads in that layer look collapsed or very focused. Useful to see which layers behave oddly.
+- **Entropy mean / min / max:** How spread out attention is. Very low entropy (e.g. &lt; 0.1) in a head = “collapse” (all weight on one position).  
+- **Concentration max / min:** Max weight on any one position. Near 1.0 = one position ate almost all attention.  
+- **Collapsed / focused head count:** Collapsed = entropy &lt; 0.1; focused = concentration &gt; 0.9. Useful to see which layers behave oddly.  
+- **Max weight per head** (when enabled): Strongest single connection per head; specialist heads often have high max weight.
 
 **Hidden state L2 norms**  
 - Size of the vectors the model passes between layers.  
@@ -102,12 +114,12 @@ so you can spot confusion, repetition, or numerical issues without reading raw l
 **Prompt analysis** (from the extra pass over your prompt)  
 - **Layer transformations:** How much each layer changes the representation (cosine similarity between consecutive layers). Healthy models usually show moderate change (e.g. 0.2–0.5); very low or very high can be worth a look.  
 - **Prompt surprisals:** How “surprised” the model was by each prompt token. High values = model found that part of the prompt unusual or hard.  
-- **Basin score:** Whether attention focuses on the *middle* of the prompt. Low (&lt; 0.3) can indicate “lost in the middle” (model ignoring the middle of long prompts).
+- **Basin score:** Per-head ratio (middle-third attention / boundary-thirds attention). **&lt; 0.3** = “lost in the middle”; **~0.5** = balanced; **&gt; 1.5** = head focuses more on middle than boundaries.
 
 ---
 
 **Performance**  
-- Time spent in each stage (load, tokenize, generate, build report). Use it to see where time goes (e.g. model load vs actual generation).
+- Time spent in each stage (load, tokenize, generate, build report). Use it to see where time goes (e.g. model load vs actual generation). With **perf detailed**, a separate JSON file has per-operation breakdowns.
 """
 
 
