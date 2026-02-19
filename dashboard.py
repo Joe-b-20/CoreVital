@@ -18,7 +18,15 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import streamlit as st
+
+from CoreVital.reporting.attention_queries import (
+    get_attention_from_token,
+    get_attention_to_token,
+    get_basin_anomalies,
+    get_top_connections,
+)
 
 # ---------------------------------------------------------------------------
 # Plotly is optional — graceful fallback to st.line_chart / st.bar_chart
@@ -672,8 +680,12 @@ st.caption(
 steps, entropies, tokens = extract_timeline_series(report_data, "entropy")
 _, perplexities, _ = extract_timeline_series(report_data, "perplexity")
 _, surprisals, _ = extract_timeline_series(report_data, "surprisal")
+_, topk_margins, _ = extract_timeline_series(report_data, "top_k_margin")
+_, voter_agrs, _ = extract_timeline_series(report_data, "voter_agreement")
 
-tab_ent, tab_perp, tab_surp = st.tabs(["Entropy", "Perplexity", "Surprisal"])
+tab_ent, tab_perp, tab_surp, tab_topk, tab_voter = st.tabs(
+    ["Entropy", "Perplexity", "Surprisal", "Top-K Margin", "Voter Agreement"]
+)
 
 with tab_ent:
     if any(v is not None for v in entropies):
@@ -762,6 +774,116 @@ with tab_surp:
     else:
         st.info("No surprisal data available.")
 
+with tab_topk:
+    if any(v is not None for v in topk_margins):
+        if HAS_PLOTLY:
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=steps,
+                    y=[v if v is not None else None for v in topk_margins],
+                    mode="lines+markers",
+                    name="Top-K Margin",
+                    text=tokens,
+                    hovertemplate="Step %{x}<br>Token: %{text}<br>Top-K Margin: %{y:.3f}<extra></extra>",
+                )
+            )
+            fig.update_layout(
+                xaxis_title="Generation Step",
+                yaxis_title="Top-K Margin",
+                height=350,
+                margin=dict(t=30, b=40),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            import pandas as pd
+
+            df = pd.DataFrame({"Step": steps, "Top-K Margin": topk_margins})
+            st.line_chart(df, x="Step", y="Top-K Margin")
+    else:
+        st.info("No top-k margin data available.")
+
+with tab_voter:
+    if any(v is not None for v in voter_agrs):
+        if HAS_PLOTLY:
+            fig = go.Figure()
+            fig.add_trace(
+                go.Scatter(
+                    x=steps,
+                    y=[v if v is not None else None for v in voter_agrs],
+                    mode="lines+markers",
+                    name="Voter Agreement",
+                    text=tokens,
+                    hovertemplate="Step %{x}<br>Token: %{text}<br>Voter Agreement: %{y:.3f}<extra></extra>",
+                )
+            )
+            fig.update_layout(
+                xaxis_title="Generation Step",
+                yaxis_title="Voter Agreement",
+                height=350,
+                margin=dict(t=30, b=40),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            import pandas as pd
+
+            df = pd.DataFrame({"Step": steps, "Voter Agreement": voter_agrs})
+            st.line_chart(df, x="Step", y="Voter Agreement")
+    else:
+        st.info("No voter agreement data available.")
+
+# --- Entropy vs Token Position (#25) ---
+st.caption("**Entropy vs position:** uncertainty along the generation; vertical line = end of prompt.")
+if entropies and HAS_PLOTLY:
+    prompt_tokens = (report_data.get("summary") or {}).get("prompt_tokens") or 0
+    fig_ep = go.Figure()
+    fig_ep.add_trace(
+        go.Scatter(
+            x=steps,
+            y=[v if v is not None else None for v in entropies],
+            mode="lines+markers",
+            name="Entropy (bits)",
+            text=tokens,
+            hovertemplate="Position %{x}<br>Token: %{text}<br>Entropy: %{y:.3f}<extra></extra>",
+        )
+    )
+    if prompt_tokens > 0:
+        fig_ep.add_vline(
+            x=prompt_tokens - 0.5,
+            line_dash="dash",
+            line_color="gray",
+            annotation_text="Prompt end",
+        )
+    fig_ep.add_hline(y=4.0, line_dash="dot", line_color="red", annotation_text="High (4.0)")
+    fig_ep.update_layout(
+        xaxis_title="Position (generation step)",
+        yaxis_title="Entropy (bits)",
+        height=280,
+        margin=dict(t=20, b=40),
+    )
+    st.plotly_chart(fig_ep, use_container_width=True)
+
+# --- Colored Output by Uncertainty (#26) ---
+st.subheader("Colored Output")
+st.caption("Generated text colored by per-token entropy: green = low uncertainty, yellow = medium, red = high.")
+if steps and tokens and entropies:
+    parts: List[str] = []
+    for tok, ent in zip(tokens, entropies, strict=True):
+        if ent is None:
+            color = "inherit"
+        elif ent > 4.0:
+            color = "#e74c3c"
+        elif ent >= 2.0:
+            color = "#f1c40f"
+        else:
+            color = "#27ae60"
+        escaped = tok.replace("\\", "\\\\").replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
+        parts.append(f'<span style="background-color:{color}; color:black; padding:0 1px;">{escaped}</span>')
+    st.markdown(
+        "<div style='font-family:monospace; line-height:1.8;'>" + "".join(parts) + "</div>", unsafe_allow_html=True
+    )
+else:
+    st.info("No timeline data for colored output.")
 
 # ------------------------------------------------------------------
 # Attention heatmaps
@@ -855,7 +977,9 @@ if prompt_analysis:
         "**Prompt surprisals:** how surprised the model was by each prompt token (high = unusual or hard). "
         "**Basin score:** attention on middle vs ends of prompt; low (&lt;0.3) can mean 'lost in the middle'."
     )
-    pa_tab1, pa_tab2, pa_tab3 = st.tabs(["Layer Transformations", "Prompt Surprisals", "Sparse Attention"])
+    pa_tab1, pa_tab2, pa_tab3, pa_tab4 = st.tabs(
+        ["Layer Transformations", "Prompt Surprisals", "Sparse Attention", "Attention Explorer"]
+    )
 
     with pa_tab1:
         transforms = prompt_analysis.get("layer_transformations", [])
@@ -915,11 +1039,47 @@ if prompt_analysis:
         layers_data = prompt_analysis.get("layers", [])
         if layers_data:
             st.write(f"**{len(layers_data)} layers** with sparse attention data")
-            selected_layer = st.slider("Layer", 0, len(layers_data) - 1, 0)
+            # Basin score heatmap: layers x heads (#11)
+            if HAS_PLOTLY:
+                num_heads = len(layers_data[0].get("basin_scores", []))
+                if num_heads > 0:
+                    z = []
+                    for ly in layers_data:
+                        basins = ly.get("basin_scores", [])
+                        z.append([b for b in basins] + [None] * (num_heads - len(basins)))
+                    z_arr = np.array(z, dtype=float)
+                    fig_heat = go.Figure(
+                        data=go.Heatmap(
+                            z=z_arr,
+                            x=[f"H{i}" for i in range(z_arr.shape[1])],
+                            y=[f"L{i}" for i in range(z_arr.shape[0])],
+                            colorscale=[
+                                [0.0, "#e74c3c"],
+                                [0.15, "#e74c3c"],
+                                [0.25, "#f1c40f"],
+                                [0.5, "#27ae60"],
+                                [0.75, "#3498db"],
+                                [1.0, "#3498db"],
+                            ],
+                            zmin=0,
+                            zmax=2,
+                            hovertemplate="Layer %{y} Head %{x}<br>Basin: %{z:.3f}<extra></extra>",
+                        )
+                    )
+                    fig_heat.update_layout(
+                        xaxis_title="Head",
+                        yaxis_title="Layer",
+                        title="Basin score (red &lt;0.3, green ~1, blue &gt;1.5)",
+                        height=min(400, 80 + 20 * len(layers_data)),
+                        margin=dict(t=40, b=40),
+                    )
+                    st.plotly_chart(fig_heat, use_container_width=True)
+                st.write("**Detail:** select a layer to see per-head bar chart.")
+            selected_layer = st.slider("Layer", 0, len(layers_data) - 1, 0, key="pa_layer")
             layer = layers_data[selected_layer]
             basins = layer.get("basin_scores", [])
             if basins:
-                st.write(f"**Basin scores** (middle/boundary attention ratio) — {len(basins)} heads")
+                st.write(f"**Basin scores** (layer {selected_layer}) — {len(basins)} heads")
                 if HAS_PLOTLY:
                     fig = go.Figure()
                     fig.add_trace(
@@ -946,6 +1106,42 @@ if prompt_analysis:
             )
         else:
             st.info("No sparse attention data.")
+
+    with pa_tab4:
+        # Attention Explorer (#10): query sparse attention via helpers
+        layers_data = prompt_analysis.get("layers", [])
+        if not layers_data:
+            st.info("No sparse attention data to query.")
+        else:
+            num_heads = len(layers_data[0].get("basin_scores", [])) or len(layers_data[0].get("heads", []))
+            layer_idx = st.selectbox(
+                "Layer", range(len(layers_data)), format_func=lambda i: f"Layer {i}", key="qe_layer"
+            )
+            head_idx = st.selectbox("Head", range(max(1, num_heads)), format_func=lambda i: f"Head {i}", key="qe_head")
+            token_idx = st.number_input("Token index (key or query)", min_value=0, value=0, step=1, key="qe_token")
+            layer = layers_data[layer_idx]
+            to_token = get_attention_to_token(layer, head_idx, token_idx)
+            from_token = get_attention_from_token(layer, head_idx, token_idx)
+            top_conn = get_top_connections(layer, head_idx, n=10)
+            st.markdown("**Queries attending to this key (token index {}):**".format(token_idx))
+            if to_token:
+                st.write([f"q{i}: {w:.3f}" for i, w in to_token[:20]])
+            else:
+                st.write("None")
+            st.markdown("**This query (token index {}) attends to:**".format(token_idx))
+            if from_token:
+                st.write([f"k{i}: {w:.3f}" for i, w in from_token[:20]])
+            else:
+                st.write("None")
+            st.markdown("**Top-10 connections (this head):**")
+            if top_conn:
+                st.write([f"q{q}→k{k}: {w:.3f}" for q, k, w in top_conn])
+            else:
+                st.write("None")
+            anomalies = get_basin_anomalies(layers_data, threshold=0.3)
+            if anomalies:
+                st.markdown("**Basin anomalies (score &lt; 0.3):**")
+                st.write([f"L{li} H{hi}: {s:.3f}" for li, hi, s in anomalies[:15]])
 
 # ------------------------------------------------------------------
 # Performance breakdown (if available)

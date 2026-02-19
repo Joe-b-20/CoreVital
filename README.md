@@ -394,7 +394,7 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 
 **Integration Examples:** See [Integration Examples](docs/integration-examples.md) for Flask, FastAPI, and production patterns.
 
-**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs. Timeline charts (entropy, perplexity, surprisal) show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
+**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs. The dashboard includes Prompt Analysis (layer transformations, prompt surprisals, sparse attention with a layers×heads basin heatmap, and an Attention Explorer for querying attention to/from tokens), timeline tabs (entropy, perplexity, surprisal, top-K margin, voter agreement), entropy-vs-position chart, and colored output by uncertainty. Timeline charts show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
 
 ### Sink Interface
 
