@@ -57,6 +57,34 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _last_layer_hidden_buffer(
+    all_hidden_states: List[Optional[tuple]],
+    step: int,
+) -> Optional[List[torch.Tensor]]:
+    """Build buffer of last-layer hidden state 1D vectors for step_callback (e.g. repetition detection).
+
+    Uses deterministic extraction: batch index 0, last token position, so batch_size > 1
+    still yields one vector per step instead of dropping entries.
+    """
+    buffer: List[torch.Tensor] = []
+    for i in range(max(0, step - 4), step + 1):
+        if i >= len(all_hidden_states) or all_hidden_states[i] is None:
+            continue
+        layers = all_hidden_states[i]
+        if not layers or len(layers) == 0:
+            continue
+        last_layer = layers[-1]
+        if last_layer is None:
+            continue
+        if last_layer.dim() == 3:
+            vec = last_layer[0, -1, :].detach()
+        else:
+            vec = last_layer.flatten()
+        if vec.dim() == 1:
+            buffer.append(vec)
+    return buffer if buffer else None
+
+
 @dataclass
 class StepData:
     """Data captured for a single generation step."""
@@ -740,9 +768,10 @@ class InstrumentationCollector:
                 return_dict=True,
             )
 
-            # Extract logits for next token prediction
-            next_token_logits = decoder_outputs.logits[:, -1, :]  # Shape: (batch_size, vocab_size)
-            all_scores.append(next_token_logits)
+            # Extract logits for next token prediction; keep unmodified copy for all_scores and step_callback
+            raw_logits = decoder_outputs.logits[:, -1, :].clone()  # Shape: (batch_size, vocab_size)
+            all_scores.append(raw_logits)
+            next_token_logits = raw_logits.clone()  # Working copy for temperature/top_k/top_p
 
             # Extract hidden states (decoder hidden states)
             # decoder_hidden_states is a tuple: (embedding, layer1, layer2, ..., layerN)
@@ -854,28 +883,19 @@ class InstrumentationCollector:
 
             # Real-time intervention: step_callback can request early stop (e.g. repetition detected)
             if step_callback is not None:
-                buffer: List[torch.Tensor] = []
-                for i in range(max(0, step - 4), step + 1):
-                    if i < len(all_hidden_states) and all_hidden_states[i] is not None:
-                        layers = all_hidden_states[i]
-                        if layers and len(layers) > 0:
-                            last_layer = layers[-1]
-                            if last_layer is not None:
-                                vec = last_layer.squeeze()
-                                if vec.dim() == 1:
-                                    buffer.append(vec)
+                buffer = _last_layer_hidden_buffer(all_hidden_states, step)
                 try:
                     if step_callback(
                         step,
                         list(generated_token_ids),
-                        buffer if buffer else None,
-                        next_token_logits,
+                        buffer,
+                        raw_logits,
                     ):
                         logger.info(f"Step callback requested stop at step {step}")
                         _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
                         break
-                except Exception as e:
-                    logger.warning(f"step_callback raised: {e}")
+                except Exception:
+                    logger.exception("step_callback raised")
 
             # Check for EOS
             if next_token_id == eos_token_id:
