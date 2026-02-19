@@ -56,6 +56,11 @@ Detection thresholds (repetition cosine similarity, L2 explosion multiplier, hig
 
 See `configs/model_profiles/default.yaml` for the default values and add or edit files (e.g. `gpt2.yaml`, `llama.yaml`) to tune behavior per family.
 
+## Numerical stability and attention detail
+
+- **Hidden states:** Before computing mean, std, L2 norm, and max abs, values are clamped to `[-1e6, 1e6]` to avoid NaN propagation. When clamping was applied, `hidden_summary.clipped` is `true`.
+- **Attention per-head max:** Each layer's `attention_summary` includes `max_weight_per_head` (one float per head: the maximum attention weight that head assigns to any key). This helps spot specialist heads (e.g. Voita et al. 2019: ~80% max weight) and individual head failures that mean-only aggregation can hide.
+
 ## References
 
 - Phase-1 metrics research: [Phase1 metrics analysis](Phase1%20metrics%20analysis.md)

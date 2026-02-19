@@ -96,7 +96,13 @@ def compute_hidden_summary(
         # Move to CPU for computation
         hidden_state = hidden_state.cpu().float()
 
-        summary: Dict[str, Any] = {}
+        # Numerical stability: clamp extremes to avoid NaN propagation (Branch 5 / #28)
+        CLIP_BOUND = 1e6
+        clamped = torch.clamp(hidden_state, -CLIP_BOUND, CLIP_BOUND)
+        was_clipped = not torch.equal(hidden_state, clamped)
+        hidden_state = clamped
+
+        summary: Dict[str, Any] = {"clipped": was_clipped}
 
         if "mean" in config.stats:
             summary["mean"] = float(hidden_state.mean().item())
@@ -272,6 +278,12 @@ def compute_attention_summary(
 
             if "focused_head_count" in config.stats:
                 summary["focused_head_count"] = int((per_head_max > focused_threshold).sum().item())
+
+        # Per-head max weight: strongest single connection per head (Voita et al. 2019, #6)
+        # Specialist heads often have ~80% max weight; mean-only aggregation hides failures
+        num_heads = attention.size(0)
+        max_per_head = attention.view(num_heads, -1).max(dim=1)[0]  # (heads,)
+        summary["max_weight_per_head"] = [round(float(x), 6) for x in max_per_head.tolist()]
 
         return summary
 

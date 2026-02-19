@@ -178,6 +178,7 @@ class HiddenSummary(BaseModel):
     l2_norm_mean: Optional[float] = None
     max_abs: Optional[float] = None
     sketch: List[float] = Field(default_factory=list)
+    clipped: bool = False  # True if values were clamped before stats (numerical stability)
 
 
 class AttentionSummary(BaseModel):
@@ -191,6 +192,8 @@ class AttentionSummary(BaseModel):
     concentration_min: Optional[float] = None
     collapsed_head_count: int = 0
     focused_head_count: int = 0
+    # Per-head max attention weight (Voita et al. 2019: specialist heads ~80% max weight)
+    max_weight_per_head: Optional[List[float]] = None
 
 
 class LayerSummary(BaseModel):
