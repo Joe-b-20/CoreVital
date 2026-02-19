@@ -9,6 +9,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from CoreVital.config import Config
 from CoreVital.instrumentation.collector import InstrumentationCollector
 from CoreVital.reporting.report_builder import ReportBuilder
@@ -16,6 +18,7 @@ from CoreVital.reporting.schema import Report
 from CoreVital.sinks.local_file import LocalFileSink
 
 
+@pytest.mark.slow
 def test_full_pipeline_gpt2_cpu(tmp_path: Path) -> None:
     """
     Full pipeline: collector -> report_builder -> schema validation -> sink write.
