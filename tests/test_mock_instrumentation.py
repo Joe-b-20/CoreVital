@@ -354,6 +354,55 @@ class TestMockSeq2SeqInstrumentation:
             assert not step.is_prompt_token
 
     @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
+    def test_step_callback_halts_generation(self, mock_model_bundle):
+        """When step_callback returns True, generation stops early (real-time intervention)."""
+        config = Config()
+        config.model.hf_id = "mock-seq2seq"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 10
+        config.generation.seed = 42
+        config.generation.do_sample = False
+
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+
+        stop_after_step: list = [0]
+
+        def halt_after_first(step: int, _ids: list, _buffer, _logits) -> bool:
+            return step >= stop_after_step[0]
+
+        results = collector.run("Translate: Hi", step_callback=halt_after_first)
+        assert len(results.generated_token_ids) <= 1, "Callback should stop after step 0"
+        assert len(results.timeline) <= 1
+
+    @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
+    def test_step_callback_raise_continues_generation(self, mock_model_bundle):
+        """When step_callback raises, exception is logged and generation continues (no crash)."""
+        config = Config()
+        config.model.hf_id = "mock-seq2seq"
+        config.device.requested = "cpu"
+        config.generation.max_new_tokens = 4
+        config.generation.seed = 42
+        config.generation.do_sample = False
+
+        collector = InstrumentationCollector(config)
+        collector.model_bundle = mock_model_bundle
+
+        call_count = 0
+
+        def raise_once(step: int, _ids: list, _buffer, _logits) -> bool:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ValueError("test_step_callback_raise")
+            return False
+
+        results = collector.run("Translate: Hi", step_callback=raise_once)
+        assert call_count >= 1
+        assert len(results.generated_token_ids) > 0, "Generation should continue after callback raised"
+        assert len(results.generated_token_ids) <= config.generation.max_new_tokens
+
+    @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
     def test_report_builder_with_mock_seq2seq(self, mock_model_bundle):
         """Test that ReportBuilder produces valid JSON report with mock Seq2Seq results."""
         # Create config
