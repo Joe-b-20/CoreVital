@@ -102,17 +102,27 @@ def test_smoke_gpt2_cpu(tmp_path):
     assert data["summary"]["generated_tokens"] > 0
     assert data["summary"]["elapsed_ms"] > 0
 
-    # Check prompt_analysis (Phase-1b)
+    # Check prompt_analysis (Phase-1b) — items #7, #9, #20
     pa = data.get("prompt_analysis")
     assert pa is not None, "prompt_analysis should be populated for CausalLM"
     assert len(pa["layers"]) > 0, "Should have prompt attention layers"
     assert len(pa["layer_transformations"]) > 0, "Should have layer transformations"
     # prompt_surprisals length = prompt_tokens - 1 (autoregressive shift)
     assert len(pa["prompt_surprisals"]) == data["summary"]["prompt_tokens"] - 1
-    # Each layer should have heads with basin scores
+    # Each layer should have heads with basin scores (#9)
     layer0 = pa["layers"][0]
-    assert len(layer0["heads"]) > 0, "Each layer should have attention heads"
     assert len(layer0["basin_scores"]) > 0, "Each layer should have basin scores"
+    # Sparse storage SoA (#7): heads have query_indices, key_indices, weights
+    if len(layer0["heads"]) > 0:
+        h0 = layer0["heads"][0]
+        assert "query_indices" in h0 and "key_indices" in h0 and "weights" in h0
+
+    # Check timeline logits metrics (#5): entropy, perplexity, surprisal, top_k_margin, voter_agreement
+    timeline = data.get("timeline", [])
+    if timeline:
+        step0 = timeline[0]
+        ls = step0.get("logits_summary", {})
+        assert "entropy" in ls or "perplexity" in ls or "surprisal" in ls, "Logits summary should have core metrics"
 
     # Check health_flags (Phase-1c)
     hf = data.get("health_flags")
