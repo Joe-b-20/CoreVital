@@ -45,6 +45,17 @@ Models using eager attention by default will work without modification. Models t
 - **CPU:** All tested models run on CPU with small `max_new_tokens`; use for smoke tests and debugging.
 - **CUDA:** Recommended for 7B+ and for quantization.
 
+## Per-model threshold profiles
+
+Detection thresholds (repetition cosine similarity, L2 explosion multiplier, high-entropy cutoff, collapsed/focused head thresholds) can be overridden per model family so that different architectures use appropriate values.
+
+- **Location:** `configs/model_profiles/`. Each file is a YAML with keys: `l2_explosion_multiplier`, `high_entropy_threshold_bits`, `repetition_cosine_threshold`, `collapsed_head_entropy_threshold`, `focused_head_concentration_threshold`.
+- **Resolution:** At report build time, CoreVital maps the model’s HuggingFace architecture string (e.g. `GPT2LMHeadModel`, `LlamaForCausalLM`) to a profile key and loads `configs/model_profiles/<key>.yaml`. If that file is missing, `default.yaml` is used.
+- **Mapping:** `GPT2*` → `gpt2`, `Llama*` → `llama`, `Mistral*` → `mistral`, `T5*` → `t5`, `Bart*` → `bart`; anything else → `default`.
+- **Override:** You can set `config.model_profile` (e.g. from a custom YAML or code) to bypass auto-loading and use that profile for all runs with that config.
+
+See `configs/model_profiles/default.yaml` for the default values and add or edit files (e.g. `gpt2.yaml`, `llama.yaml`) to tune behavior per family.
+
 ## References
 
 - Phase-1 metrics research: [Phase1 metrics analysis](Phase1%20metrics%20analysis.md)
