@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from CoreVital.backends.base import Backend, BackendCapabilities
 from CoreVital.config import Config
@@ -30,11 +30,12 @@ class HuggingFaceBackend(Backend):
         config: Config,
         prompt: str,
         monitor: Optional["PerformanceMonitor"] = None,
+        step_callback: Optional[Any] = None,
     ) -> "InstrumentationResults":
         from CoreVital.instrumentation.collector import InstrumentationCollector
 
         collector = InstrumentationCollector(config, backend=None)
-        return collector._run_impl(prompt, monitor)
+        return collector._run_impl(prompt, monitor, step_callback=step_callback)
 
     def capabilities(self) -> BackendCapabilities:
         return BackendCapabilities(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from CoreVital.backends.base import Backend, BackendCapabilities
 from CoreVital.config import Config
@@ -20,6 +20,7 @@ class VLLMBackend(Backend):
         config: Config,
         prompt: str,
         monitor: Optional["PerformanceMonitor"] = None,
+        step_callback: Optional[Any] = None,
     ) -> "InstrumentationResults":
         raise NotImplementedError(
             "VLLMBackend is not implemented yet. Use HuggingFaceBackend or config with default backend."
