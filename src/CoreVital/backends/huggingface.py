@@ -13,7 +13,7 @@ from CoreVital.backends.base import Backend, BackendCapabilities
 from CoreVital.config import Config
 
 if TYPE_CHECKING:
-    from CoreVital.instrumentation.collector import InstrumentationResults
+    from CoreVital.instrumentation.collector import InstrumentationCollector, InstrumentationResults
     from CoreVital.instrumentation.performance import PerformanceMonitor
 
 
@@ -25,6 +25,10 @@ class HuggingFaceBackend(Backend):
     prompt telemetry (Phase-1b), and Seq2Seq (encoder/decoder, cross_attentions).
     """
 
+    def __init__(self) -> None:
+        self._collector: Optional["InstrumentationCollector"] = None
+        self._config: Optional[Config] = None
+
     def run(
         self,
         config: Config,
@@ -34,8 +38,10 @@ class HuggingFaceBackend(Backend):
     ) -> "InstrumentationResults":
         from CoreVital.instrumentation.collector import InstrumentationCollector
 
-        collector = InstrumentationCollector(config, backend=None)
-        return collector._run_impl(prompt, monitor, step_callback=step_callback)
+        if self._collector is None or self._config is not config:
+            self._collector = InstrumentationCollector(config, backend=None)
+            self._config = config
+        return self._collector._run_impl(prompt, monitor, step_callback=step_callback)
 
     def capabilities(self) -> BackendCapabilities:
         return BackendCapabilities(
