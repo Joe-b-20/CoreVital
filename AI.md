@@ -103,6 +103,9 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 | Fingerprint | fingerprint.py → compute_fingerprint_vector(); report_builder; used for comparison (extensions / compare view) |
 | Backends | backends/base.py → Backend (ABC), BackendCapabilities; HuggingFaceBackend (default); VLLMBackend, LlamaCppBackend, TGIBackend stubs in backends/*. Collector accepts backend= in __init__; run() delegates to backend.run() or _run_impl. |
 | Beam search | generation.num_beams > 1 (config / --num_beams); CausalLM only. collector passes num_beams/early_stopping to generate(); _process_timeline uses beam_indices to index scores/hidden/attn for best beam. |
+| Real-time intervention | Seq2Seq only: collector.run(prompt, step_callback=...) — callback(step, generated_ids, last_layer_hidden_buffer, last_logits) -> bool; return True to stop. Use with summaries.detect_repetition_loop(buffer). CausalLM uses model.generate() (no per-step hook). |
+| Risk calibration | docs/risk-calibration.md; thresholds heuristic; ECE/benchmark validation planned. |
+| GPU benchmarks | docs/gpu-benchmarks.md; measure with --perf strict; report.extensions["performance"] has baseline_ms, inference_overhead_pct. |
 
 ---
 

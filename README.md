@@ -722,25 +722,11 @@ CoreVital currently instruments models loaded via Hugging Face `transformers` (`
 
 ### Real-Time Intervention
 
-The `should_intervene()` API and early warning system currently operate **post-run** — they analyze the complete generation after it finishes. Real-time per-step intervention (halting generation mid-stream when risk exceeds a threshold) is architecturally supported by the manual decoder loop in `collector.py` but not yet wired:
-
-- The decoder loop already computes summaries per step.
-- Health flags could be evaluated incrementally.
-- A `StopCondition` callback that checks risk per step is the planned approach.
-
-**Status:** Streaming API (Phase 4) currently replays steps post-run. Real-time per-step events with mid-generation halt are the next major feature.
+The `should_intervene()` API operates **post-run**. For **Seq2Seq models** (T5, BART), you can halt generation mid-stream using a **step callback**: pass `step_callback=(step_index, generated_ids, last_layer_hidden_buffer, last_logits) -> bool` to `InstrumentationCollector.run(prompt, step_callback=...)`. If the callback returns `True`, generation stops. Use the buffer with `detect_repetition_loop()` (from `CoreVital.instrumentation.summaries`) to stop on repetition. CausalLM uses `model.generate()` and does not support per-step callbacks yet.
 
 ### Risk Threshold Calibration
 
-Risk scores and health flag thresholds (`risk.py`, `report_builder.py`) use heuristics that can be **overridden per model family** via [per-model threshold profiles](docs/model-compatibility.md#per-model-threshold-profiles) in `configs/model_profiles/` (e.g. `gpt2.yaml`, `llama.yaml`). Defaults:
-
-- NaN/Inf → risk 1.0 (always catastrophic)
-- Repetition loop → 0.9 (strong indicator of degenerate output)
-- Mid-layer anomaly → 0.7 (suggests factual processing failure)
-- Attention collapse → 0.3 (common in healthy runs; not always problematic)
-- High entropy threshold: 4.0 bits (configurable via profile `high_entropy_threshold_bits`)
-
-These defaults have **not** been validated on a large labeled dataset of good vs. bad generations. Calibration against benchmarks (e.g., TruthfulQA, HaluEval) is planned.
+Risk scores and thresholds use heuristics overridable per model via [per-model threshold profiles](docs/model-compatibility.md#per-model-threshold-profiles). See [Risk and threshold calibration](docs/risk-calibration.md) for defaults and planned calibration (ECE, benchmark validation).
 
 ### Decoding Strategies
 
@@ -748,7 +734,7 @@ The manual decoder loop supports **greedy decoding**, **sampling** (temperature,
 
 ### GPU Overhead Benchmarks
 
-The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on CPU. Benchmarks on production-scale models (Llama-3.1-8B, Mixtral-8x7B) with GPU are planned and will be added to the table. Early testing suggests overhead is dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
+The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on CPU. For production-scale GPU models and how to measure, see [GPU benchmarks](docs/gpu-benchmarks.md). Overhead is typically dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
 
 ## Requirements
 

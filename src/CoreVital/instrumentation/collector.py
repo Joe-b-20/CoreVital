@@ -38,7 +38,7 @@
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 
 if TYPE_CHECKING:
     from CoreVital.backends.base import Backend
@@ -129,7 +129,17 @@ class InstrumentationCollector:
         self._backend = backend
         self.model_bundle: Optional[ModelBundle] = None
 
-    def run(self, prompt: str, monitor: Optional["PerformanceMonitor"] = None) -> InstrumentationResults:
+    def run(
+        self,
+        prompt: str,
+        monitor: Optional["PerformanceMonitor"] = None,
+        step_callback: Optional[
+            Callable[
+                [int, List[int], Optional[List[torch.Tensor]], Optional[torch.Tensor]],
+                bool,
+            ]
+        ] = None,
+    ) -> InstrumentationResults:
         """
         Run instrumented inference on the given prompt.
 
@@ -139,6 +149,10 @@ class InstrumentationCollector:
         Args:
             prompt: Input prompt text
             monitor: Optional PerformanceMonitor passed from CLI
+            step_callback: Optional callback for real-time intervention (Seq2Seq only).
+                Signature: (step_index, generated_token_ids, last_layer_hidden_buffer, last_logits) -> bool.
+                If it returns True, generation stops. last_layer_hidden_buffer is the last N steps'
+                last-layer hidden state (for e.g. detect_repetition_loop). Ignored for CausalLM.
 
         Returns:
             InstrumentationResults with all collected data
@@ -147,10 +161,20 @@ class InstrumentationCollector:
             InstrumentationError: If inference fails
         """
         if self._backend is not None:
-            return self._backend.run(self.config, prompt, monitor)
-        return self._run_impl(prompt, monitor)
+            return self._backend.run(self.config, prompt, monitor, step_callback=step_callback)
+        return self._run_impl(prompt, monitor, step_callback=step_callback)
 
-    def _run_impl(self, prompt: str, monitor: Optional["PerformanceMonitor"] = None) -> InstrumentationResults:
+    def _run_impl(
+        self,
+        prompt: str,
+        monitor: Optional["PerformanceMonitor"] = None,
+        step_callback: Optional[
+            Callable[
+                [int, List[int], Optional[List[torch.Tensor]], Optional[torch.Tensor]],
+                bool,
+            ]
+        ] = None,
+    ) -> InstrumentationResults:
         """Built-in Hugging Face instrumented run. Used when no external backend is set."""
         try:
 
@@ -266,6 +290,7 @@ class InstrumentationCollector:
                                 inputs,
                                 prompt_token_ids,
                                 monitor=monitor,
+                                step_callback=step_callback,
                             )
                     else:
                         # Prepare generation config for CausalLM models
@@ -602,6 +627,12 @@ class InstrumentationCollector:
         inputs: Any,
         prompt_token_ids: List[int],
         monitor: Optional["PerformanceMonitor"] = None,
+        step_callback: Optional[
+            Callable[
+                [int, List[int], Optional[List[torch.Tensor]], Optional[torch.Tensor]],
+                bool,
+            ]
+        ] = None,
     ) -> Dict[str, Any]:
         """
         Manual generation for Seq2Seq models to capture hidden states and attentions.
@@ -613,6 +644,7 @@ class InstrumentationCollector:
             inputs: Tokenized input from tokenizer
             prompt_token_ids: Prompt token IDs
             monitor: Optional performance monitor for nested timing
+            step_callback: Optional. If it returns True after a step, generation stops (real-time intervention).
 
         Returns:
             Dictionary with sequences, scores, hidden_states, and attentions
@@ -819,6 +851,31 @@ class InstrumentationCollector:
 
             next_token_id = int(next_token.item())
             generated_token_ids.append(next_token_id)
+
+            # Real-time intervention: step_callback can request early stop (e.g. repetition detected)
+            if step_callback is not None:
+                buffer: List[torch.Tensor] = []
+                for i in range(max(0, step - 4), step + 1):
+                    if i < len(all_hidden_states) and all_hidden_states[i] is not None:
+                        layers = all_hidden_states[i]
+                        if layers and len(layers) > 0:
+                            last_layer = layers[-1]
+                            if last_layer is not None:
+                                vec = last_layer.squeeze()
+                                if vec.dim() == 1:
+                                    buffer.append(vec)
+                try:
+                    if step_callback(
+                        step,
+                        list(generated_token_ids),
+                        buffer if buffer else None,
+                        next_token_logits,
+                    ):
+                        logger.info(f"Step callback requested stop at step {step}")
+                        _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
+                        break
+                except Exception as e:
+                    logger.warning(f"step_callback raised: {e}")
 
             # Check for EOS
             if next_token_id == eos_token_id:

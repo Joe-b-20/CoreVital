@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from CoreVital.config import Config
 
@@ -44,6 +44,7 @@ class Backend(ABC):
         config: Config,
         prompt: str,
         monitor: Optional["PerformanceMonitor"] = None,
+        step_callback: Optional[Any] = None,
     ) -> "InstrumentationResults":
         """
         Run instrumented inference for the given prompt.
@@ -52,6 +53,7 @@ class Backend(ABC):
             config: CoreVital config (model, generation, capture, etc.).
             prompt: Input prompt text.
             monitor: Optional performance monitor for timing.
+            step_callback: Optional real-time intervention callback (Seq2Seq only in HF backend).
 
         Returns:
             InstrumentationResults with timeline, token ids, and backend-specific
