@@ -742,7 +742,7 @@ with tab_surp:
             fig.add_trace(
                 go.Bar(
                     x=steps,
-                    y=[v if v is not None else 0 for v in surprisals],
+                    y=[v if v is not None else None for v in surprisals],
                     text=tokens,
                     hovertemplate="Step %{x}<br>Token: %{text}<br>Surprisal: %{y:.3f}<extra></extra>",
                 )
