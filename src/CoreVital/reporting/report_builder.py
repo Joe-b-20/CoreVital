@@ -720,12 +720,15 @@ class ReportBuilder:
                 logger.warning(f"Failed to compute layer transformations: {e}")
 
         # 3. Prompt surprisal (CausalLM only — encoder logits not applicable)
+        # Uses manual CrossEntropyLoss; outputs.loss_per_token does not exist in HF CausalLMOutput.
         prompt_surprisals: list[float] = []
         if pf.logits is not None and pf.prompt_token_ids is not None:
             try:
                 prompt_surprisals = compute_prompt_surprisal(pf.logits, pf.prompt_token_ids)
             except Exception as e:
                 logger.warning(f"Failed to compute prompt surprisal: {e}")
+            # Discard raw logits after use — not persisted to report JSON; frees memory.
+            pf.logits = None
 
         return PromptAnalysis(
             layers=layers,
