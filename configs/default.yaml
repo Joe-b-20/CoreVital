@@ -31,6 +31,8 @@ generation:
   top_k: 50
   top_p: 0.95
   seed: 42
+  num_beams: 1      # > 1 enables beam search (CausalLM)
+  early_stopping: false
 
 summaries:
   hidden:
