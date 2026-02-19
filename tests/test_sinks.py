@@ -387,6 +387,30 @@ class TestCLISinkRouting:
         )
         assert args.sink == "sqlite"
 
+    def test_cli_parser_sink_wandb(self):
+        """CLI should accept --sink wandb with --wandb_project and --wandb_entity."""
+        from CoreVital.cli import create_parser
+
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "run",
+                "--model",
+                "gpt2",
+                "--prompt",
+                "test",
+                "--sink",
+                "wandb",
+                "--wandb_project",
+                "my-project",
+                "--wandb_entity",
+                "my-team",
+            ]
+        )
+        assert args.sink == "wandb"
+        assert args.wandb_project == "my-project"
+        assert args.wandb_entity == "my-team"
+
     def test_cli_parser_default_sink(self):
         """Default --sink should be 'sqlite' (database-first)."""
         from CoreVital.cli import create_parser
@@ -571,6 +595,65 @@ class TestImportGuards:
         # Construction should succeed — lazy import only happens at write() time
         sink = PrometheusSink(port=9999)
         assert sink.port == 9999
+
+    def test_wandb_sink_init_without_api_call(self):
+        """WandBSink can be constructed without importing wandb."""
+        from CoreVital.sinks.wandb_sink import WandBSink
+
+        sink = WandBSink(project="test-project")
+        assert sink.project == "test-project"
+
+
+# ============================================================================
+# WandBSink Tests
+# ============================================================================
+
+
+class TestWandBSink:
+    """Tests for WandBSink write logic with mocked wandb."""
+
+    @patch("CoreVital.sinks.local_file.LocalFileSink")
+    @patch("CoreVital.sinks.wandb_sink._try_import_wandb")
+    def test_wandb_sink_write_logs_and_artifact(self, mock_import_wandb, mock_local_sink_class):
+        """WandBSink.write() should call wandb.log and log_artifact."""
+        mock_wandb = MagicMock()
+        mock_wandb.run = None
+        mock_import_wandb.return_value = mock_wandb
+
+        mock_local_sink = MagicMock()
+        mock_local_sink.write.return_value = "/tmp/runs/trace_1234.json"
+        mock_local_sink_class.return_value = mock_local_sink
+
+        from CoreVital.sinks.wandb_sink import WandBSink
+
+        sink = WandBSink(project="corevital-test")
+        report = _make_report(num_steps=2)
+        report.extensions["risk"] = {"risk_score": 0.35}
+
+        out = sink.write(report)
+
+        assert "wandb:sink-tes" in out
+        assert "/tmp/runs" in out
+        mock_wandb.init.assert_called_once()
+        mock_wandb.log.assert_called()
+        mock_wandb.log_artifact.assert_called_once()
+
+    @patch("CoreVital.sinks.local_file.LocalFileSink")
+    @patch("CoreVital.sinks.wandb_sink._try_import_wandb")
+    def test_wandb_sink_write_returns_identifier(self, mock_import_wandb, mock_local_sink_class):
+        """WandBSink.write() returns string containing wandb and trace id."""
+        mock_wandb = MagicMock()
+        mock_wandb.run = None
+        mock_import_wandb.return_value = mock_wandb
+        mock_local_sink_class.return_value = MagicMock(write=MagicMock(return_value="runs/trace_ab.json"))
+
+        from CoreVital.sinks.wandb_sink import WandBSink
+
+        sink = WandBSink(project="p")
+        report = _make_report()
+        result = sink.write(report)
+        assert result.startswith("wandb:")
+        assert "sink-tes" in result
 
 
 if __name__ == "__main__":

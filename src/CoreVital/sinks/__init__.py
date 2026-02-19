@@ -19,6 +19,7 @@ from CoreVital.sinks.http_sink import HTTPSink
 from CoreVital.sinks.local_file import LocalFileSink
 from CoreVital.sinks.prometheus_sink import PrometheusSink
 from CoreVital.sinks.sqlite_sink import SQLiteSink
+from CoreVital.sinks.wandb_sink import WandBSink
 
 __all__ = [
     "Sink",
@@ -27,4 +28,5 @@ __all__ = [
     "DatadogSink",
     "PrometheusSink",
     "SQLiteSink",
+    "WandBSink",
 ]
