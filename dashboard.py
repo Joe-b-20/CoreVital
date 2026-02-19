@@ -439,7 +439,8 @@ if source == "Database" and db_path:
             import io
 
             st.subheader("Compare runs")
-            st.caption("Select two or more runs below to see metrics side-by-side with differences highlighted.")
+            with st.expander("What does this do?", expanded=False):
+                st.markdown("Select two or more runs below to see metrics side-by-side with differences highlighted.")
             # Build options for multiselect: label -> trace_id
             trace_options = [
                 f"{(t.get('trace_id') or '')[:8]} | {t.get('model_id') or '?'} | risk={t.get('risk_score'):.2f}"
@@ -588,9 +589,10 @@ rag_context = report_data.get("extensions", {}).get("rag")
 if rag_context:
     st.divider()
     st.subheader("RAG Context")
-    st.caption(
-        "This run was executed with retrieval-augmented context. Use this to correlate behavior with context length or source documents."
-    )
+    with st.expander("What does this mean?", expanded=False):
+        st.markdown(
+            "This run was executed with retrieval-augmented context. Use this to correlate behavior with context length or source documents."
+        )
     rc1, rc2 = st.columns(2)
     with rc1:
         ctx_tokens = rag_context.get("context_token_count")
@@ -625,23 +627,24 @@ if rag_context:
 health_flags = report_data.get("health_flags")
 if health_flags:
     st.divider()
-    st.subheader("Health Flags")
-    st.caption(
+st.subheader("Health Flags")
+with st.expander("What do these mean?", expanded=False):
+    st.markdown(
         "Quick summary of run health. ✅ = OK, 🔴/⚠️ = worth checking. "
         "NaN/Inf = numerical failure; Attention collapse = some heads focus on one token; "
         "High entropy steps = model was very uncertain; Repetition loop = may be stuck; "
         "Mid-layer anomaly = odd values in middle layers."
     )
-    hc1, hc2, hc3 = st.columns(3)
-    with hc1:
-        st.markdown(health_badge("NaN Detected", health_flags.get("nan_detected", False)))
-        st.markdown(health_badge("Inf Detected", health_flags.get("inf_detected", False)))
-    with hc2:
-        st.markdown(health_badge("Attention Collapse", health_flags.get("attention_collapse_detected", False)))
-        st.markdown(health_badge("High Entropy Steps", health_flags.get("high_entropy_steps", 0)))
-    with hc3:
-        st.markdown(health_badge("Repetition Loop", health_flags.get("repetition_loop_detected", False)))
-        st.markdown(health_badge("Mid-Layer Anomaly", health_flags.get("mid_layer_anomaly_detected", False)))
+hc1, hc2, hc3 = st.columns(3)
+with hc1:
+    st.markdown(health_badge("NaN Detected", health_flags.get("nan_detected", False)))
+    st.markdown(health_badge("Inf Detected", health_flags.get("inf_detected", False)))
+with hc2:
+    st.markdown(health_badge("Attention Collapse", health_flags.get("attention_collapse_detected", False)))
+    st.markdown(health_badge("High Entropy Steps", health_flags.get("high_entropy_steps", 0)))
+with hc3:
+    st.markdown(health_badge("Repetition Loop", health_flags.get("repetition_loop_detected", False)))
+    st.markdown(health_badge("Mid-Layer Anomaly", health_flags.get("mid_layer_anomaly_detected", False)))
 
 # ------------------------------------------------------------------
 # Early warning (Phase-4), when present
@@ -649,12 +652,13 @@ if health_flags:
 ew_data = report_data.get("extensions", {}).get("early_warning")
 if ew_data:
     st.divider()
-    st.subheader("Early Warning")
-    st.caption("Failure risk and signals derived from timeline (entropy trend, repetition, etc.). Use for triage.")
-    ew_risk = ew_data.get("failure_risk")
-    ew_signals = ew_data.get("warning_signals") or []
-    if ew_risk is not None:
-        st.metric("Failure risk", f"{ew_risk:.2f}")
+st.subheader("Early Warning")
+with st.expander("What does this mean?", expanded=False):
+    st.markdown("Failure risk and signals derived from timeline (entropy trend, repetition, etc.). Use for triage.")
+ew_risk = ew_data.get("failure_risk")
+ew_signals = ew_data.get("warning_signals") or []
+if ew_risk is not None:
+    st.metric("Failure risk", f"{ew_risk:.2f}")
     if ew_signals:
         st.markdown("**Signals:** " + ", ".join(ew_signals))
 
@@ -664,31 +668,35 @@ if ew_data:
 risk_data = report_data.get("extensions", {}).get("risk")
 if risk_data:
     st.divider()
-    st.subheader("Risk Score")
-    st.caption(
+st.subheader("Risk Score")
+with st.expander("What does this mean?", expanded=False):
+    st.markdown(
         "Single risk score (0–1) from health flags. High = NaN/Inf, repetition, mid-layer anomaly, or many high-entropy steps. "
         "Blamed layers = layers that had anomalies or attention collapse."
     )
-    r_score = risk_data.get("risk_score")
-    r_factors = risk_data.get("risk_factors") or []
-    r_blamed = risk_data.get("blamed_layers") or []
-    if r_score is not None:
-        st.metric("Risk score", f"{r_score:.2f}")
-    if r_factors:
-        st.markdown("**Contributing factors:** " + ", ".join(r_factors))
-    if r_blamed:
-        st.markdown(f"**Blamed layers:** {r_blamed}")
+r_score = risk_data.get("risk_score")
+r_factors = risk_data.get("risk_factors") or []
+r_blamed = risk_data.get("blamed_layers") or []
+if r_score is not None:
+    st.metric("Risk score", f"{r_score:.2f}")
+if r_factors:
+    st.markdown("**Contributing factors:** " + ", ".join(r_factors))
+if r_blamed:
+    st.markdown(f"**Blamed layers:** {r_blamed}")
 
 # ------------------------------------------------------------------
 # Entropy & Perplexity over time
 # ------------------------------------------------------------------
 st.divider()
 st.subheader("Logits Metrics Over Time")
-st.caption(
-    "**Entropy:** &lt;2 confident, 2–4 normal, &gt;4 confused (red line). "
-    "**Perplexity:** same idea as entropy (≈ how many tokens the model is choosing between). "
-    "**Surprisal:** how surprised the model was by each token; spikes = hard or unexpected tokens."
-)
+with st.expander("What do these metrics mean?", expanded=False):
+    st.markdown(
+        "**Entropy:** &lt;2 confident, 2–4 normal, &gt;4 confused (red line). "
+        "**Perplexity:** same idea as entropy (≈ how many tokens the model is choosing between). "
+        "**Surprisal:** how surprised the model was by each token; spikes = hard or unexpected tokens. "
+        "**Top-K margin:** gap between top and second-most likely token; small = uncertain. "
+        "**Voter agreement:** sum of top-K token probabilities; high = mass on few candidates."
+    )
 steps, entropies, tokens = extract_timeline_series(report_data, "entropy")
 _, perplexities, _ = extract_timeline_series(report_data, "perplexity")
 _, surprisals, _ = extract_timeline_series(report_data, "surprisal")
@@ -845,7 +853,8 @@ with tab_voter:
         st.info("No voter agreement data available.")
 
 # --- Entropy vs Token Position (#25) ---
-st.caption("**Entropy vs position:** uncertainty along the generation; vertical line = end of prompt.")
+with st.expander("What does this chart show?", expanded=False):
+    st.markdown("**Entropy vs position:** uncertainty along the generation; vertical line = end of prompt.")
 if entropies and HAS_PLOTLY:
     prompt_tokens = (report_data.get("summary") or {}).get("prompt_tokens") or 0
     fig_ep = go.Figure()
@@ -877,7 +886,8 @@ if entropies and HAS_PLOTLY:
 
 # --- Colored Output by Uncertainty (#26) ---
 st.subheader("Colored Output")
-st.caption("Generated text colored by per-token entropy: green = low uncertainty, yellow = medium, red = high.")
+with st.expander("What does this mean?", expanded=False):
+    st.markdown("Generated text colored by per-token entropy: green = low uncertainty, yellow = medium, red = high.")
 if steps and tokens and entropies:
     parts: List[str] = []
     for tok, ent in zip(tokens, entropies, strict=True):
@@ -902,11 +912,12 @@ else:
 # ------------------------------------------------------------------
 st.divider()
 st.subheader("Attention Heatmaps")
-st.caption(
-    "Per layer and step: **Entropy mean** = how spread out attention is (very low = collapse). "
-    "**Concentration max** = max weight on one position (near 1 = one token got all attention). "
-    "**Collapsed/Focused head count** = number of heads in that layer that look collapsed or very focused."
-)
+with st.expander("What do these show?", expanded=False):
+    st.markdown(
+        "Per layer and step: **Entropy mean** = how spread out attention is (very low = collapse). "
+        "**Concentration max** = max weight on one position (near 1 = one token got all attention). "
+        "**Collapsed/Focused head count** = number of heads in that layer that look collapsed or very focused."
+    )
 attn_metric = st.selectbox(
     "Metric",
     [
@@ -948,11 +959,12 @@ else:
 # ------------------------------------------------------------------
 st.divider()
 st.subheader("Hidden State L2 Norms")
-st.caption(
-    "Size of the vectors between layers. Stable values = healthy. "
-    "Very high values can mean activations blowing up; very low can mean activations dying out. "
-    "Look for sudden jumps or odd patterns by layer or step."
-)
+with st.expander("What does this show?", expanded=False):
+    st.markdown(
+        "Size of the vectors between layers. Stable values = healthy. "
+        "Very high values can mean activations blowing up; very low can mean activations dying out. "
+        "Look for sudden jumps or odd patterns by layer or step."
+    )
 l2_matrix, l2_layers, l2_steps = build_layer_step_matrix(report_data, "hidden_summary.l2_norm_mean")
 if l2_matrix and l2_layers > 0 and l2_steps > 0:
     if HAS_PLOTLY:
@@ -984,11 +996,12 @@ prompt_analysis = report_data.get("prompt_analysis")
 if prompt_analysis:
     st.divider()
     st.subheader("Prompt Analysis")
-    st.caption(
-        "From an extra pass over your prompt. **Layer transformations:** how much each layer changes the representation (healthy often 0.2–0.5). "
-        "**Prompt surprisals:** how surprised the model was by each prompt token (high = unusual or hard). "
-        "**Basin score:** attention on middle vs ends of prompt; low (&lt;0.3) can mean 'lost in the middle'."
-    )
+    with st.expander("What does this show?", expanded=False):
+        st.markdown(
+            "From an extra pass over your prompt. **Layer transformations:** how much each layer changes the representation (healthy often 0.2–0.5). "
+            "**Prompt surprisals:** how surprised the model was by each prompt token (high = unusual or hard). "
+            "**Basin score:** attention on middle vs ends of prompt; low (&lt;0.3) can mean 'lost in the middle'."
+        )
     pa_tab1, pa_tab2, pa_tab3, pa_tab4 = st.tabs(
         ["Layer Transformations", "Prompt Surprisals", "Sparse Attention", "Attention Explorer"]
     )
@@ -1172,16 +1185,33 @@ perf_data = report_data.get("extensions", {}).get("performance")
 if perf_data:
     st.divider()
     st.subheader("Performance")
-    st.caption(
-        "Where time was spent: model load, tokenization, generation, and report building. Use this to see what dominates (e.g. load vs actual generation)."
-    )
-    # Total time (support both total_wall_time_ms and legacy total_ms)
+    with st.expander("What does this show?", expanded=False):
+        st.markdown(
+            "Where time was spent: model load, tokenization, generation, and report building. Use this to see what dominates (e.g. load vs actual generation)."
+        )
+    with st.expander("How we calculate these metrics", expanded=False):
+        st.markdown(
+            "- **Total wall time:** Elapsed time from run start to finish (ms). "
+            "Includes all operations and any gaps between them.\n"
+            "- **Parent operations:** High-level phases (e.g. model_load, tokenize, model_inference, report_build). "
+            "Each phase’s duration and share of total are measured from the instrumentation tree.\n"
+            "- **Unaccounted time:** Total wall time minus the sum of parent operation times (and in strict mode, minus warmup and baseline). "
+            "Represents gaps between operations or time not attributed to a tracked phase."
+        )
+    # Total time and unaccounted (support both total_wall_time_ms and legacy total_ms)
     total_ms = perf_data.get("total_wall_time_ms") or perf_data.get("total_ms")
     unaccounted_raw = perf_data.get("unaccounted_time")
-    unaccounted = unaccounted_raw.get("ms") if isinstance(unaccounted_raw, dict) else unaccounted_raw
-    st.metric("Total wall time", f"{total_ms:.1f}ms" if isinstance(total_ms, (int, float)) else str(total_ms))
-    if unaccounted is not None and isinstance(unaccounted, (int, float)):
-        st.caption(f"Unaccounted: {unaccounted:.1f}ms")
+    unaccounted_ms = unaccounted_raw.get("ms") if isinstance(unaccounted_raw, dict) else unaccounted_raw
+    unaccounted_pct = unaccounted_raw.get("pct") if isinstance(unaccounted_raw, dict) else None
+    r1c1, r1c2 = st.columns(2)
+    with r1c1:
+        st.metric("Total wall time", f"{total_ms:.1f} ms" if isinstance(total_ms, (int, float)) else str(total_ms))
+    with r1c2:
+        if unaccounted_ms is not None and isinstance(unaccounted_ms, (int, float)):
+            pct_str = f" ({unaccounted_pct:.1f}%)" if unaccounted_pct is not None else ""
+            st.metric("Unaccounted time", f"{unaccounted_ms:.1f} ms{pct_str}")
+        else:
+            st.metric("Unaccounted time", "—")
 
     # parent_operations can be list of {name, ms, pct} or dict
     ops_raw = perf_data.get("parent_operations")
@@ -1239,40 +1269,96 @@ if perf_data:
                     pct_str = f" ({pcts[i]:.1f}%)" if pcts and pcts[i] is not None else ""
                     st.write(f"- **{name}:** {times[i]:.1f}ms{pct_str}")
 
-    # Detailed breakdown from file (nested children)
-    detailed_file = perf_data.get("detailed_file")
-    if detailed_file and Path(detailed_file).exists():
-        with open(detailed_file) as f:
-            detailed = json.load(f)
+    # Detailed breakdown: from report (DB) or from file when sink was local
+    detailed = perf_data.get("detailed_breakdown")
+    if not detailed and perf_data.get("detailed_file"):
+        detailed_file = perf_data.get("detailed_file")
+        if Path(detailed_file).exists():
+            with open(detailed_file) as f:
+                detailed = json.load(f)
+        else:
+            st.info("Detailed file path set but file not found (run from project root or adjust path).")
+    if detailed:
         breakdown = detailed.get("breakdown", {})
-        if breakdown and HAS_PLOTLY:
-            st.markdown("**Detailed breakdown (top-level)**")
-            top_names = list(breakdown.keys())
-            top_times = [breakdown[k].get("ms", 0) if isinstance(breakdown[k], dict) else 0 for k in top_names]
-            fig_det = go.Figure()
-            fig_det.add_trace(
-                go.Bar(
-                    x=top_names,
-                    y=top_times,
-                    marker_color="teal",
-                    text=[f"{t:.1f}ms" for t in top_times],
-                    textposition="outside",
-                    hovertemplate="%{x}<br>%{y:.1f}ms<extra></extra>",
-                )
-            )
-            fig_det.update_layout(
-                xaxis_title="Operation",
-                yaxis_title="Time (ms)",
-                height=300,
-                margin=dict(t=20, b=80),
-                xaxis_tickangle=-45,
-            )
-            st.plotly_chart(fig_det, use_container_width=True)
+        if breakdown:
+            st.subheader("Detailed breakdown")
+            def _render_breakdown_node(name: str, node: Any, depth: int = 0) -> None:
+                if not isinstance(node, dict):
+                    return
+                ms = node.get("ms", 0)
+                pct = node.get("pct")
+                pct_str = f" ({pct:.1f}%)" if pct is not None else ""
+                indent = "  " * depth
+                children = node.get("children") or {}
+                if children:
+                    with st.expander(f"{indent}{name}: {ms:.1f} ms{pct_str}", expanded=(depth < 1)):
+                        for child_name, child_node in children.items():
+                            _render_breakdown_node(child_name, child_node, depth + 1)
+                        per_step = node.get("per_step")
+                        if per_step:
+                            st.caption(f"Per-step: count={per_step.get('count')}, min={per_step.get('min_ms')} ms, max={per_step.get('max_ms')} ms, avg={per_step.get('avg_ms')} ms")
+                else:
+                    st.write(f"{indent}**{name}:** {ms:.1f} ms{pct_str}")
+                    per_step = node.get("per_step")
+                    if per_step:
+                        st.caption(f"Per-step: count={per_step.get('count')}, min={per_step.get('min_ms')} ms, max={per_step.get('max_ms')} ms, avg={per_step.get('avg_ms')} ms")
 
-        with st.expander("Detailed breakdown (raw JSON)", expanded=False):
-            st.json(breakdown)
-    elif perf_data.get("detailed_file"):
-        st.info("Detailed file path set but file not found (run from project root or adjust path).")
+            with st.expander("Full detailed breakdown (nested)", expanded=False):
+                for op_name, op_node in breakdown.items():
+                    _render_breakdown_node(op_name, op_node)
+
+    # Strict mode results: baseline vs instrumented (only when --perf strict was used) baseline vs instrumented (only when --perf strict was used)
+    if perf_data.get("baseline_ms") is not None:
+        st.subheader("Strict mode results")
+        with st.expander("How we calculate these metrics", expanded=False):
+            st.markdown(
+                "- **Original model load (ms):** Time to load the model once (cold load); not counted in inference.\n"
+                "- **Warmup (ms):** Optional warmup run before timing; excluded from total and baseline.\n"
+                "- **Baseline (ms):** Raw inference time with no CoreVital instrumentation (reference).\n"
+                "- **Instrumented inference (ms):** Inference time with CoreVital hooks enabled.\n"
+                "- **Inference overhead (ms / %):** instrumented_inference − baseline; percentage = (overhead / baseline) × 100.\n"
+                "- **CoreVital overhead (ms / %):** Sum of all tracked operations except model_load and tokenize, minus baseline. "
+                "Measures total extra time attributed to CoreVital (report building, etc.) relative to raw inference; "
+                "percentage = (corevital_overhead_ms / baseline) × 100."
+            )
+        # Row 1: load & warmup
+        oml = perf_data.get("original_model_load_ms")
+        wm = perf_data.get("warmup_ms")
+        bm = perf_data.get("baseline_ms")
+        im = perf_data.get("instrumented_inference_ms")
+        iom = perf_data.get("inference_overhead_ms")
+        iop = perf_data.get("inference_overhead_pct")
+        com = perf_data.get("corevital_overhead_ms")
+        cop = perf_data.get("corevital_overhead_pct")
+
+        def _fmt_ms(val: Any) -> str:
+            if val is None:
+                return "—"
+            return f"{val:.1f}" if isinstance(val, (int, float)) else str(val)
+
+        def _fmt_pct(val: Any) -> str:
+            if val is None:
+                return "—"
+            return f"{val:.1f}%" if isinstance(val, (int, float)) else str(val)
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Original model load (ms)", _fmt_ms(oml))
+        with c2:
+            st.metric("Warmup (ms)", _fmt_ms(wm))
+        with c3:
+            st.metric("Baseline (ms)", _fmt_ms(bm))
+        with c4:
+            st.metric("Instrumented inference (ms)", _fmt_ms(im))
+        c5, c6, c7, c8 = st.columns(4)
+        with c5:
+            st.metric("Inference overhead (ms)", _fmt_ms(iom))
+        with c6:
+            st.metric("Inference overhead (%)", _fmt_pct(iop))
+        with c7:
+            st.metric("CoreVital overhead (ms)", _fmt_ms(com))
+        with c8:
+            st.metric("CoreVital overhead (%)", _fmt_pct(cop))
 
 # ------------------------------------------------------------------
 # Raw JSON

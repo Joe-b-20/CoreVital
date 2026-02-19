@@ -417,22 +417,24 @@ def run_command(args: argparse.Namespace) -> int:
             # Build performance summary
             perf_summary = monitor.build_summary_dict()
 
-            # For detailed/strict modes, write the detailed breakdown file
+            # For detailed/strict modes: embed detailed breakdown in report (DB gets it).
+            # Write performance_detailed.json file only when sink is local_file.
             mode = monitor.mode
             trace_id = report.trace_id
             if mode in ("detailed", "strict"):
-                output_dir = Path(config.sink.output_dir)
-                output_dir.mkdir(parents=True, exist_ok=True)
-                detailed_path = output_dir / f"trace_{trace_id[:8]}_performance_detailed.json"
-                monitor.set_detailed_file(str(detailed_path))
-                perf_summary["detailed_file"] = str(detailed_path)
-
                 detailed_breakdown = monitor.build_detailed_breakdown()
                 detailed_breakdown["trace_id"] = trace_id[:8]
-                with open(detailed_path, "w") as f:
-                    # Compact JSON for smaller file size (dashboard can format on-demand)
-                    json.dump(detailed_breakdown, f, separators=(",", ":"), ensure_ascii=False)
-                logger.info(f"Performance detailed written to {detailed_path}")
+                perf_summary["detailed_breakdown"] = detailed_breakdown
+
+                if config.sink.type == "local_file":
+                    output_dir = Path(config.sink.output_dir)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    detailed_path = output_dir / f"trace_{trace_id[:8]}_performance_detailed.json"
+                    monitor.set_detailed_file(str(detailed_path))
+                    perf_summary["detailed_file"] = str(detailed_path)
+                    with open(detailed_path, "w") as f:
+                        json.dump(detailed_breakdown, f, separators=(",", ":"), ensure_ascii=False)
+                    logger.info(f"Performance detailed written to {detailed_path}")
 
             # Inject into report so sink.write() serializes the complete data
             report.extensions["performance"] = perf_summary
