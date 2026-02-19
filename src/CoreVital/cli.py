@@ -122,9 +122,9 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--sink",
         type=str,
-        choices=["local", "datadog", "prometheus", "sqlite"],
+        choices=["local", "datadog", "prometheus", "sqlite", "wandb"],
         default="sqlite",
-        help="Sink: sqlite (DB, default), local (JSON), datadog (metrics API), prometheus (scrape).",
+        help="Sink: sqlite (DB, default), local (JSON), datadog, prometheus, wandb (Weights & Biases).",
     )
     run_parser.add_argument(
         "--datadog_api_key",
@@ -143,6 +143,18 @@ def create_parser() -> argparse.ArgumentParser:
         type=int,
         default=9091,
         help="Prometheus /metrics endpoint port (default: 9091). For --sink prometheus.",
+    )
+    run_parser.add_argument(
+        "--wandb_project",
+        type=str,
+        default=None,
+        help="W&B project name (or set WANDB_PROJECT). For --sink wandb.",
+    )
+    run_parser.add_argument(
+        "--wandb_entity",
+        type=str,
+        default=None,
+        help="W&B entity/team (or set WANDB_ENTITY). For --sink wandb.",
     )
     run_parser.add_argument(
         "--write-json",
@@ -328,6 +340,8 @@ def run_command(args: argparse.Namespace) -> int:
                 config.sink.type = "datadog"
             elif args.sink == "prometheus":
                 config.sink.type = "prometheus"
+            elif args.sink == "wandb":
+                config.sink.type = "wandb"
 
             config.logging.level = args.log_level
 
@@ -436,6 +450,18 @@ def run_command(args: argparse.Namespace) -> int:
             from CoreVital.sinks.prometheus_sink import PrometheusSink
 
             sink = PrometheusSink(port=args.prometheus_port, local_output_dir=config.sink.output_dir)
+        elif config.sink.type == "wandb":
+            import os
+
+            from CoreVital.sinks.wandb_sink import WandBSink
+
+            project = getattr(args, "wandb_project", None) or os.environ.get("WANDB_PROJECT")
+            entity = getattr(args, "wandb_entity", None) or os.environ.get("WANDB_ENTITY")
+            sink = WandBSink(
+                project=project,
+                entity=entity,
+                local_output_dir=config.sink.output_dir,
+            )
         else:
             raise ConfigurationError(f"Unknown sink type: {config.sink.type}")
 

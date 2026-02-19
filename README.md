@@ -12,7 +12,7 @@ Use it to debug why a model repeats itself, monitor inference health in producti
 -  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors
 -  **Performance Monitoring**: Track operation times with `--perf` flag (summary, detailed, or strict mode)
 -  **Model Registry**: Single source of truth for model type detection via `ModelCapabilities`
--  **Extensible Persistence**: Pluggable Sink interface — SQLite (default), LocalFile, Datadog, Prometheus, HTTP, OpenTelemetry
+-  **Extensible Persistence**: Pluggable Sink interface — SQLite (default), LocalFile, Datadog, Prometheus, W&B, HTTP, OpenTelemetry
 -  **CI/CD**: GitHub Actions workflow with pytest, Ruff linting, and MyPy type checking
 -  **Configurable**: YAML configuration with environment variable overrides
 -  **CPU/CUDA Support**: Automatic device detection or manual override
@@ -211,7 +211,7 @@ Options:
   --quantize-4              Load model with 4-bit quantization (requires CUDA)
   --quantize-8              Load model with 8-bit quantization (requires CUDA)
   --out PATH                Output directory (default: runs); with --sink sqlite, DB is <out>/corevital.db
-  --sink TEXT               Sink: sqlite (default) | local | datadog | prometheus
+  --sink TEXT               Sink: sqlite (default) | local | datadog | prometheus | wandb
   --capture TEXT            Capture mode: summary | full | on_risk
   --rag-context PATH        Path to JSON file with RAG context metadata
   --export-otel             Export run to OpenTelemetry (OTLP); requires pip install CoreVital[otel]
@@ -414,6 +414,7 @@ Built-in sinks:
 - **LocalFileSink**: Write JSON to local filesystem (`--sink local`).
 - **DatadogSink**: Send metrics/events to Datadog (`--sink datadog`; requires `DD_API_KEY` or `--datadog_api_key`).
 - **PrometheusSink**: Expose `/metrics` for scraping (`--sink prometheus`; `--prometheus_port`).
+- **WandBSink**: Log metrics, report artifact, and optional basin heatmap to Weights & Biases (`--sink wandb`; `--wandb_project`, `--wandb_entity`, or `WANDB_PROJECT`/`WANDB_ENTITY`).
 - **HTTPSink**: POST JSON to remote endpoint.
 
 ### Configuration
@@ -675,7 +676,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
   - `models/`: Model loading, management, and `ModelCapabilities` registry
   - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
   - `reporting/`: Schema (v0.3.0), validation, and report building
-  - `sinks/`: Persistence backends (SQLite, LocalFile, HTTP, Datadog, Prometheus)
+  - `sinks/`: Persistence backends (SQLite, LocalFile, HTTP, Datadog, Prometheus, W&B)
   - `utils/`: Shared utilities
 - `.github/workflows/`: CI/CD pipeline (test.yaml)
 - `configs/`: YAML configuration files
@@ -758,6 +759,7 @@ The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on C
 - `dashboard`: Streamlit + Plotly for the web dashboard
 - `datadog`: Datadog API client for `--sink datadog`
 - `prometheus`: Prometheus client for `--sink prometheus`
+- `wandb`: Weights & Biases for `--sink wandb`
 - `otel`: OpenTelemetry SDK + OTLP exporter for `--export-otel`
 - `all`: everything above
 

@@ -115,12 +115,14 @@ class SummariesConfig(BaseModel):
 class SinkConfig(BaseModel):
     """Sink configuration."""
 
-    type: Literal["sqlite", "local_file", "datadog", "prometheus"] = "sqlite"
+    type: Literal["sqlite", "local_file", "datadog", "prometheus", "wandb"] = "sqlite"
     output_dir: str = "runs"
     remote_url: Optional[str] = None  # Legacy (http sink)
     datadog_api_key: Optional[str] = None
     datadog_site: str = "datadoghq.com"
     prometheus_port: int = 9091
+    wandb_project: Optional[str] = None  # W&B project (or WANDB_PROJECT env)
+    wandb_entity: Optional[str] = None  # W&B entity (or WANDB_ENTITY env)
     sqlite_path: str = "runs/corevital.db"  # Path to SQLite DB when type=sqlite
     sqlite_backup_json: bool = False  # When True, also write JSON file when using sqlite sink
 

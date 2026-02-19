@@ -63,13 +63,16 @@ datadog = [
 prometheus = [
     "prometheus-client>=0.20.0",
 ]
+wandb = [
+    "wandb>=0.16.0",
+]
 otel = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp>=1.20.0",
 ]
 all = [
-    "CoreVital[quantization,dashboard,datadog,prometheus,otel]",
+    "CoreVital[quantization,dashboard,datadog,prometheus,wandb,otel]",
 ]
 
 # -----------------------------------------------------------------------------
