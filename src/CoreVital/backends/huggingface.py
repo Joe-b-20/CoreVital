@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from CoreVital.backends.base import Backend, BackendCapabilities, StepCallback
 from CoreVital.config import Config

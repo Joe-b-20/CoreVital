@@ -59,7 +59,7 @@ class Backend(ABC):
             config: CoreVital config (model, generation, capture, etc.).
             prompt: Input prompt text.
             monitor: Optional performance monitor for timing.
-            step_callback: Optional real-time intervention callback (Seq2Seq only in HF backend). Signature: StepCallback (step, generated_token_ids, last_layer_hidden_buffer, last_logits) -> True to stop.
+            step_callback: Optional real-time intervention (Seq2Seq only). StepCallback: return True to stop.
 
         Returns:
             InstrumentationResults with timeline, token ids, and backend-specific
