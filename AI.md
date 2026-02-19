@@ -141,7 +141,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 - **Run one monitored generation:** `corevital run --model gpt2 --prompt "Hello" --max_new_tokens 5` → report in runs/corevital.db (or --sink local for JSON). Optional: --device cuda, --quantize-4, --perf, --capture summary|full|on_risk.
 - **Use in Python:** `CoreVitalMonitor(capture_mode="summary").run("gpt2", "Hello", max_new_tokens=5)` then `get_risk_score()`, `get_health_flags()`, `should_intervene()`. Or `wrap_generation()` context manager.
 - **Dashboard:** `streamlit run dashboard.py`; sidebar: load from runs/, DB, or upload JSON. Uses load_report(path) or SQLiteSink.load_report(db_path, trace_id).
-- **Compare runs:** `corevital compare --db runs/corevital.db` (or --db path); lists traces, optional --prompt_hash filter. Compare view in dashboard.
+- **Compare runs:** `corevital compare --db runs/corevital.db` (or --db path); lists traces, optional `--prompt-hash` filter. Compare view in dashboard.
 - **Migrate JSON to DB:** `corevital migrate --from-dir <dir> --to-db <path>`.
 - **Export to W&B/Datadog/OTLP:** --sink wandb (and WANDB_* or --wandb_project/entity); --sink datadog (DD_API_KEY); --export-otel (OTEL_EXPORTER_OTLP_ENDPOINT).
 
