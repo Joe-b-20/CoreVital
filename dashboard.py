@@ -255,7 +255,7 @@ def _render_compare_side_by_side(reports: List[Dict[str, Any]], trace_ids: List[
     st.markdown(
         "**Metrics comparison** — cells that differ from Run 1 are highlighted. Check **Diff from Run 1?** for a quick scan."
     )
-    st.dataframe(styled, use_container_width=True, hide_index=False)
+    st.dataframe(styled, width='stretch', hide_index=False)
     # Optional: show prompt/output in expanders per run
     with st.expander("Prompts and outputs by run", expanded=False):
         for i, (report, tid) in enumerate(zip(reports, trace_ids, strict=True)):
@@ -473,7 +473,7 @@ if source == "Database" and db_path:
                     }
                 )
             with st.expander("All runs in database", expanded=len(selected_labels) == 0):
-                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.dataframe(rows, width='stretch', hide_index=True)
                 buf = io.StringIO()
                 w = csv.DictWriter(
                     buf, fieldnames=["trace_id (short)", "model_id", "created_at_utc", "risk_score", "prompt_hash"]
@@ -729,7 +729,7 @@ with tab_ent:
                 height=350,
                 margin=dict(t=30, b=40),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             import pandas as pd
 
@@ -758,7 +758,7 @@ with tab_perp:
                 height=350,
                 margin=dict(t=30, b=40),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             import pandas as pd
 
@@ -785,7 +785,7 @@ with tab_surp:
                 height=350,
                 margin=dict(t=30, b=40),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             import pandas as pd
 
@@ -814,7 +814,7 @@ with tab_topk:
                 height=350,
                 margin=dict(t=30, b=40),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             import pandas as pd
 
@@ -843,7 +843,7 @@ with tab_voter:
                 height=350,
                 margin=dict(t=30, b=40),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             import pandas as pd
 
@@ -882,7 +882,7 @@ if entropies and HAS_PLOTLY:
         height=280,
         margin=dict(t=20, b=40),
     )
-    st.plotly_chart(fig_ep, use_container_width=True)
+    st.plotly_chart(fig_ep, width='stretch')
 
 # --- Colored Output by Uncertainty (#26) ---
 st.subheader("Colored Output")
@@ -947,7 +947,7 @@ if matrix and n_layers > 0 and n_steps > 0:
             height=max(300, n_layers * 30),
             margin=dict(t=30, b=40),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.write("Install plotly for heatmap visualization: `pip install plotly`")
         st.json(matrix)
@@ -983,7 +983,7 @@ if l2_matrix and l2_layers > 0 and l2_steps > 0:
             height=max(300, l2_layers * 30),
             margin=dict(t=30, b=40),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("Install plotly for heatmap visualization.")
 else:
@@ -1026,7 +1026,7 @@ if prompt_analysis:
                     height=300,
                     margin=dict(t=20, b=40),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.bar_chart(transforms)
         else:
@@ -1054,7 +1054,7 @@ if prompt_analysis:
                     height=300,
                     margin=dict(t=20, b=40),
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.bar_chart(surprisals_pa)
         else:
@@ -1098,7 +1098,7 @@ if prompt_analysis:
                         height=min(400, 80 + 20 * len(layers_data)),
                         margin=dict(t=40, b=40),
                     )
-                    st.plotly_chart(fig_heat, use_container_width=True)
+                    st.plotly_chart(fig_heat, width='stretch')
                 st.write("**Detail:** select a layer to see per-head bar chart.")
             selected_layer = st.slider("Layer", 0, len(layers_data) - 1, 0, key="pa_layer")
             layer = layers_data[selected_layer]
@@ -1121,7 +1121,7 @@ if prompt_analysis:
                         height=250,
                         margin=dict(t=20, b=40),
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
                 else:
                     st.bar_chart(basins)
             heads = layer.get("heads", [])
@@ -1250,7 +1250,7 @@ if perf_data:
                         margin=dict(t=20, b=80),
                         xaxis_tickangle=-45,
                     )
-                    st.plotly_chart(fig_bar, use_container_width=True)
+                    st.plotly_chart(fig_bar, width='stretch')
                 with tab_pie:
                     fig_pie = go.Figure(
                         data=[
@@ -1263,7 +1263,7 @@ if perf_data:
                         ]
                     )
                     fig_pie.update_layout(height=340, margin=dict(t=20, b=20))
-                    st.plotly_chart(fig_pie, use_container_width=True)
+                    st.plotly_chart(fig_pie, width='stretch')
             else:
                 for i, name in enumerate(names):
                     pct_str = f" ({pcts[i]:.1f}%)" if pcts and pcts[i] is not None else ""

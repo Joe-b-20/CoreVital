@@ -35,4 +35,24 @@ The bundled `sample_report.json` is a real CoreVital report from a Llama-3.1-8B-
 
 ## Demo database
 
-`corevital_demo.db` contains 5 curated traces (1 GPT-2, 4 Llama-3.1-8B-Instruct) at varying risk levels (0.30 to 0.48). This is the database used by the hosted Streamlit dashboard so visitors can explore the Compare view and filter by model without running any inference locally.
+`corevital_demo.db` contains 4 curated traces from different models, all run with **CUDA**, **4-bit** quantization, **full** capture, and **strict** performance:
+
+| # | Model | Prompt theme |
+|---|--------|---------------|
+| 1 | **Llama 3.1 Instruct** (meta-llama/Llama-3.1-8B-Instruct) | Historian: compare French vs American Revolution causes |
+| 2 | **Mistral Instruct** (mistralai/Mistral-7B-Instruct-v0.2) | Senior engineer: debug race conditions in distributed systems |
+| 3 | **Llama 3.2 Instruct** (meta-llama/Llama-3.2-3B-Instruct) | Speculative advances in quantum error correction by 2030 |
+| 4 | **FLAN-T5** (google/flan-t5-large) | Summarize Mediterranean diet / causal claims paragraph (seq2seq) |
+
+This is the database used by the hosted Streamlit dashboard so visitors can explore the Compare view and filter by model without running any inference locally.
+
+To regenerate the demo DB (requires GPU, conda env `llm_hm`, and HuggingFace model access):
+
+```bash
+conda activate llm_hm
+python scripts/gen_demo_db.py
+```
+
+The script uses the conda environment `llm_hm` by default (via `conda run -n llm_hm`). Use `--conda-env ""` to use your current Python instead.
+
+Output: `docs/demo/corevital_demo.db` (overwrites existing; previous copy saved as `corevital_demo.db.bak`).
