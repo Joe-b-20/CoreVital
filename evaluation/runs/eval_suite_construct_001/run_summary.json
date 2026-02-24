@@ -1,0 +1,9 @@
+{
+  "total_runs": 90,
+  "attempted_runs": 90,
+  "successful_runs": 90,
+  "failed_runs": 0,
+  "out_dir": "/Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001",
+  "manifest_jsonl": "/Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001/manifest.jsonl",
+  "traces_dir": "/Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001/traces"
+}

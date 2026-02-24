@@ -1,0 +1,18 @@
+2026-02-23 15:36:26 - __main__ - INFO - Starting CoreVital v0.4.0
+2026-02-23 15:36:26 - __main__ - INFO - Model: meta-llama/Llama-3.2-1B-Instruct
+2026-02-23 15:36:26 - __main__ - INFO - Device: cpu
+2026-02-23 15:36:26 - CoreVital.models.hf_loader - INFO - Loading model: meta-llama/Llama-3.2-1B-Instruct
+2026-02-23 15:36:26 - CoreVital.models.hf_loader - INFO - Target device: cpu
+2026-02-23 15:36:26 - CoreVital.models.hf_loader - INFO - Model dtype: torch.float32
+2026-02-23 15:36:26 - CoreVital.models.hf_loader - INFO - Loading tokenizer...
+2026-02-23 15:36:27 - CoreVital.models.hf_loader - INFO - Inspecting model architecture...
+2026-02-23 15:36:27 - CoreVital.models.registry - INFO - Model detection: no Seq2Seq signals (model_type='llama', architectures=['LlamaForCausalLM']) → CausalLM
+2026-02-23 15:36:27 - CoreVital.models.hf_loader - INFO - Loading model with AutoModelForCausalLM...
+2026-02-23 15:36:29 - CoreVital.models.hf_loader - INFO - Current attention implementation: sdpa
+2026-02-23 15:36:29 - CoreVital.models.hf_loader - INFO - Model loaded: 16 layers, hidden_size=2048
+`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.
+2026-02-23 15:36:29 - CoreVital.instrumentation.collector - INFO - Starting instrumented generation...
+2026-02-23 15:36:31 - CoreVital.instrumentation.collector - INFO - Processed 4 timeline steps
+2026-02-23 15:36:31 - CoreVital.instrumentation.collector - INFO - Generation complete in 2044ms
+2026-02-23 15:36:31 - CoreVital.sinks.local_file - INFO - LocalFileSink initialized: /Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001/traces
+2026-02-23 15:36:31 - CoreVital.sinks.local_file - INFO - Report written to /Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001/traces/trace_8f58f499.json

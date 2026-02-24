@@ -1,0 +1,283 @@
+{
+  "run_dir": "/Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001",
+  "counts": {
+    "manifest_rows": 90,
+    "successful_runs": 90,
+    "failed_runs": 0,
+    "gradable_runs": 72,
+    "repetition_probe_runs": 9
+  },
+  "per_model": {
+    "meta-llama/Llama-3.2-1B-Instruct": {
+      "runs": 30,
+      "gradable_runs": 24,
+      "task_accuracy": 0.5833333333333334,
+      "avg_risk_score": 0.308335422878829,
+      "avg_entropy_max": 2.9157881615031815,
+      "avg_surprisal_avg": 1.2085254530719345,
+      "attention_collapse_rate": 1.0,
+      "high_entropy_run_rate": 0.3,
+      "metric_consistency": {
+        "high_entropy_steps_match_rate": 1.0,
+        "risk_score_match_rate": 1.0
+      }
+    },
+    "Qwen/Qwen2-0.5B-Instruct": {
+      "runs": 30,
+      "gradable_runs": 24,
+      "task_accuracy": 0.20833333333333334,
+      "avg_risk_score": 0.3093037443064551,
+      "avg_entropy_max": 3.109626734533958,
+      "avg_surprisal_avg": 1.6471896164063866,
+      "attention_collapse_rate": 1.0,
+      "high_entropy_run_rate": 0.36666666666666664,
+      "metric_consistency": {
+        "high_entropy_steps_match_rate": 1.0,
+        "risk_score_match_rate": 1.0
+      }
+    },
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0": {
+      "runs": 30,
+      "gradable_runs": 24,
+      "task_accuracy": 0.3333333333333333,
+      "avg_risk_score": 0.6318840785583238,
+      "avg_entropy_max": 3.4717199163021872,
+      "avg_surprisal_avg": 1.748533341970899,
+      "attention_collapse_rate": 1.0,
+      "high_entropy_run_rate": 0.4,
+      "metric_consistency": {
+        "high_entropy_steps_match_rate": 1.0,
+        "risk_score_match_rate": 1.0
+      }
+    }
+  },
+  "metric_internal_consistency": {
+    "high_entropy_steps_match_rate": 1.0,
+    "risk_score_match_rate": 1.0,
+    "notes": [
+      "high_entropy_steps is recomputed from timeline entropy using model-profile threshold when available",
+      "risk_score is recomputed from health_flags + summary using current risk.py formula"
+    ]
+  },
+  "metric_signal_prevalence": {
+    "attention_collapse_rate": 1.0,
+    "repetition_loop_rate": 0.0,
+    "high_entropy_run_rate": 0.35555555555555557
+  },
+  "metric_usefulness_on_stability_baselines": {
+    "count": 18,
+    "avg_risk_score": 0.4392625081221572,
+    "high_entropy_run_rate": 0.2222222222222222
+  },
+  "metric_construct_validity": {
+    "tag_signal_expectations": {
+      "boolean": {
+        "count": 9,
+        "avg_risk_score": 0.44586940836940836,
+        "high_entropy_run_rate": 0.5555555555555556,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "factual": {
+        "count": 27,
+        "avg_risk_score": 0.4333333333333333,
+        "high_entropy_run_rate": 0.0,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "formatting": {
+        "count": 9,
+        "avg_risk_score": 0.35406681190994915,
+        "high_entropy_run_rate": 0.3333333333333333,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "gradable": {
+        "count": 72,
+        "avg_risk_score": 0.4176490897506442,
+        "high_entropy_run_rate": 0.2222222222222222,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "high_entropy": {
+        "count": 9,
+        "avg_risk_score": 0.42460149939198005,
+        "high_entropy_run_rate": 1.0,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "low_entropy_expected": {
+        "count": 18,
+        "avg_risk_score": 0.4392625081221572,
+        "high_entropy_run_rate": 0.2222222222222222,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "math": {
+        "count": 18,
+        "avg_risk_score": 0.4392625081221572,
+        "high_entropy_run_rate": 0.2222222222222222,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "probe": {
+        "count": 18,
+        "avg_risk_score": 0.41194238390343646,
+        "high_entropy_run_rate": 0.8888888888888888,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "repetition": {
+        "count": 9,
+        "avg_risk_score": 0.3992832684148928,
+        "high_entropy_run_rate": 0.7777777777777778,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      },
+      "translation": {
+        "count": 9,
+        "avg_risk_score": 0.3627314814814815,
+        "high_entropy_run_rate": 0.4444444444444444,
+        "attention_collapse_rate": 1.0,
+        "repetition_loop_rate": 0.0
+      }
+    },
+    "seed_stability": {
+      "total_groups": 30,
+      "groups_with_2plus_seeds": 30,
+      "avg_stddev_risk_score": 0.036883314832210905,
+      "avg_stddev_entropy_max": 0.3455498382765431,
+      "avg_stddev_high_entropy_steps": 0.34336759745160683
+    },
+    "attention_collapse_diagnostics": {
+      "overall_rate": 1.0,
+      "baseline_tag_rate": 1.0,
+      "probe_tag_rate": 1.0,
+      "per_model_rate": {
+        "meta-llama/Llama-3.2-1B-Instruct": 1.0,
+        "Qwen/Qwen2-0.5B-Instruct": 1.0,
+        "TinyLlama/TinyLlama-1.1B-Chat-v1.0": 1.0
+      },
+      "models_ge_0_9": [
+        "Qwen/Qwen2-0.5B-Instruct",
+        "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "meta-llama/Llama-3.2-1B-Instruct"
+      ]
+    }
+  },
+  "risk_threshold_metrics_vs_bad_output": [
+    {
+      "threshold": 0.3,
+      "confusion": {
+        "tp": 45,
+        "fp": 27,
+        "tn": 0,
+        "fn": 0
+      },
+      "precision": 0.625,
+      "recall": 1.0,
+      "f1": 0.7692307692307693
+    },
+    {
+      "threshold": 0.5,
+      "confusion": {
+        "tp": 12,
+        "fp": 8,
+        "tn": 19,
+        "fn": 33
+      },
+      "precision": 0.6,
+      "recall": 0.26666666666666666,
+      "f1": 0.36923076923076925
+    },
+    {
+      "threshold": 0.7,
+      "confusion": {
+        "tp": 12,
+        "fp": 8,
+        "tn": 19,
+        "fn": 33
+      },
+      "precision": 0.6,
+      "recall": 0.26666666666666666,
+      "f1": 0.36923076923076925
+    }
+  ],
+  "risk_threshold_metrics_vs_quality_risk_proxy": [
+    {
+      "threshold": 0.3,
+      "confusion": {
+        "tp": 67,
+        "fp": 23,
+        "tn": 0,
+        "fn": 0
+      },
+      "precision": 0.7444444444444445,
+      "recall": 1.0,
+      "f1": 0.8535031847133758
+    },
+    {
+      "threshold": 0.5,
+      "confusion": {
+        "tp": 20,
+        "fp": 4,
+        "tn": 19,
+        "fn": 47
+      },
+      "precision": 0.8333333333333334,
+      "recall": 0.29850746268656714,
+      "f1": 0.4395604395604395
+    },
+    {
+      "threshold": 0.7,
+      "confusion": {
+        "tp": 20,
+        "fp": 4,
+        "tn": 19,
+        "fn": 47
+      },
+      "precision": 0.8333333333333334,
+      "recall": 0.29850746268656714,
+      "f1": 0.4395604395604395
+    }
+  ],
+  "repetition_flag_eval_vs_output_repetition_heuristic": {
+    "confusion": {
+      "tp": 0,
+      "fp": 0,
+      "tn": 87,
+      "fn": 3
+    },
+    "precision": null,
+    "recall": 0.0,
+    "f1": null
+  },
+  "high_entropy_flag_eval_vs_bad_output": {
+    "confusion": {
+      "tp": 15,
+      "fp": 1,
+      "tn": 26,
+      "fn": 30
+    },
+    "precision": 0.9375,
+    "recall": 0.3333333333333333,
+    "f1": 0.49180327868852464
+  },
+  "high_entropy_flag_eval_vs_quality_risk_proxy": {
+    "confusion": {
+      "tp": 18,
+      "fp": 14,
+      "tn": 9,
+      "fn": 49
+    },
+    "precision": 0.5625,
+    "recall": 0.26865671641791045,
+    "f1": 0.3636363636363636
+  },
+  "notes": [
+    "bad_output_label is only computed for auto-gradable prompts",
+    "quality_risk_proxy is output-only and includes bad output, format violations, and repetition",
+    "repetition validation uses output text repetition heuristic, not hidden-state ground truth",
+    "attention_collapse_detected is reported but not treated as standalone correctness target"
+  ]
+}

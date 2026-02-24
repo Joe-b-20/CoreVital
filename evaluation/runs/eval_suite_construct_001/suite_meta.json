@@ -1,0 +1,206 @@
+{
+  "created_at_utc": "2026-02-23T20:35:30.467341+00:00",
+  "project_root": "/Users/amyb/Documents/github/joe-b-20/corevital/CoreVital",
+  "out_dir": "/Users/amyb/Documents/github/joe-b-20/corevital/CoreVital/runs/eval_suite_construct_001",
+  "models": [
+    "meta-llama/Llama-3.2-1B-Instruct",
+    "Qwen/Qwen2-0.5B-Instruct",
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+  ],
+  "model_preset": "cpu_default",
+  "seeds": [
+    42,
+    123,
+    999
+  ],
+  "device": "cpu",
+  "perf": null,
+  "capture": "summary",
+  "timeout_seconds": 900,
+  "quantize_4": false,
+  "quantize_8": false,
+  "cases": [
+    {
+      "case_id": "capital_france",
+      "category": "qa_fact",
+      "prompt": "Answer in one word: What is the capital of France?",
+      "max_new_tokens": 5,
+      "grading": "contains_any",
+      "expected": [
+        "paris"
+      ],
+      "regex": null,
+      "notes": "Simple factual QA, one-word response.",
+      "tags": [
+        "gradable",
+        "factual",
+        "low_entropy_expected"
+      ],
+      "prompt_t5": "question: What is the capital of France?",
+      "format_expectation": "one_word"
+    },
+    {
+      "case_id": "capital_japan",
+      "category": "qa_fact",
+      "prompt": "Answer in one word: What is the capital of Japan?",
+      "max_new_tokens": 5,
+      "grading": "contains_any",
+      "expected": [
+        "tokyo"
+      ],
+      "regex": null,
+      "notes": "Factual QA with common spelling variations.",
+      "tags": [
+        "gradable",
+        "factual"
+      ],
+      "prompt_t5": "question: What is the capital of Japan?",
+      "format_expectation": "one_word"
+    },
+    {
+      "case_id": "math_2_plus_2",
+      "category": "qa_math",
+      "prompt": "Answer with one token only: What is 2 + 2?",
+      "max_new_tokens": 4,
+      "grading": "exact_any",
+      "expected": [
+        "4",
+        "four"
+      ],
+      "regex": null,
+      "notes": "Deterministic arithmetic baseline.",
+      "tags": [
+        "gradable",
+        "math",
+        "low_entropy_expected"
+      ],
+      "prompt_t5": "question: What is 2 + 2?",
+      "format_expectation": "one_number"
+    },
+    {
+      "case_id": "math_12_times_3",
+      "category": "qa_math",
+      "prompt": "Answer with one number only: What is 12 * 3?",
+      "max_new_tokens": 4,
+      "grading": "exact_any",
+      "expected": [
+        "36",
+        "thirty six",
+        "thirty-six"
+      ],
+      "regex": null,
+      "notes": "",
+      "tags": [
+        "gradable",
+        "math"
+      ],
+      "prompt_t5": "question: What is 12 * 3?",
+      "format_expectation": "one_number"
+    },
+    {
+      "case_id": "translation_hola",
+      "category": "translation",
+      "prompt": "Translate to Spanish. One word only: hello",
+      "max_new_tokens": 5,
+      "grading": "contains_any",
+      "expected": [
+        "hola"
+      ],
+      "regex": null,
+      "notes": "",
+      "tags": [
+        "gradable",
+        "translation"
+      ],
+      "prompt_t5": "translate English to Spanish: hello",
+      "format_expectation": "one_word"
+    },
+    {
+      "case_id": "sorting_letters",
+      "category": "formatting",
+      "prompt": "Sort these letters alphabetically and return one word only: cba",
+      "max_new_tokens": 4,
+      "grading": "exact_any",
+      "expected": [
+        "abc"
+      ],
+      "regex": null,
+      "notes": "",
+      "tags": [
+        "gradable",
+        "formatting"
+      ],
+      "prompt_t5": "Sort letters alphabetically: c b a",
+      "format_expectation": "one_word"
+    },
+    {
+      "case_id": "country_currency_japan",
+      "category": "qa_fact",
+      "prompt": "Answer in one word: What currency is used in Japan?",
+      "max_new_tokens": 6,
+      "grading": "contains_any",
+      "expected": [
+        "yen"
+      ],
+      "regex": null,
+      "notes": "",
+      "tags": [
+        "gradable",
+        "factual"
+      ],
+      "prompt_t5": "question: What currency is used in Japan?",
+      "format_expectation": "one_word"
+    },
+    {
+      "case_id": "yes_no_water_boils",
+      "category": "boolean",
+      "prompt": "Yes or no only: Does water boil at 100 C at sea level?",
+      "max_new_tokens": 4,
+      "grading": "contains_any",
+      "expected": [
+        "yes"
+      ],
+      "regex": null,
+      "notes": "",
+      "tags": [
+        "gradable",
+        "boolean"
+      ],
+      "prompt_t5": "question: Does water boil at 100 C at sea level?",
+      "format_expectation": "yes_no"
+    },
+    {
+      "case_id": "repetition_probe",
+      "category": "repetition_probe",
+      "prompt": "Repeat the word 'echo' exactly 15 times separated by spaces. Do not add any other words.",
+      "max_new_tokens": 40,
+      "grading": "none",
+      "expected": [],
+      "regex": null,
+      "notes": "Used to test repetition-loop detection and output repetition heuristics.",
+      "tags": [
+        "probe",
+        "repetition"
+      ],
+      "prompt_t5": null,
+      "format_expectation": null
+    },
+    {
+      "case_id": "open_ended_ambiguous",
+      "category": "open_ended",
+      "prompt": "Finish this sentence creatively in one sentence: The answer to everything is",
+      "max_new_tokens": 20,
+      "grading": "none",
+      "expected": [],
+      "regex": null,
+      "notes": "Used to induce higher entropy/uncertainty in some models.",
+      "tags": [
+        "probe",
+        "high_entropy"
+      ],
+      "prompt_t5": null,
+      "format_expectation": null
+    }
+  ],
+  "dry_run": false
+}
