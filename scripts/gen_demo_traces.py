@@ -5,8 +5,11 @@ Runs CoreVital on 4 models (Llama 3.1, Mistral, Llama 3.2, FLAN-T5) with CUDA,
 4-bit quantization, full capture, and strict performance. Writes individual
 trace JSON files (and performance breakdown files) to a demo directory.
 
-Default output directory:
-  /home/joebachir20/corevital-dashboard/public/demo
+Default output directory (when run from repo root):
+  demo/
+
+To write into the dashboard repo's public demo folder, pass --out explicitly, e.g.:
+  --out /path/to/corevital-dashboard/public/demo
 
 Requirements: conda env llm_hm (with CUDA, bitsandbytes, CoreVital deps), and
 HuggingFace model access. Run from repo root:
@@ -19,7 +22,7 @@ The script uses conda env llm_hm when invoking corevital (via conda run -n llm_h
 
 Optional:
   --dry-run        Print commands only
-  --out DIR        Output directory (default: /home/joebachir20/corevital-dashboard/public/demo)
+  --out DIR        Output directory (default: demo/ under current directory)
   --conda-env ENV  Conda environment name (default: llm_hm). Use "" to use current Python.
   --timeout SEC    Timeout per model run in seconds (default: 1800). Use 3600 for slow GPUs.
   --keep-existing  Do not delete existing trace_*.json files in output dir
@@ -74,14 +77,12 @@ def _clean_output_dir(out_dir: Path) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Generate demo CoreVital trace JSON files for the dashboard."
-    )
+    parser = argparse.ArgumentParser(description="Generate demo CoreVital trace JSON files for the dashboard.")
     parser.add_argument(
         "--out",
         type=str,
-        default="/home/joebachir20/corevital-dashboard/public/demo",
-        help="Output directory for trace JSON files",
+        default="demo",
+        help="Output directory for trace JSON files (default: demo/ under current directory)",
     )
     parser.add_argument(
         "--max-new-tokens",

@@ -669,7 +669,7 @@ def serve_command(args: argparse.Namespace) -> int:
         import uvicorn
     except ImportError:
         logger.error("uvicorn is required for 'corevital serve'. Install with: pip install \"CoreVital[serve]\"")
-        print("\n✗ uvicorn not found. Install the serve extra: pip install \"CoreVital[serve]\"\n", file=sys.stderr)
+        print('\n✗ uvicorn not found. Install the serve extra: pip install "CoreVital[serve]"\n', file=sys.stderr)
         return 1
 
     if getattr(args, "db", None):

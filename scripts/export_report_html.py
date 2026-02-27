@@ -10,6 +10,7 @@
 #   python scripts/export_report_html.py --json path/to/report.json
 #   python scripts/export_report_html.py --db ... --trace_id ... -o run.html
 # =============================================================================
+# ruff: noqa: E501  (HTML/JS template strings exceed line length)
 
 from __future__ import annotations
 
@@ -17,22 +18,26 @@ import json
 import sys
 from pathlib import Path
 
-# Repo root for dashboard_common (no CoreVital import — avoids torch)
 REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
-from dashboard_common import (
-    build_layer_step_matrix,
-    extract_timeline_series,
-    load_report,
-)
+
+def load_report(path: str) -> dict | None:
+    """Load a report from a JSON file (no CoreVital/torch dependency)."""
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        text = p.read_text(encoding="utf-8")
+        return json.loads(text)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def load_report_from_db(db_path: str, trace_id: str) -> dict | None:
     """Load one report from SQLite without importing CoreVital (uses sqlite3 + gzip)."""
     import gzip
     import sqlite3
+
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
             "SELECT report_json, report_blob FROM reports WHERE trace_id = ? LIMIT 1",
@@ -51,6 +56,58 @@ def load_report_from_db(db_path: str, trace_id: str) -> dict | None:
     elif not json_str:
         return None
     return json.loads(json_str)
+
+
+def extract_timeline_series(report: dict, metric: str) -> tuple[list[int], list[float | None], list[str]]:
+    """Extract (step_indices, values, token_texts) from report timeline. Metric: 'entropy'|'perplexity'|'surprisal'."""
+    timeline = report.get("timeline") or []
+    steps: list[int] = []
+    values: list[float | None] = []
+    tokens: list[str] = []
+    for step in timeline:
+        steps.append(step.get("step_index", len(steps)))
+        tok = step.get("token") or {}
+        tokens.append(tok.get("token_text") or "")
+        logits = step.get("logits_summary") or {}
+        if metric == "entropy":
+            v = logits.get("entropy")
+        elif metric == "perplexity":
+            v = logits.get("perplexity")
+        elif metric == "surprisal":
+            v = logits.get("surprisal")
+        else:
+            v = logits.get(metric)
+        values.append(float(v) if v is not None else None)
+    return steps, values, tokens
+
+
+def _get_nested(obj: dict, path: str):
+    """Get nested key e.g. 'attention_summary.entropy_mean' from a dict."""
+    for key in path.split("."):
+        obj = (obj or {}).get(key)
+    return obj
+
+
+def build_layer_step_matrix(report: dict, metric_path: str) -> tuple[list[list[float | None]], int, int]:
+    """Build layer x step matrix. metric_path e.g. 'attention_summary.entropy_mean'."""
+    timeline = report.get("timeline") or []
+    if not timeline:
+        return [], 0, 0
+    n_steps = len(timeline)
+    n_layers = 0
+    for step in timeline:
+        layers = step.get("layers") or []
+        n_layers = max(n_layers, len(layers))
+    matrix: list[list[float | None]] = [[None] * n_steps for _ in range(n_layers)]
+    for step_idx, step in enumerate(timeline):
+        for layer_idx, layer in enumerate(step.get("layers") or []):
+            v = _get_nested(layer, metric_path)
+            if v is not None:
+                try:
+                    matrix[layer_idx][step_idx] = float(v)
+                except (TypeError, ValueError):
+                    pass
+    return matrix, n_layers, n_steps
 
 
 def _health_badge(label: str, value, *, good_when_false: bool = True) -> tuple[str, str]:
@@ -88,9 +145,7 @@ def build_report_data(report: dict) -> dict:
     perplexities_plot = [float(x) if x is not None else None for x in perplexities]
     surprisals_plot = [float(x) if x is not None else None for x in surprisals]
 
-    attn_matrix, n_layers, n_steps = build_layer_step_matrix(
-        report, "attention_summary.entropy_mean"
-    )
+    attn_matrix, n_layers, n_steps = build_layer_step_matrix(report, "attention_summary.entropy_mean")
     # Flatten for Plotly heatmap: z[row][col] = layer (y) x step (x)
     heatmap_z = attn_matrix
     heatmap_x = list(range(n_steps))
@@ -106,9 +161,7 @@ def build_report_data(report: dict) -> dict:
     ]
     badges_rendered = []
     for b in health_badges:
-        display_val, css = _health_badge(
-            b["label"], b["value"], good_when_false=b.get("good_when_false", True)
-        )
+        display_val, css = _health_badge(b["label"], b["value"], good_when_false=b.get("good_when_false", True))
         badges_rendered.append({"label": b["label"], "display": display_val, "css": css})
 
     narrative_summary = (narrative_data.get("summary") or "").strip()
@@ -152,6 +205,7 @@ def build_report_data(report: dict) -> dict:
 
 def main() -> None:
     import argparse
+
     parser = argparse.ArgumentParser(description="Export CoreVital report to Streamlit-like HTML")
     parser.add_argument("--db", type=str, help="Path to SQLite DB (use with --trace_id)")
     parser.add_argument("--trace_id", type=str, help="Trace ID (use with --db)")
@@ -246,7 +300,7 @@ def render_html(data: dict) -> str:
       </details>
     </div>
 
-    {f'<div class="section narrative"><strong>Summary:</strong> {_esc(data["narrative_summary"])}</div>' if data.get("narrative_summary") else ''}
+    {f'<div class="section narrative"><strong>Summary:</strong> {_esc(data["narrative_summary"])}</div>' if data.get("narrative_summary") else ""}
 
     <div class="section">
       <h2>Health Flags</h2>
@@ -255,7 +309,7 @@ def render_html(data: dict) -> str:
       </div>
     </div>
 
-    {(f'<div class="section risk"><h2>Risk Score</h2><p><strong>{data["risk_score"]:.2f}</strong></p>' + (f'<p>Factors: {", ".join(data["risk_factors"])}</p>' if data["risk_factors"] else '') + (f'<p>Blamed layers: {data["blamed_layers"]}</p>' if data["blamed_layers"] else '') + '</div>') if data.get("risk_score") is not None else ''}
+    {(f'<div class="section risk"><h2>Risk Score</h2><p><strong>{data["risk_score"]:.2f}</strong></p>' + (f"<p>Factors: {', '.join(data['risk_factors'])}</p>" if data["risk_factors"] else "") + (f"<p>Blamed layers: {data['blamed_layers']}</p>" if data["blamed_layers"] else "") + "</div>") if data.get("risk_score") is not None else ""}
 
     <div class="section">
       <details><summary>How to read these metrics</summary>

@@ -60,9 +60,7 @@ DEMO_RUNS = [
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Generate docs/demo/corevital_demo.db with curated CoreVital runs."
-    )
+    parser = argparse.ArgumentParser(description="Generate docs/demo/corevital_demo.db with curated CoreVital runs.")
     parser.add_argument(
         "--out",
         type=str,
@@ -127,7 +125,17 @@ def main() -> int:
             str(out_dir),
         ]
         if args.conda_env:
-            cmd = ["conda", "run", "-n", args.conda_env, "--no-capture-output", "python", "-m", "CoreVital.cli", "run"] + run_args
+            cmd = [
+                "conda",
+                "run",
+                "-n",
+                args.conda_env,
+                "--no-capture-output",
+                "python",
+                "-m",
+                "CoreVital.cli",
+                "run",
+            ] + run_args
         else:
             cmd = [sys.executable, "-m", "CoreVital.cli", "run"] + run_args
         if args.dry_run:
