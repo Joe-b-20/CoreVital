@@ -1,0 +1,184 @@
+# CoreVital Datasette dashboards
+# Use with: datasette path/to/corevital.db --metadata docs/datasette/metadata.yml
+# If your DB file has a different name (e.g. corevital.db), change the "db:" below to match
+# (Datasette uses the filename without extension as the database name.)
+
+title: CoreVital
+description: CoreVital run observability — list runs and drill into report detail.
+
+plugins:
+  datasette-dashboards:
+    # ---- Runs list: table of recent runs ----
+    corevital-runs:
+      title: CoreVital Runs
+      description: Recent runs. Select a trace in Run Detail to drill in.
+      layout:
+        - [runs-table]
+      charts:
+        runs-table:
+          title: Recent runs
+          db: corevital_demo
+          query: |
+            SELECT
+              trace_id,
+              created_at_utc,
+              model_id,
+              risk_score,
+              prompt_hash
+            FROM reports
+            ORDER BY created_at_utc DESC
+            LIMIT 200
+          library: table
+          display: {}
+
+    # ---- Run detail: one run, summary + per-step charts + heatmap ----
+    corevital-run-detail:
+      title: CoreVital Run Detail
+      description: Summary, health, entropy/perplexity over steps, and attention heatmap for one run. Requires report_json (run inflate script if you use report_blob-only DBs).
+      settings:
+        allow_fullscreen: true
+      layout:
+        - [run-summary, run-health]
+        - [run-narrative]
+        - [entropy-line, perplexity-line]
+        - [attention-heatmap]
+        - [prompt-output]
+      filters:
+        trace_id:
+          name: Trace
+          type: select
+          db: corevital_demo
+          query: SELECT trace_id FROM reports ORDER BY created_at_utc DESC LIMIT 100
+      charts:
+        run-summary:
+          title: Summary
+          db: corevital_demo
+          query: |
+            SELECT
+              json_extract(report_json, '$.model.hf_id') AS model,
+              json_extract(report_json, '$.summary.total_steps') AS total_steps,
+              json_extract(report_json, '$.summary.elapsed_ms') AS elapsed_ms,
+              json_extract(report_json, '$.summary.prompt_tokens') AS prompt_tokens,
+              json_extract(report_json, '$.extensions.risk.risk_score') AS risk_score
+            FROM reports
+            WHERE trace_id = :trace_id
+              AND report_json IS NOT NULL
+              AND length(report_json) > 0
+            LIMIT 1
+          library: table
+          display: {}
+
+        run-health:
+          title: Health flags
+          db: corevital_demo
+          query: |
+            SELECT
+              json_extract(report_json, '$.health_flags.nan_detected') AS nan_detected,
+              json_extract(report_json, '$.health_flags.inf_detected') AS inf_detected,
+              json_extract(report_json, '$.health_flags.attention_collapse_detected') AS attention_collapse,
+              json_extract(report_json, '$.health_flags.high_entropy_steps') AS high_entropy_steps,
+              json_extract(report_json, '$.health_flags.repetition_loop_detected') AS repetition_loop,
+              json_extract(report_json, '$.health_flags.mid_layer_anomaly_detected') AS mid_layer_anomaly
+            FROM reports
+            WHERE trace_id = :trace_id
+              AND report_json IS NOT NULL
+              AND length(report_json) > 0
+            LIMIT 1
+          library: table
+          display: {}
+
+        run-narrative:
+          title: Narrative
+          db: corevital_demo
+          query: |
+            SELECT json_extract(report_json, '$.extensions.narrative.summary') AS narrative
+            FROM reports
+            WHERE trace_id = :trace_id
+              AND report_json IS NOT NULL
+              AND length(report_json) > 0
+            LIMIT 1
+          library: table
+          display: {}
+
+        entropy-line:
+          title: Entropy by step
+          db: corevital_demo
+          query: |
+            SELECT
+              CAST(e.key AS INT) + 1 AS step_index,
+              CAST(json_extract(e.value, '$.logits_summary.entropy') AS REAL) AS entropy
+            FROM reports r, json_each(r.report_json, '$.timeline') e
+            WHERE r.trace_id = :trace_id
+              AND r.report_json IS NOT NULL
+              AND length(r.report_json) > 0
+            ORDER BY step_index
+          library: line
+          display:
+            x: step_index
+            y: entropy
+            xtype: quantitative
+            ytype: quantitative
+
+        perplexity-line:
+          title: Perplexity by step
+          db: corevital_demo
+          query: |
+            SELECT
+              CAST(e.key AS INT) + 1 AS step_index,
+              CAST(json_extract(e.value, '$.logits_summary.perplexity') AS REAL) AS perplexity
+            FROM reports r, json_each(r.report_json, '$.timeline') e
+            WHERE r.trace_id = :trace_id
+              AND r.report_json IS NOT NULL
+              AND length(r.report_json) > 0
+            ORDER BY step_index
+          library: line
+          display:
+            x: step_index
+            y: perplexity
+            xtype: quantitative
+            ytype: quantitative
+
+        attention-heatmap:
+          title: Attention entropy (layer × step)
+          db: corevital_demo
+          query: |
+            SELECT
+              CAST(e1.key AS INT) + 1 AS step_index,
+              CAST(e2.key AS INT) + 1 AS layer_index,
+              CAST(json_extract(e2.value, '$.attention_summary.entropy_mean') AS REAL) AS entropy_mean
+            FROM reports r, json_each(r.report_json, '$.timeline') e1, json_each(e1.value, '$.layers') e2
+            WHERE r.trace_id = :trace_id
+              AND r.report_json IS NOT NULL
+              AND length(r.report_json) > 0
+            ORDER BY step_index, layer_index
+          library: vega-lite
+          display:
+            mark: rect
+            encoding:
+              x:
+                field: step_index
+                type: ordinal
+                title: Step
+              y:
+                field: layer_index
+                type: ordinal
+                title: Layer
+              color:
+                field: entropy_mean
+                type: quantitative
+                title: Entropy mean
+
+        prompt-output:
+          title: Prompt and output (scrollable)
+          db: corevital_demo
+          query: |
+            SELECT
+              json_extract(report_json, '$.prompt.text') AS prompt_text,
+              json_extract(report_json, '$.generated.text') AS generated_text
+            FROM reports
+            WHERE trace_id = :trace_id
+              AND report_json IS NOT NULL
+              AND length(report_json) > 0
+            LIMIT 1
+          library: table
+          display: {}

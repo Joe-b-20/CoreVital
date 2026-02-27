@@ -13,29 +13,17 @@
    ```
    Output is written to `runs/corevital.db` (SQLite, default) or JSON if you use `--sink local`.
 
-3. **View the report in the dashboard**
-   ```bash
-   pip install -e ".[dashboard]"
-   streamlit run dashboard.py
-   ```
-   Open the app, choose **Database** as source (if you used the default SQLite sink) or **Local file** and pick a trace from `runs/`.
+3. **View the report in the web dashboard**
+   - Open the hosted dashboard: [https://main.d2maxwaq575qed.amplifyapp.com](https://main.d2maxwaq575qed.amplifyapp.com) (source: [corevital-dashboard](https://github.com/Joe-b-20/corevital-dashboard)).
+   - In your terminal, run: `pip install "CoreVital[serve]"` then `corevital serve`.
+   - In the dashboard, click **Connect** to attach to your local API. Your data stays on your machine; the site talks only to `http://127.0.0.1:8000`.
 
 4. **Try without running a model**
-   This folder contains a real Llama-3.1-8B-Instruct report so you can explore the dashboard immediately:
-   - **File:** [sample_report.json](sample_report.json)
-   - **Model:** meta-llama/Llama-3.1-8B-Instruct (32 layers, 32 attention heads)
-   - **Prompt:** "The capital of France is"
-   - **Risk score:** 0.39 (attention collapse detected, 3 high-entropy steps)
+   The hosted dashboard opens in **Demo mode** by default, using sample trace JSON from the [dashboard repo](https://github.com/Joe-b-20/corevital-dashboard) (`public/demo/`). No backend or CoreVital install needed. Alternatively, you can run `corevital serve --db docs/demo/corevital_demo.db` and use the dashboard in **Database** mode to browse the optional demo DB in this repo (see below).
 
-   In the dashboard, select **Demo sample** in the sidebar.
+## Demo database (optional)
 
-## About the sample report
-
-The bundled `sample_report.json` is a real CoreVital report from a Llama-3.1-8B-Instruct run (not synthetic). It includes full per-layer summaries for all 32 layers across 10 generation steps, prompt analysis, health flags, risk scoring, fingerprinting, narrative, and performance data.
-
-## Demo database
-
-`corevital_demo.db` contains 4 curated traces from different models, all run with **CUDA**, **4-bit** quantization, **full** capture, and **strict** performance:
+The file `corevital_demo.db` in this directory is **optional**. It contains 4 curated traces from different models, all run with **CUDA**, **4-bit** quantization, **full** capture, and **strict** performance:
 
 | # | Model | Prompt theme |
 |---|--------|---------------|
@@ -44,12 +32,11 @@ The bundled `sample_report.json` is a real CoreVital report from a Llama-3.1-8B-
 | 3 | **Llama 3.2 Instruct** (meta-llama/Llama-3.2-3B-Instruct) | Speculative advances in quantum error correction by 2030 |
 | 4 | **FLAN-T5** (google/flan-t5-large) | Summarize Mediterranean diet / causal claims paragraph (seq2seq) |
 
-This is the database used by the hosted Streamlit dashboard so visitors can explore the Compare view and filter by model without running any inference locally.
+Use it with the hosted dashboard in **Database** mode: run `corevital serve --db docs/demo/corevital_demo.db`, then in the dashboard select Database, set the API base URL and DB path, and connect to explore the Compare view without running inference locally.
 
-To regenerate the demo DB (requires GPU, conda env `llm_hm`, and HuggingFace model access):
+To regenerate the demo DB (requires GPU and HuggingFace model access):
 
 ```bash
-conda activate llm_hm
 python scripts/gen_demo_db.py
 ```
 

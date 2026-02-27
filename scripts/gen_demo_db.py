@@ -21,6 +21,7 @@ Optional:
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -152,6 +153,30 @@ def main() -> int:
     if not args.dry_run and db_path.exists():
         shutil.copy2(db_path, demo_db_path)
         print(f"Wrote {demo_db_path} with {len(DEMO_RUNS)} runs.")
+        # Export first trace (oldest) to sample_report.json so "Demo sample" fallback is a real model run
+        try:
+            import gzip
+            import sqlite3
+
+            with sqlite3.connect(demo_db_path) as conn:
+                cur = conn.execute(
+                    "SELECT trace_id, report_json, report_blob FROM reports ORDER BY created_at_utc ASC LIMIT 1"
+                )
+                row = cur.fetchone()
+            if row:
+                trace_id, report_json, report_blob = row
+                if report_blob:
+                    report = json.loads(gzip.decompress(report_blob).decode("utf-8"))
+                else:
+                    report = json.loads(report_json) if report_json else None
+                if report:
+                    sample_path = out_dir / "sample_report.json"
+                    with open(sample_path, "w") as f:
+                        json.dump(report, f, separators=(",", ":"))
+                    model_id = report.get("model", {}).get("hf_id", "?")
+                    print(f"Updated {sample_path} (first trace: {model_id}).")
+        except Exception as e:
+            print(f"Could not update sample_report.json: {e}", file=sys.stderr)
     elif args.dry_run:
         print(f"# Final: cp {db_path} {demo_db_path}")
 

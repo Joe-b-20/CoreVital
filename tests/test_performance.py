@@ -100,18 +100,6 @@ def test_performance_monitor_build_summary_dict():
     assert out["parent_operations"][0]["ms"] == 100.0
     assert "unaccounted_time" in out
     assert out["unaccounted_time"]["ms"] == 10.0
-    assert out.get("detailed_file") is None
-
-
-def test_performance_monitor_build_summary_dict_with_detailed_file():
-    """detailed_file appears in summary when set."""
-    monitor = PerformanceMonitor(mode="detailed")
-    monitor.root_timings = [OperationTiming("total_wall_time", duration_ms=100.0)]
-    monitor.set_total_wall_time_ms(100.0)
-    monitor.set_detailed_file("/runs/trace_abc12345_performance_detailed.json")
-
-    out = monitor.build_summary_dict()
-    assert out["detailed_file"] == "/runs/trace_abc12345_performance_detailed.json"
 
 
 def test_performance_monitor_build_summary_strict():
@@ -267,8 +255,28 @@ def test_performance_summary_can_be_added_to_report_extensions():
     assert "unaccounted_time" in perf
 
 
+def test_performance_detailed_breakdown_in_main_trace():
+    """Detailed/strict mode: detailed_breakdown is embedded in extensions.performance (no separate file)."""
+    monitor = PerformanceMonitor(mode="detailed")
+    parent = OperationTiming("model_load", duration_ms=100.0)
+    parent.children = [OperationTiming("load_weights", duration_ms=80.0)]
+    monitor.root_timings = [parent]
+    monitor.set_total_wall_time_ms(100.0)
+
+    perf_summary = monitor.build_summary_dict()
+    perf_summary["detailed_breakdown"] = monitor.build_detailed_breakdown()
+
+    assert "detailed_breakdown" in perf_summary
+    bd = perf_summary["detailed_breakdown"]
+    assert bd["total_wall_time_ms"] == 100.0
+    assert "breakdown" in bd
+    assert "model_load" in bd["breakdown"]
+    assert "children" in bd["breakdown"]["model_load"]
+    assert "load_weights" in bd["breakdown"]["model_load"]["children"]
+
+
 # -----------------------------------------------------------------------------
-# Integration: CLI handles detailed file writing (not sink)
+# Integration: CLI embeds detailed_breakdown in main trace (not separate file)
 # -----------------------------------------------------------------------------
 
 

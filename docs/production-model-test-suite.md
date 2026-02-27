@@ -35,7 +35,7 @@ Use the same list as in `docs/model-compatibility.md` and `tests/test_models_pro
 
 1. **Spin up a RunPod pod** with enough GPU memory for the largest model (e.g. Mixtral).
 2. **Install once:**  
-   `pip install corevital[dashboard]` (after publish) or `pip install -e .[dashboard]` from a fresh clone of the **tagged release**.
+   `pip install "CoreVital[serve]"` (after publish) or `pip install -e ".[serve]"` from a fresh clone of the **tagged release**.
 3. **Environment:** Set `HF_TOKEN` if using gated models (Llama, etc.).
 4. **Run the test script** (see below). It should:
    - Create a single SQLite DB (e.g. `runs/corevital.db`) and a log file (e.g. `runs/runtime_metrics.log`).
