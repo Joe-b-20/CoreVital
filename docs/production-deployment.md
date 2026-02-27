@@ -1,6 +1,6 @@
 # Production deployment guide
 
-This guide covers how to run CoreVital in production: sampling, persistence, metrics export, and alerting.
+This guide covers how to run CoreVital in production: sampling, persistence, metrics export, and alerting. It also explains the **Two Viewing Paths** (open-source/individual vs enterprise) for visualizing your data.
 
 ## Sampling strategy
 
@@ -47,6 +47,11 @@ Combine with your existing incident pipeline (PagerDuty, Slack, etc.) by having 
 - **Kubernetes:** Deploy as a Deployment or DaemonSet. Use a PVC for SQLite if you use the DB sink. Expose metrics via a Service and scrape with Prometheus Operator or similar. Use Secrets for API keys (Datadog, etc.) and env for `OTEL_EXPORTER_OTLP_ENDPOINT` if using OTLP.
 
 CoreVital does not ship a ready-made Dockerfile or Helm chart; you can add a minimal Dockerfile that runs `corevital run` with your desired args and config.
+
+## Two Viewing Paths (open-source vs enterprise)
+
+- **Path A (open-source / individual developers):** Use the hosted React dashboard ([https://main.d2maxwaq575qed.amplifyapp.com](https://main.d2maxwaq575qed.amplifyapp.com)). Run `corevital serve` locally so the dashboard can list and load traces from your SQLite DB. Data never leaves your machine.
+- **Path B (enterprise teams):** You do not need the React dashboard. Configure native sinks in `config.yaml` (or via `--sink datadog`, `--sink prometheus`, `--sink wandb`) so metrics and reports go directly to Datadog, Prometheus, or Weights & Biases. View and alert on CoreVital data in the observability tools your company already uses.
 
 ## Checklist
 

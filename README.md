@@ -27,13 +27,9 @@ Use it to debug why a model repeats itself, monitor inference health in producti
 
 ## Try CoreVital
 
-**Live Dashboard** -- browse real Llama-3.1 and GPT-2 traces without installing anything:
+**See it in action (no install):** Open the [CoreVital Dashboard](https://main.d2maxwaq575qed.amplifyapp.com) — sample traces, timeline charts, and Compare view. To use your own data, run `corevital serve` locally and click **Connect** in the dashboard.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://corevital-dwwtkbigm89mp5opxioez3.streamlit.app/)
-
-The hosted dashboard ships with a curated demo database (5 traces, two models, varying risk levels). Select "Database" in the sidebar to explore.
-
-**Install locally** (for CLI, dashboard, and production use):
+**Install locally** (for CLI, local API, and production use):
 
 ```bash
 pip install "git+https://github.com/Joe-b-20/CoreVital.git"
@@ -83,7 +79,7 @@ flowchart TD
     F --> I[Datadog]
     F --> J[Prometheus]
     F --> K[OpenTelemetry]
-    G --> L["Dashboard\nTimeline charts, attention heatmaps, Compare view"]
+    G --> L["Local API (corevital serve)\n→ React dashboard or Datasette"]
     H --> L
 ```
 
@@ -113,7 +109,7 @@ cd CoreVital
 pip install -e .
 ```
 
-Optional extras: `pip install "CoreVital[dashboard]"` (Streamlit dashboard), `pip install "CoreVital[otel]"` (OpenTelemetry), `pip install "CoreVital[all]"` (everything).
+Optional extras: `pip install "CoreVital[serve]"` (local API for the web dashboard), `pip install "CoreVital[datasette]"` ([Datasette dashboards](docs/datasette/README.md)—shareable, no app code to maintain), `pip install "CoreVital[otel]"` (OpenTelemetry), `pip install "CoreVital[all]"` (everything).
 
 ### Basic Usage
 ```bash
@@ -194,6 +190,7 @@ asyncio.run(main())
 ### CLI commands
 
 - **`run`** — Run instrumented generation (default sink: SQLite at `runs/corevital.db`).
+- **`serve`** — Run the local API server so the hosted dashboard can list and load your traces (`corevital serve`; optional: `pip install "CoreVital[serve]"`).
 - **`migrate`** — Migrate `trace_*.json` files from a directory into a SQLite DB (`corevital migrate --from-dir runs --to-db runs/corevital.db`).
 - **`compare`** — Summarize runs by model from a SQLite DB (`corevital compare --db runs/corevital.db`).
 
@@ -338,8 +335,7 @@ The `--perf` flag enables performance monitoring with three modes:
 
 **Detailed Mode** (`--perf detailed`):
 - Everything in summary mode, plus:
-- Creates a separate `*_performance_detailed.json` file
-- Shows nested breakdown with child operations and per-step statistics
+- Embeds a `detailed_breakdown` in the main trace JSON (nested operations, per-step stats)
 - Useful for identifying specific bottlenecks
 
 **Strict Mode** (`--perf strict`):
@@ -349,7 +345,7 @@ The `--perf` flag enables performance monitoring with three modes:
 - Reports original model load time (before caching)
 - Calculates inference overhead and CoreVital overhead percentages
 
-Example performance output in summary:
+Example performance output in summary (detailed/strict modes add `detailed_breakdown` to the same object):
 ```json
 {
   "extensions": {
@@ -360,8 +356,7 @@ Example performance output in summary:
         {"name": "model_load", "ms": 1700.0, "pct": 68.0},
         {"name": "model_inference", "ms": 700.0, "pct": 28.0}
       ],
-      "unaccounted_time": {"ms": 2.0, "pct": 0.08},
-      "detailed_file": "runs/trace_abc123_performance_detailed.json"
+      "unaccounted_time": {"ms": 2.0, "pct": 0.08}
     }
   }
 }
@@ -400,7 +395,26 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 
 **Metrics Interpretation:** See [Metrics Interpretation Guide](docs/metrics-interpretation.md) for per-metric definitions, research citations (Shannon entropy, Voita et al. attention, Attention Basin, etc.), threshold tables, and example scenarios.
 
-**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting dashboard metrics and identifying healthy vs unhealthy runs. The dashboard includes Prompt Analysis (layer transformations, prompt surprisals, sparse attention with a layers×heads basin heatmap, and an Attention Explorer for querying attention to/from tokens), timeline tabs (entropy, perplexity, surprisal, top-K margin, voter agreement), entropy-vs-position chart, and colored output by uncertainty. Timeline charts show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
+**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting metrics and identifying healthy vs unhealthy runs. The web dashboard (see [Visualizing your Data](#visualizing-your-data-two-viewing-paths)) includes Prompt Analysis (layer transformations, prompt surprisals, sparse attention with a layers×heads basin heatmap, and an Attention Explorer for querying attention to/from tokens), timeline tabs (entropy, perplexity, surprisal, top-K margin, voter agreement), entropy-vs-position chart, and colored output by uncertainty. Timeline charts show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
+
+### Visualizing your Data (Two Viewing Paths)
+
+CoreVital uses a **decoupled, cloud-native architecture**. How you view your data depends on your use case:
+
+**Path A — Open-Source / Individual Developers**
+
+- View rich trace files (timeline charts, attention heatmaps, Compare view) in the **hosted web dashboard**: [https://main.d2maxwaq575qed.amplifyapp.com](https://main.d2maxwaq575qed.amplifyapp.com). The dashboard is a separate [React app repo](https://github.com/Joe-b-20/corevital-dashboard); it opens in **Demo mode** with sample traces from that repo (`public/demo/`), so you can try it with no install.
+- To view your **local SQLite database**, run the local API in your terminal:
+  ```bash
+  pip install "CoreVital[serve]"
+  corevital serve
+  ```
+  Then open the dashboard in your browser and click **Connect**. The website talks only to the server running on your machine — **your data never leaves your computer**.
+
+**Path B — Enterprise Teams**
+
+- Enterprise users do **not** need the React dashboard. Configure CoreVital’s **native sinks** (Datadog, Prometheus, Weights & Biases) in your `config.yaml` (or via CLI flags) to send metrics and reports directly to the observability tools your company already uses.
+- Use `--sink datadog`, `--sink prometheus`, or `--sink wandb` so traces and risk scores flow into your existing dashboards and alerting.
 
 ### Sink Interface
 
@@ -489,7 +503,7 @@ corevital run --model meta-llama/Llama-3.1-8B \
   --prompt "Explain quantum computing" \
   --max_new_tokens 100 \
   --perf detailed
-# Check dashboard for risk score, health flags, and timeline
+# View traces via corevital serve and the web dashboard, or corevital compare
 ```
 
 ### 2. Production Monitoring
@@ -533,7 +547,7 @@ corevital run --model meta-llama/Llama-3.2-1B --prompt "..." --sink sqlite
 
 # Compare
 corevital compare --db runs/corevital.db
-# Or use dashboard Compare view
+# Or use the web dashboard Compare view (Path A)
 ```
 
 ### 4. Research & Analysis
@@ -637,18 +651,6 @@ GitHub Actions runs on every push and pull request to `main`:
 - **Type Check**: MyPy static analysis
 - **Test**: pytest suite (Python 3.12)
 
-### Hosting the Dashboard
-
-The Streamlit dashboard can be hosted publicly via [Streamlit Community Cloud](https://share.streamlit.io):
-
-1. Sign in at [share.streamlit.io](https://share.streamlit.io) with the GitHub account that owns this repo.
-2. Click **New app**, select the `CoreVital` repo, branch `main`, main file `dashboard.py`.
-3. Deploy. The `requirements.txt` at the repo root handles all dependencies.
-
-The bundled demo database (`docs/demo/corevital_demo.db`) ships with 5 curated traces (GPT-2 and Llama-3.1-8B-Instruct at varying risk levels). On the hosted app, select **Database** in the sidebar to browse them -- no local setup required.
-
-To use your own database, copy `runs/corevital.db` into the repo (or update the SQLite path in the sidebar).
-
 ### Mock Testing Suite
 
 The project includes a comprehensive mock testing suite that allows testing instrumentation logic without loading heavy models. This enables fast, lightweight testing of the instrumentation pipeline.
@@ -691,7 +693,7 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 
 ## Roadmap
 
-Phases 0--2 and the dashboard are fully implemented and tested. Phases 3--8 have working implementations that are iterative. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs.
+Phases 0--2 and the local API + dashboard workflow are fully implemented and tested. Phases 3--8 have working implementations that are iterative. See [Design Journey](docs/design-journey.md) for architectural decisions and trade-offs.
 
 | Phase | Focus | Key deliverables |
 |-------|-------|-----------------|
@@ -746,9 +748,10 @@ The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on C
 - PyYAML
 - Pydantic
 
-**Optional extras** (e.g. `pip install "CoreVital[dashboard]"`):
+**Optional extras** (e.g. `pip install "CoreVital[serve]"`):
 - `quantization`: bitsandbytes + accelerate for 4-bit / 8-bit inference (requires CUDA)
-- `dashboard`: Streamlit + Plotly for the web dashboard
+- `serve`: FastAPI + uvicorn for `corevital serve` (local API for the hosted React dashboard)
+- `datasette`: Datasette + datasette-dashboards for SQLite-based dashboards (see [docs/datasette/README.md](docs/datasette/README.md))
 - `datadog`: Datadog API client for `--sink datadog`
 - `prometheus`: Prometheus client for `--sink prometheus`
 - `wandb`: Weights & Biases for `--sink wandb`

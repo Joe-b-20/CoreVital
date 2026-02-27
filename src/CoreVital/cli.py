@@ -12,7 +12,7 @@
 #   2026-01-15: Added --quantize-4 and --quantize-8 flags for quantization support
 #   2026-02-04: Phase-0.75 - added --perf flag (summary/detailed/strict modes);
 #                performance data injected into report extensions after sink_write;
-#                detailed breakdown written as separate JSON file
+#                detailed breakdown embedded in main trace (extensions.performance.detailed_breakdown)
 #   2026-02-06: Fixed HTTP sink missing performance data - inject extensions.performance
 #                into Report before sink.write() so both local_file and http sinks
 #                receive complete data; removed post-write read-patch-write hack
@@ -209,7 +209,7 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         dest="perf_mode",
         metavar="MODE",
-        help="Performance monitoring: summary (default), detailed (+ breakdown file), "
+        help="Performance monitoring: summary (default), detailed (+ nested breakdown in trace), "
         "strict (+ warmup and baseline). Omit to disable.",
     )
     run_parser.add_argument(
@@ -293,6 +293,30 @@ def create_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Optional prompt_hash filter to compare models on the same prompt group.",
+    )
+
+    # Serve command: run local FastAPI server for dashboard connections
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Run the local API server for the CoreVital dashboard (port 8000)",
+    )
+    serve_parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind (default: 127.0.0.1). Use 0.0.0.0 to allow LAN access.",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind (default: 8000)",
+    )
+    serve_parser.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Path to SQLite database (default: runs/corevital.db or COREVITAL_DB_PATH env)",
     )
 
     return parser
@@ -417,22 +441,11 @@ def run_command(args: argparse.Namespace) -> int:
             # Build performance summary
             perf_summary = monitor.build_summary_dict()
 
-            # For detailed/strict modes, write the detailed breakdown file
+            # For detailed/strict modes, embed the detailed breakdown in the main trace
             mode = monitor.mode
-            trace_id = report.trace_id
             if mode in ("detailed", "strict"):
-                output_dir = Path(config.sink.output_dir)
-                output_dir.mkdir(parents=True, exist_ok=True)
-                detailed_path = output_dir / f"trace_{trace_id[:8]}_performance_detailed.json"
-                monitor.set_detailed_file(str(detailed_path))
-                perf_summary["detailed_file"] = str(detailed_path)
-
                 detailed_breakdown = monitor.build_detailed_breakdown()
-                detailed_breakdown["trace_id"] = trace_id[:8]
-                with open(detailed_path, "w") as f:
-                    # Compact JSON for smaller file size (dashboard can format on-demand)
-                    json.dump(detailed_breakdown, f, separators=(",", ":"), ensure_ascii=False)
-                logger.info(f"Performance detailed written to {detailed_path}")
+                perf_summary["detailed_breakdown"] = detailed_breakdown
 
             # Inject into report so sink.write() serializes the complete data
             report.extensions["performance"] = perf_summary
@@ -643,6 +656,33 @@ def compare_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def serve_command(args: argparse.Namespace) -> int:
+    """
+    Run the FastAPI local API server with uvicorn (for dashboard connections).
+
+    Returns:
+        Does not return on success; uvicorn runs until interrupted.
+    """
+    import os
+
+    try:
+        import uvicorn
+    except ImportError:
+        logger.error("uvicorn is required for 'corevital serve'. Install with: pip install \"CoreVital[serve]\"")
+        print('\n✗ uvicorn not found. Install the serve extra: pip install "CoreVital[serve]"\n', file=sys.stderr)
+        return 1
+
+    if getattr(args, "db", None):
+        os.environ["COREVITAL_DB_PATH"] = args.db
+    uvicorn.run(
+        "CoreVital.api:app",
+        host=args.host,
+        port=args.port,
+        reload=False,
+    )
+    return 0
+
+
 def main() -> int:
     """
     Main CLI entry point.
@@ -663,6 +703,8 @@ def main() -> int:
         return migrate_command(args)
     if args.command == "compare":
         return compare_command(args)
+    if args.command == "serve":
+        return serve_command(args)
 
     parser.print_help()
     return 1

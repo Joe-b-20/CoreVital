@@ -94,7 +94,7 @@ This guide shows what healthy and unhealthy model runs look like in the CoreVita
 
 ## Using the Dashboard
 
-1. **Load a report** (Demo sample, Local file, Database, or Upload)
+1. **Load a report** (Demo — from [dashboard repo](https://github.com/Joe-b-20/corevital-dashboard) `public/demo/`; Local file; Database via `corevital serve`; or Drag-and-drop)
 2. **Check Health Flags** at the top — red badges indicate issues
 3. **View Entropy Chart** — look for spikes or sustained high values
 4. **Check Attention Heatmaps** — look for collapsed heads (dark red)
@@ -114,5 +114,5 @@ Use the **Compare** view to see differences:
 ## See Also
 
 - [Metrics Guide](Phase1%20metrics%20analysis.md) -- Detailed metric explanations
-- [Dashboard](../dashboard.py) — Interactive visualization
+- [README — Visualizing your Data](../README.md#visualizing-your-data-two-viewing-paths) — Web dashboard (run `corevital serve` and connect) or enterprise sinks
 - [Case Studies](case-studies/) — Real-world examples

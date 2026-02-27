@@ -47,3 +47,8 @@ htmlcov/
 
 # --- Private Documents (not for repo) ---
 private-ip-strategy.md
+
+# --- Demo artifacts (generated / local) ---
+docs/demo/corevital.db
+docs/demo/*.bak
+docs/demo/trace_*_performance_detailed.json

@@ -56,7 +56,6 @@ class PerformanceMonitor:
         self._run_end_time: Optional[float] = None  # Actual wall clock end
         self.total_wall_time_ms: float = 0.0
         self.instrumented_inference_ms: Optional[float] = None
-        self.detailed_file_path: Optional[str] = None
         # Strict mode: separate tracking for warmup/baseline (not counted in total)
         self.warmup_ms: Optional[float] = None
         self.baseline_ms: Optional[float] = None  # Also serves as raw_inference_ms
@@ -99,9 +98,6 @@ class PerformanceMonitor:
 
     def set_instrumented_inference_ms(self, ms: float) -> None:
         self.instrumented_inference_ms = ms
-
-    def set_detailed_file(self, path: str) -> None:
-        self.detailed_file_path = path
 
     def set_warmup_ms(self, ms: float) -> None:
         """Set warmup time (strict mode, not counted in total)."""
@@ -182,7 +178,6 @@ class PerformanceMonitor:
             "total_wall_time_ms": round(total, 2),
             "parent_operations": parent_ops,
             "unaccounted_time": {"ms": round(unaccounted_ms, 2), "pct": round(unaccounted_pct, 2)},
-            "detailed_file": self.detailed_file_path,
         }
 
         # Strict mode: include extra metrics

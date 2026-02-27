@@ -9,7 +9,7 @@ CoreVital is tested with production-oriented open-weight models. This document c
 | **Llama 3** | `meta-llama/Llama-3.2-1B`, `meta-llama/Llama-3.1-8B-Instruct` | CausalLM; SDPA by default -- for full attention capture use `attn_implementation="eager"` when loading. |
 | **Mistral** | `mistralai/Mistral-7B-v0.1`, `mistralai/Mistral-7B-Instruct-v0.2` | CausalLM; standard attention. |
 | **Mixtral** | `mistralai/Mixtral-8x7B-v0.1`, `mistralai/Mixtral-8x7B-Instruct-v0.1` | MoE CausalLM; higher memory. |
-| **Qwen2** | `Qwen/Qwen2-0.5B`, `Qwen/Qwen2-0.5B-Instruct` | CausalLM; standard. |
+| **Qwen2** | — | **Not currently supported.** With eager attention + 4-bit, Qwen2 can produce invalid logits and trigger CUDA asserts during sampling. Support is planned via flex_attention (see roadmap). |
 | **GPT-2** | `gpt2` | CausalLM; used for CI smoke tests (small, no gating). |
 | **T5 / Flan-T5** | `google/flan-t5-small` | Seq2Seq; full encoder/decoder/cross-attention support. |
 
@@ -17,7 +17,7 @@ Smoke tests: `tests/test_models_production.py` (run with `pytest -m slow` or `-m
 
 ## Supported Architectures
 
-**Causal Language Models (GPT-2, Llama, Mistral, Qwen, etc.):**
+**Causal Language Models (GPT-2, Llama, Mistral, etc.):**
 Fully supported with automatic detection. CoreVital automatically switches attention implementation from SDPA to `eager` for Llama models to enable attention weight capture. This may slightly increase inference time but is necessary for attention analysis.
 
 **Sequence-to-Sequence Models (T5, BART, etc.):**

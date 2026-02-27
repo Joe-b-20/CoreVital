@@ -7,17 +7,17 @@ Dense reference only. Human README: README.md. (README points AIs here.)
 ## 1. Identity & scope
 
 - **What:** LLM inference health monitor. Hooks HF Transformers forward; computes summary stats (no raw tensor storage); outputs structured report (risk 0–1, health flags, timeline metrics, prompt telemetry).
-- **Output:** Report = schema 0.4.0, persisted to JSON/SQLite/Datadog/Prometheus/W&B/OTLP. Dashboard = Streamlit (dashboard.py).
-- **Python:** 3.12+. Core: torch, transformers, numpy, pyyaml, pydantic. Optional extras: dashboard, datadog, prometheus, wandb, otel, quantization (pyproject.toml).
+- **Output:** Report = schema 0.4.0, persisted to JSON/SQLite/Datadog/Prometheus/W&B/OTLP. Viewing: hosted React dashboard + local API (corevital serve), or enterprise sinks only (no dashboard).
+- **Python:** 3.12+. Core: torch, transformers, numpy, pyyaml, pydantic. Optional extras: serve (FastAPI+uvicorn), datadog, prometheus, wandb, otel, quantization (pyproject.toml).
 - **License:** Apache-2.0. Status: Beta.
 
 ---
 
 ## 2. Entry points
 
-- **CLI:** `corevital` or `python -m CoreVital.cli` → subcommands: `run`, `migrate`, `compare`. Entry: `src/CoreVital/cli.py` → `main()`, `create_parser()`, `run_command()`.
+- **CLI:** `corevital` or `python -m CoreVital.cli` → subcommands: `run`, `serve`, `migrate`, `compare`. Entry: `src/CoreVital/cli.py` → `main()`, `create_parser()`, `run_command()`, `serve_command()`.
 - **Library:** `from CoreVital import CoreVitalMonitor`; `monitor.run(model_id, prompt, ...)`, `get_risk_score()`, `get_health_flags()`, `wrap_generation()`, `stream()`. Entry: `src/CoreVital/monitor.py`.
-- **Dashboard:** `streamlit run dashboard.py` (root). Requires `CoreVital[dashboard]`.
+- **Local API:** `corevital serve` (uvicorn). Requires `CoreVital[serve]`. App: `src/CoreVital/api.py`; GET /api/traces, GET /api/traces/{id}. Used by hosted React dashboard; data stays local.
 
 ---
 
@@ -25,7 +25,8 @@ Dense reference only. Human README: README.md. (README points AIs here.)
 
 ```
 src/CoreVital/
-  cli.py              # CLI; run_command: config → collector.run() → ReportBuilder.build() → sink.write()
+  api.py              # FastAPI app; GET /api/traces, GET /api/traces/{id}; SQLiteSink.list_traces, load_report; CORS allow_origins=["*"]
+  cli.py              # CLI; run_command: config → collector.run() → ReportBuilder.build() → sink.write(); serve_command → uvicorn
   config.py           # Config, SinkConfig, ModelConfig, SummariesConfig; load_model_profile()
   monitor.py          # CoreVitalMonitor (run, wrap_generation, stream)
   risk.py             # compute_risk_score(), compute_layer_blame()
@@ -67,7 +68,6 @@ src/CoreVital/
 tests/                # pytest; test_*.py; markers: slow, gpu
 configs/              # default.yaml; model_profiles/*.yaml (gpt2, llama, default, ...)
 docs/                 # model-compatibility.md, metrics-interpretation.md, visual-examples.md, etc.
-dashboard.py          # Streamlit; load_report(); plotly optional
 .github/workflows/    # test.yaml (lint, typecheck, pytest)
 ```
 
@@ -111,7 +111,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 
 ## 6. Commands (validate / CI)
 
-- **Install (editable):** `pip install -e ".[dev]"`. Optional: `[dashboard]`, `[wandb]`, etc.
+- **Install (editable):** `pip install -e ".[dev]"`. Optional: `[serve]`, `[wandb]`, etc.
 - **Lint:** `ruff check src/ tests/` ; `ruff format --check src/ tests/` (fix: `ruff format src/ tests/`).
 - **Typecheck:** `mypy src/` (or `mypy src/CoreVital/ --ignore-missing-imports --warn-return-any --warn-unused-configs`).
 - **Tests:** `pytest tests/ -m 'not slow'` (fast, default). Exclude gpu: `pytest tests/ -m "not gpu"`. Slow: `pytest tests/test_smoke_gpt2_cpu.py tests/test_integration.py` or `pytest -m slow`. Production models: `pytest -m slow` (test_models_production.py).
@@ -129,7 +129,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 
 ## 8. Conventions (codebase)
 
-- **Style:** Ruff (E, F, I, W, B); line-length 120; isort known-first-party CoreVital. dashboard.py: E501, W291 ignored.
+- **Style:** Ruff (E, F, I, W, B); line-length 120; isort known-first-party CoreVital.
 - **Types:** Mypy on src/; warn_return_any, warn_unused_configs. Return types on public APIs.
 - **Schema:** reporting/schema.py. Default schema_version 0.4.0; validation accepts 0.3.0 and 0.4.0.
 - **Errors:** CoreVitalError, SinkError, ValidationError in errors.py; raise with details for debugging.
@@ -140,7 +140,7 @@ dashboard.py          # Streamlit; load_report(); plotly optional
 
 - **Run one monitored generation:** `corevital run --model gpt2 --prompt "Hello" --max_new_tokens 5` → report in runs/corevital.db (or --sink local for JSON). Optional: --device cuda, --quantize-4, --perf, --capture summary|full|on_risk.
 - **Use in Python:** `CoreVitalMonitor(capture_mode="summary").run("gpt2", "Hello", max_new_tokens=5)` then `get_risk_score()`, `get_health_flags()`, `should_intervene()`. Or `wrap_generation()` context manager.
-- **Dashboard:** `streamlit run dashboard.py`; sidebar: load from runs/, DB, or upload JSON. Uses load_report(path) or SQLiteSink.load_report(db_path, trace_id).
+- **Local API:** corevital serve → uvicorn CoreVital.api:app. GET /api/traces (SQLiteSink.list_traces), GET /api/traces/{id} (SQLiteSink.load_report). DB path: COREVITAL_DB_PATH or --db (default runs/corevital.db).
 - **Compare runs:** `corevital compare --db runs/corevital.db` (or --db path); lists traces, optional `--prompt-hash` filter. Compare view in dashboard.
 - **Migrate JSON to DB:** `corevital migrate --from-dir <dir> --to-db <path>`.
 - **Export to W&B/Datadog/OTLP:** --sink wandb (and WANDB_* or --wandb_project/entity); --sink datadog (DD_API_KEY); --export-otel (OTEL_EXPORTER_OTLP_ENDPOINT).

@@ -241,6 +241,6 @@ def generate_with_metrics(prompt: str, model_id: str):
 
 ## See Also
 
-- [Production Deployment Guide](production-deployment.md) — Sampling, database setup, alerting
+- [Production Deployment Guide](production-deployment.md) — Sampling, database setup, alerting, and the Two Viewing Paths (open-source vs enterprise)
 - [Library API Reference](../src/CoreVital/monitor.py) — Full `CoreVitalMonitor` API
-- [Dashboard](../dashboard.py) — Visualize reports
+- [README — Visualizing your Data](../README.md#visualizing-your-data-two-viewing-paths) — Local API (`corevital serve`) and hosted dashboard, or enterprise sinks

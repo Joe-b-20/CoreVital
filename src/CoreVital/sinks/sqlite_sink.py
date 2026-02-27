@@ -179,6 +179,7 @@ class SQLiteSink(Sink):
         limit: int = 100,
         model_id: Optional[str] = None,
         prompt_hash: Optional[str] = None,
+        order_asc: bool = False,
     ) -> List[dict]:
         """
         List reports from the database (lightweight: no report body).
@@ -188,6 +189,7 @@ class SQLiteSink(Sink):
             limit: Max number of rows to return
             model_id: If set, filter by model_id (exact match)
             prompt_hash: If set, filter by prompt_hash (exact match)
+            order_asc: If True, order by created_at_utc ASC (oldest first). Default False = newest first.
 
         Returns:
             List of dicts with keys: trace_id, created_at_utc, model_id, schema_version,
@@ -196,6 +198,7 @@ class SQLiteSink(Sink):
         path = Path(db_path)
         if not path.exists():
             return []
+        order = "ASC" if order_asc else "DESC"
         rows = []
         with sqlite3.connect(path) as conn:
             conn.row_factory = sqlite3.Row
@@ -211,7 +214,7 @@ class SQLiteSink(Sink):
             sel_full = "SELECT trace_id, created_at_utc, model_id, schema_version, prompt_hash, risk_score FROM reports"
             if where:
                 sel_full += " WHERE " + " AND ".join(where)
-            sel_full += " ORDER BY created_at_utc DESC LIMIT ?"
+            sel_full += f" ORDER BY created_at_utc {order} LIMIT ?"
             try:
                 cur = conn.execute(sel_full, params)
             except sqlite3.OperationalError:
@@ -219,7 +222,7 @@ class SQLiteSink(Sink):
                 sel_old = "SELECT trace_id, created_at_utc, model_id, schema_version FROM reports"
                 if model_id is not None:
                     sel_old += " WHERE model_id = ?"
-                sel_old += " ORDER BY created_at_utc DESC LIMIT ?"
+                sel_old += f" ORDER BY created_at_utc {order} LIMIT ?"
                 params_old = [p for p in params if p != prompt_hash] if prompt_hash is not None else params[:-1]
                 cur = conn.execute(sel_old, params_old)
             for row in cur:
