@@ -1,0 +1,9 @@
+# Mixtral 8x7B / MixtralForCausalLM (Mixture of Experts)
+# 32 layers, 4096 hidden, 32 heads (GQA), ~32k vocab, 8 experts
+# Thresholds: DEFAULTS — not yet calibrated from empirical runs.
+# MoE routing adds entropy variance; threshold set higher than dense models.
+l2_explosion_multiplier: 8.0
+high_entropy_threshold_bits: 4.5
+repetition_cosine_threshold: 0.9997
+collapsed_head_entropy_threshold: 0.05
+focused_head_concentration_threshold: 0.85

@@ -191,6 +191,8 @@ class ModelProfile(BaseModel):
     repetition_cosine_threshold: float = 0.9995  # Cosine sim above this = same direction (float16 anisotropy)
     collapsed_head_entropy_threshold: float = 0.1  # Head entropy below this = collapsed
     focused_head_concentration_threshold: float = 0.9  # Per-head max attn above this = focused
+    typical_entropy_range: Optional[List[float]] = None  # [p10, p90] from calibration runs
+    typical_l2_norm_range: Optional[List[float]] = None  # [p10, p90] last-layer L2 norms
 
 
 def _architecture_to_profile_key(architecture: str) -> str:
@@ -200,8 +202,14 @@ def _architecture_to_profile_key(architecture: str) -> str:
         return "gpt2"
     if "Llama" in a:
         return "llama"
+    if "Mixtral" in a:
+        return "mixtral"
     if "Mistral" in a:
         return "mistral"
+    if "Qwen2" in a:
+        return "qwen2"
+    if "Phi3" in a or "Phi-3" in a:
+        return "phi3"
     if "T5" in a or "T5ForConditional" in a:
         return "t5"
     if "Bart" in a:
