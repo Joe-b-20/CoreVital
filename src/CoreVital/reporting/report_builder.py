@@ -343,7 +343,7 @@ class ReportBuilder:
             except Exception as e:
                 logger.warning(f"Early warning computation failed, skipping: {e}")
 
-            # Phase-7: template-based narrative (2–4 sentences)
+            # Phase-2.3: data-specific narrative (Issue 8)
             try:
                 hf_n = health_flags if health_flags is not None else HealthFlags()
                 risk_ext = report.extensions.get("risk") or {}
@@ -351,8 +351,12 @@ class ReportBuilder:
                 summary_text = build_narrative(
                     hf_n,
                     risk_ext.get("risk_score", 0.0),
+                    risk_ext.get("risk_factors", []),
                     risk_ext.get("blamed_layers", []),
                     ew_ext.get("warning_signals", []),
+                    timeline,
+                    compound_signals=compound_signals if compound_signals else None,
+                    summary=summary,
                 )
                 report.extensions["narrative"] = {"summary": summary_text}
             except Exception as e:
