@@ -4,7 +4,7 @@ This guide explains each metric CoreVital computes, how to interpret thresholds,
 
 ## Overview
 
-CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K margin, voter agreement) and **aggregate** signals (health flags, risk score, prompt surprisals, basin scores, attention collapse). This document covers definitions, typical ranges, and when to act.
+CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K margin, top-K mass) and **aggregate** signals (health flags, risk score, prompt surprisals, basin scores, attention collapse). This document covers definitions, typical ranges, and when to act.
 
 ---
 
@@ -37,11 +37,12 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 ### Top-K margin
 
 **Definition:** Difference between the probability of the top token and the second-most likely token.  
-**Use:** Small margin means the model was close to choosing another token; useful for confidence and calibration.
+**Use:** Small margin means the model was close to choosing another token; useful for confidence and calibration.  
+*Deprecated:* `top1_top2_margin` is the same quantity; prefer `top_k_margin` in config and schema.
 
-### Voter agreement
+### Top-K mass
 
-**Definition:** Sum of probabilities of the top-K tokens (default K=10).  
+**Definition:** Sum of probabilities of the top-K tokens (default K=10). Same quantity formerly exposed as `voter_agreement` (deprecated).  
 **Use:** High value means most probability mass is on a small set of candidates; low value means spread across many tokens.
 
 ---
@@ -60,6 +61,10 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 | > 1.5     | Head focuses more on middle than boundaries. |
 
 **In the dashboard:** Sparse Attention tab shows a layers×heads basin heatmap and per-layer bar chart.
+
+### Concentration min
+
+**Definition:** The minimum value, across all attention heads and query positions, of the maximum attention weight assigned to any single key. Low concentration_min means at least one head at one position has very diffuse (spread-out) attention, which may indicate an underperforming head.
 
 ### Attention collapse
 
@@ -82,7 +87,7 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 ### Mid-layer anomaly
 
 **Definition:** NaN/Inf in middle-third layers, or L2 norm “explosion” (e.g. 8× the early-layer baseline for that step).  
-**Research:** Middle layers are associated with “truth” and semantic processing; anomalies there are more concerning than in early (syntactic) or late (token choice) layers.
+**Interpretation:** Empirically, mid-layer anomalies correlate with higher failure rates; this is a heuristic and model-dependent.
 
 **Health flag:** `mid_layer_anomaly_detected`. **Action:** Check inputs and numerical stability; consider different model or precision.
 

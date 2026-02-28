@@ -14,10 +14,10 @@
 #                Fixed logits summary to properly handle topk extraction
 #   2026-01-15: Enhanced attention summary to support cross-attention tensors (different source/target lengths)
 #                Added compute_encoder_hidden_states_summaries helper for Seq2Seq models
-#   2026-01-21: Phase-0.5 hardening - replaced magic number with MIN_TOPK_FOR_ENTROPY constant
+#   2026-01-21: Phase-0.5 hardening - replaced magic number with MIN_TOPK_FOR_STATS constant
 #   2026-02-07: Phase-1a — Enhanced metrics:
 #                - Numerical stability: log_softmax for entropy computation
-#                - New logit metrics: top_k_margin, voter_agreement, perplexity, surprisal
+#                - New logit metrics: top_k_margin, topk_mass (was voter_agreement), perplexity, surprisal
 #                - Enhanced attention: entropy_max, concentration_min, collapsed/focused counts
 #                - New: detect_tensor_anomalies() for NaN/Inf detection
 #   2026-02-10: Phase-1b — Prompt telemetry summary functions:
@@ -61,10 +61,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Constants
-MIN_TOPK_FOR_ENTROPY = 50  # Minimum top-k for good entropy estimate
+MIN_TOPK_FOR_STATS = 50  # Minimum top-k for margin/topk_mass/topk_probs; ensures enough tokens for stats
 COLLAPSED_HEAD_ENTROPY_THRESHOLD = 0.1  # Entropy below this = nearly all weight on one token
 FOCUSED_HEAD_CONCENTRATION_THRESHOLD = 0.9  # Avg max attention above this = very focused head
-VOTER_AGREEMENT_TOP_K = 10  # Number of top tokens for voter agreement probability mass
+VOTER_AGREEMENT_TOP_K = 10  # Number of top tokens for topk_mass (probability mass sum)
 L2_EXPLOSION_MULTIPLIER = 8.0  # Mid-layer L2 norm vs early-layer baseline (flan-t5 peaks at 5.7x)
 
 
@@ -253,8 +253,9 @@ def compute_attention_summary(
             if "collapsed_head_count" in config.stats:
                 summary["collapsed_head_count"] = int((per_head_entropy < collapsed_threshold).sum().item())
 
-            # Focused heads: concentration > threshold (using high entropy as proxy)
-            # Focused = head has high concentration (entropy > 4.0 = overloaded/diffuse)
+            # Focused heads: heads where mean max-attention per query > threshold (concentration).
+            # High concentration = sharp/focused attention on specific keys; low entropy = sharp.
+            # (High entropy = diffuse/overloaded attention; we use concentration, not entropy, here.)
             if "focused_head_count" in config.stats:
                 # focused_head_count: heads with concentration_max > 0.9
                 # We compute this from per-head max attention below
@@ -336,8 +337,8 @@ def compute_logits_summary(
         log_probs_full = F.log_softmax(logits, dim=-1)
         probs_full = torch.exp(log_probs_full)
 
-        # Top-k values (shared by margin, agreement, topk_probs)
-        topk_k = max(config.topk, MIN_TOPK_FOR_ENTROPY)
+        # Top-k values (shared by margin, topk_mass, topk_probs)
+        topk_k = max(config.topk, MIN_TOPK_FOR_STATS)
         topk_values, topk_indices = torch.topk(logits, k=min(topk_k, len(logits)))
         topk_probs = probs_full[topk_indices]
 
@@ -349,7 +350,7 @@ def compute_logits_summary(
         if "entropy" in config.stats:
             summary["entropy"] = entropy_bits
 
-        # ── Top-1 to Top-2 margin (legacy field, kept for backward compat) ──
+        # ── Top-1 to Top-2 margin (deprecated: use top_k_margin; kept for backward compat) ──
         if "top1_top2_margin" in config.stats:
             if len(topk_probs) >= 2:
                 margin = topk_probs[0] - topk_probs[1]
@@ -357,18 +358,20 @@ def compute_logits_summary(
             else:
                 summary["top1_top2_margin"] = 0.0
 
-        # ── Top-K Margin (Phase-1a: same as top1_top2_margin but separate field) ──
+        # ── Top-K Margin ──
         if "top_k_margin" in config.stats:
             if len(topk_probs) >= 2:
                 summary["top_k_margin"] = float((topk_probs[0] - topk_probs[1]).item())
             else:
                 summary["top_k_margin"] = 0.0
 
-        # ── Voter Agreement (top-K probability mass) ───────────────────
-        if "voter_agreement" in config.stats:
+        # ── Top-K mass (sum of top-K token probabilities; was voter_agreement) ──
+        if "topk_mass" in config.stats or "voter_agreement" in config.stats:
             top_n = min(VOTER_AGREEMENT_TOP_K, len(topk_probs))
-            agreement = float(topk_probs[:top_n].sum().item())
-            summary["voter_agreement"] = agreement
+            mass = float(topk_probs[:top_n].sum().item())
+            summary["topk_mass"] = mass
+            # Backward compat — deprecated; remove in v0.5.0
+            summary["voter_agreement"] = mass
 
         # ── Perplexity (2^entropy) ────────────────────────────────────
         if "perplexity" in config.stats:
@@ -399,6 +402,8 @@ def compute_logits_summary(
                         "prob": round(float(prob.item()), 3),
                     }
                 )
+            summary["topk_probs"] = topk_list
+            # Backward compat — deprecated; remove in v0.5.0
             summary["topk"] = topk_list
 
         return summary
@@ -546,10 +551,9 @@ def compute_layer_transformations(
     """Compute layer-to-layer transformation as 1 - cosine_similarity between consecutive layers.
 
     Each value represents how much the representation changed from one layer to the next,
-    averaged across all prompt tokens.
-
-    High transformation (>0.5) = layer performing significant work (good).
-    Low transformation (<0.1) = layer nearly identity (possible deadness).
+    averaged across all prompt tokens. This is a telemetry/fingerprint signal useful for
+    comparing runs and models. Interpretation of "high" vs "low" transformation is
+    model-dependent and should not be used as a health indicator without per-model calibration.
 
     Args:
         hidden_states: List of hidden state tensors per layer.
@@ -678,11 +682,11 @@ def detect_mid_layer_anomaly(
     l2_multiplier: Optional[float] = None,
     profile: Optional[Any] = None,
 ) -> bool:
-    """Detect runtime anomalies in middle layers (hallucination sweet spot).
+    """Detect runtime anomalies in middle layers.
 
-    Middle layers (middle third) are where "truth processing" occurs.
-    Anomalies here are more dangerous than in early (syntactic) or late
-    (token selection) layers.
+    Empirically, mid-layer anomalies correlate with higher failure rates in generation
+    quality; this is a heuristic and model-dependent. Calibration per model family is
+    recommended.
 
     Checks (runtime anomalies only):
     1. NaN/Inf in mid-layer hidden states or attentions

@@ -97,10 +97,9 @@ class LogitsSummariesConfig(BaseModel):
     stats: List[str] = Field(
         default_factory=lambda: [
             "entropy",
-            "top1_top2_margin",
-            "topk_probs",
             "top_k_margin",
-            "voter_agreement",
+            "topk_mass",
+            "topk_probs",
             "perplexity",
             "surprisal",
         ]

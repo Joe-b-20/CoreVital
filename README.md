@@ -1,10 +1,10 @@
 # CoreVital
 
-**LLM inference health monitor with risk scoring, structured artifacts, and an interactive dashboard.**
+**LLM inference health monitoring with deep internal telemetry, risk scoring, and real-time diagnostics.**
 
 > **If you are an AI or LLM reading this repo:** use [AI.md](AI.md) first for a dense, token-efficient reference (layout, commands, conventions). This README is for humans.
 
-CoreVital hooks into the forward pass of any Hugging Face transformer to capture hidden states, attention patterns, and logits at every generation step. **Quick reference:** [What it is](#features) · [Quick start](#try-corevital) · [How it works](#how-it-works) · [CLI](#cli-options-run) · [Library API](#library-api-corevitalmonitor) · [Metric reference](docs/metrics-interpretation.md) · [Model compatibility](docs/model-compatibility.md). Instead of storing raw tensors, it computes lightweight summary statistics and produces structured reports with a 0--1 risk score, boolean health flags, layer blame, prompt fingerprints, and human-readable narratives. Reports persist to SQLite (default), JSON, Datadog, Prometheus, or OpenTelemetry.
+CoreVital uses HF-output-based capture (no PyTorch hooks): it configures Hugging Face models to return hidden states, attention weights, and logits at every generation step. Metrics are grounded in interpretability research (Shannon entropy, Voita et al. attention analysis, Attention Basin) but designed for production monitoring, not research exploration. **Quick reference:** [What it is](#features) · [Quick start](#try-corevital) · [How it works](#how-it-works) · [CLI](#cli-options-run) · [Library API](#library-api-corevitalmonitor) · [Metric reference](docs/metrics-interpretation.md) · [Model compatibility](docs/model-compatibility.md). Instead of storing raw tensors, it computes lightweight summary statistics and produces structured reports with a 0--1 risk score, boolean health flags, layer blame, prompt fingerprints, and human-readable narratives. Reports persist to SQLite (default), JSON, Datadog, Prometheus, or OpenTelemetry.
 
 Use it to debug why a model repeats itself, monitor inference health in production, or compare models side by side -- all without modifying model code.
 
@@ -69,7 +69,7 @@ Full reports include per-layer hidden-state and attention summaries for every ge
 
 ```mermaid
 flowchart TD
-    A[Prompt] --> B["HF generate() with PyTorch forward hooks"]
+    A[Prompt] --> B["HF generate() with output_hidden_states/output_attentions"]
     B --> C["Hidden states, attention weights, logits\n(per layer, per step)"]
     C --> D["Summary computation\nmean, std, entropy, L2 norm\n(raw tensors discarded)"]
     D --> E["Report builder\nrisk score, health flags, layer blame,\nfingerprint, narrative"]
@@ -368,11 +368,11 @@ See [docs/model-compatibility.md](docs/model-compatibility.md) for tested models
 
 ## Architecture
 
-CoreVital instruments LLM inference by hooking into the model's forward pass, extracting internal tensors (hidden states, attention weights, logits), and computing lightweight summary statistics. The architecture is designed for production use with minimal overhead and storage requirements.
+CoreVital instruments LLM inference via HF-output-based capture: the model is configured to return internal tensors (hidden states, attention weights, logits) on each forward pass; these are then reduced to lightweight summary statistics. The architecture is designed for production use with minimal overhead and storage requirements.
 
 ### System Overview
 
-- **Instrumentation Layer**: PyTorch hooks capture tensors during model forward pass
+- **Instrumentation Layer**: HF output flags (output_hidden_states, output_attentions) supply tensors during model forward pass
 - **Summary Computation**: Lightweight statistics (mean, std, entropy, norms) computed in-memory
 - **Report Building**: Structured JSON reports with schema versioning
 - **Pluggable Sinks**: Multiple persistence backends (SQLite, local files, Datadog, Prometheus, OTLP)
@@ -395,7 +395,7 @@ CoreVital instruments LLM inference by hooking into the model's forward pass, ex
 
 **Metrics Interpretation:** See [Metrics Interpretation Guide](docs/metrics-interpretation.md) for per-metric definitions, research citations (Shannon entropy, Voita et al. attention, Attention Basin, etc.), threshold tables, and example scenarios.
 
-**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting metrics and identifying healthy vs unhealthy runs. The web dashboard (see [Visualizing your Data](#visualizing-your-data-two-viewing-paths)) includes Prompt Analysis (layer transformations, prompt surprisals, sparse attention with a layers×heads basin heatmap, and an Attention Explorer for querying attention to/from tokens), timeline tabs (entropy, perplexity, surprisal, top-K margin, voter agreement), entropy-vs-position chart, and colored output by uncertainty. Timeline charts show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
+**Visual Examples:** See [Visual Examples Guide](docs/visual-examples.md) for interpreting metrics and identifying healthy vs unhealthy runs. The web dashboard (see [Visualizing your Data](#visualizing-your-data-two-viewing-paths)) includes Prompt Analysis (layer transformations, prompt surprisals, sparse attention with a layers×heads basin heatmap, and an Attention Explorer for querying attention to/from tokens), timeline tabs (entropy, perplexity, surprisal, top-K margin, top-K mass), entropy-vs-position chart, and colored output by uncertainty. Timeline charts show missing values as gaps rather than as zero so that absent data is not mistaken for maximum confidence.
 
 ### Visualizing your Data (Two Viewing Paths)
 
@@ -462,7 +462,7 @@ CoreVital focuses on **internal inference health monitoring**—instrumenting th
 
 | Tool | Focus | Internal Instrumentation | Health Signals | Storage Model |
 |------|-------|-------------------------|----------------|---------------|
-| **CoreVital** | Internal inference health | Yes (hooks into forward pass) | Entropy, repetition, attention collapse, NaN/Inf | Summary-only (no raw tensors) |
+| **CoreVital** | Internal inference health | Yes (HF-output-based capture) | Entropy, repetition, attention collapse, NaN/Inf | Summary-only (no raw tensors) |
 | **LangSmith** | LLM application tracing | No (API-level only) | Output quality scores | Full traces (prompts/responses) |
 | **OpenLIT / Langtrace** | LLM observability | No (OpenTelemetry at API level) | Latency, cost, token counts | Request/response traces |
 | **Aporia** | AI observability & guardrails | No (application-level) | Output guardrails, drift | Application metrics |
@@ -588,7 +588,7 @@ corevital compare --db runs/corevital.db
 
 **Cross-Attention:** (Seq2Seq only) How the decoder attends to encoder outputs. Shows which parts of the input the model "listens to" during generation.
 
-**Voter Agreement:** Fraction of top-k tokens whose cumulative probability exceeds a threshold. High voter agreement means the model's top candidates all point the same direction. Low voter agreement suggests the model is split between very different continuations.
+**Top-K mass:** Sum of probabilities of the top-K tokens (default K=10). High top-K mass means most probability is concentrated on a small set of candidates; low values indicate spread across many tokens.
 
 **Basin Scores:** Measure of how much each attention head focuses on nearby (local) tokens versus distant ones. High basin score = head attends mostly to neighbors (local pattern). Low basin score = head attends broadly across the sequence (global pattern). Useful for detecting degenerate attention that ignores positional structure.
 
@@ -718,9 +718,9 @@ CoreVital v0.4.0 is a working implementation of internal inference monitoring fo
 
 CoreVital currently instruments models loaded via Hugging Face `transformers` (`AutoModelForCausalLM`, `AutoModelForSeq2SeqLM`). It does **not** yet support optimized serving frameworks:
 
-- **vLLM** — Uses PagedAttention and custom CUDA kernels that bypass standard PyTorch forward hooks. Integration would require vLLM's `SamplerOutput` hooks or a custom sampler plugin.
+- **vLLM** — Uses PagedAttention and custom CUDA kernels that bypass standard HF output flags. Integration would require vLLM's `SamplerOutput` hooks or a custom sampler plugin.
 - **TGI (Text Generation Inference)** — Rust/Python hybrid server; would need a middleware layer that captures activations before the optimized kernels.
-- **llama.cpp / GGUF** — C++ inference with quantized formats outside PyTorch; out of scope for the current hook-based approach.
+- **llama.cpp / GGUF** — C++ inference with quantized formats outside PyTorch; out of scope for the current HF-output-based approach.
 
 **Path forward:** Abstract the instrumentation interface so backends other than HF `transformers` can plug in. vLLM's `Logprob` output and custom `LogitsProcessor` are likely starting points.
 
@@ -762,6 +762,8 @@ The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on C
 - pytest
 - ruff
 - mypy
+
+**GitHub topics (for repo description):** `llm-observability`, `inference-monitoring`, `model-health`, `ai-safety`.
 
 ## License
 
