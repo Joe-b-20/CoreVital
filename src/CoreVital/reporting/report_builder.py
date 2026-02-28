@@ -57,6 +57,7 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 
+from CoreVital.compound_signals import CompoundSignal, detect_compound_signals
 from CoreVital.config import Config, load_model_profile
 from CoreVital.early_warning import compute_early_warning
 from CoreVital.fingerprint import compute_fingerprint_vector, compute_prompt_hash
@@ -251,16 +252,40 @@ class ReportBuilder:
                 except Exception as e:
                     logger.warning(f"Invalid RAG context, skipping: {e}")
 
+            # Phase-2: compound signals (Issue 6) — after timeline, before risk
+            compound_signals: List[CompoundSignal] = []
+            try:
+                basin_scores: Optional[List[List[float]]] = None
+                if prompt_analysis and prompt_analysis.layers:
+                    basin_scores = [lyr.basin_scores for lyr in prompt_analysis.layers]
+                compound_signals = detect_compound_signals(
+                    timeline,
+                    layers_by_step=timeline_layers_for_flags,
+                    basin_scores=basin_scores,
+                )
+                report.extensions["compound_signals"] = [
+                    {
+                        "name": s.name,
+                        "description": s.description,
+                        "severity": s.severity,
+                        "evidence": s.evidence,
+                    }
+                    for s in compound_signals
+                ]
+            except Exception as e:
+                logger.warning(f"Compound signal detection failed, skipping: {e}")
+
             # Phase-2: risk score and layer blame (always computed when health_flags exist)
             risk_score = 0.0
             if health_flags is not None:
                 try:
-                    # New composite score from timeline; fallback to legacy if timeline is None
+                    # New composite score from timeline + compound signals; fallback to legacy if timeline is None
                     risk_score, risk_factors = compute_risk_score(
                         health_flags,
                         summary,
                         timeline=timeline,
                         layers_by_step=timeline_layers_for_flags,
+                        compound_signals=compound_signals if compound_signals else None,
                     )
                     blamed_layers = compute_layer_blame(timeline_layers_for_flags)
                     report.extensions["risk"] = {

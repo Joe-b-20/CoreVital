@@ -7,9 +7,12 @@
 # Outputs: risk_score in [0, 1], risk_factors list, blamed_layers list
 # ============================================================================
 
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from CoreVital.reporting.schema import HealthFlags, LayerSummary, Summary, TimelineStep
+
+if TYPE_CHECKING:
+    from CoreVital.compound_signals import CompoundSignal
 
 
 def compute_risk_score_legacy(
@@ -54,13 +57,15 @@ def compute_risk_score(
     summary: Summary,
     timeline: Optional[List[TimelineStep]] = None,
     layers_by_step: Optional[List[List[LayerSummary]]] = None,
+    compound_signals: Optional[List["CompoundSignal"]] = None,
 ) -> Tuple[float, List[str]]:
-    """Composite risk score from health flags and continuous timeline metrics.
+    """Composite risk score from health flags, continuous timeline metrics, and compound signals.
 
     When timeline is None, falls back to compute_risk_score_legacy.
     When timeline is empty, returns 0.0 and no factors (unless NaN/Inf).
     Boolean flags (NaN/Inf, repetition, mid-layer anomaly) act as hard ceilings via max();
-    continuous metrics (entropy, top_k_margin, topk_mass, surprisal) are additive.
+    continuous metrics (entropy, top_k_margin, topk_mass, surprisal) and compound signal
+    severities are additive (capped at 1.0).
 
     Returns:
         (score, factors) so downstream knows why the score is what it is.
@@ -151,6 +156,12 @@ def compute_risk_score(
         if surprisal_component > 0.02:
             components.append(surprisal_component)
             factors.append("elevated_surprisal")
+
+    # --- Compound signals (Issue 6): severity as additive component ---
+    if compound_signals:
+        for cs in compound_signals:
+            components.append(cs.severity)
+            factors.append(f"compound:{cs.name}")
 
     # Combine: boolean flags dominate via max; continuous are additive (capped at 1.0)
     if components:
