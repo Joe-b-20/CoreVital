@@ -105,7 +105,7 @@ from CoreVital.reporting.schema import (
     TokenInfo,
     Warning,
 )
-from CoreVital.risk import compute_layer_blame, compute_risk_score
+from CoreVital.risk import compute_layer_blame, compute_layer_blame_flat, compute_risk_score
 from CoreVital.utils.time import get_utc_timestamp
 
 logger = get_logger(__name__)
@@ -288,10 +288,12 @@ class ReportBuilder:
                         compound_signals=compound_signals if compound_signals else None,
                     )
                     blamed_layers = compute_layer_blame(timeline_layers_for_flags)
+                    blamed_layers_flat = compute_layer_blame_flat(timeline_layers_for_flags)
                     report.extensions["risk"] = {
                         "risk_score": risk_score,
                         "risk_factors": risk_factors,
                         "blamed_layers": blamed_layers,
+                        "blamed_layers_flat": blamed_layers_flat,
                     }
                 except Exception as e:
                     logger.warning(f"Risk computation failed, skipping: {e}")

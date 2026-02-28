@@ -7,7 +7,8 @@
 # Outputs: risk_score in [0, 1], risk_factors list, blamed_layers list
 # ============================================================================
 
-from typing import TYPE_CHECKING, List, Optional, Tuple
+import statistics
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from CoreVital.reporting.schema import HealthFlags, LayerSummary, Summary, TimelineStep
 
@@ -176,23 +177,117 @@ def compute_risk_score(
     return score, factors
 
 
-def compute_layer_blame(layers_by_step: List[List[LayerSummary]]) -> List[int]:
-    """Identify layer indices that contributed to risk (anomalies or collapse).
+def compute_layer_blame(
+    layers_by_step: List[List[LayerSummary]],
+    num_layers: Optional[int] = None,
+) -> List[Dict]:
+    """Identify layers that contributed to risk with structured evidence.
 
-    Rule-based: any layer that had NaN/Inf (anomalies) or attention collapse
-    (collapsed_head_count > 0) in any step is blamed.
+    Checks four conditions per layer:
+    1. NaN/Inf in anomalies (severity 1.0)
+    2. Attention collapse rate across steps (severity 0.4 when >50%)
+    3. L2 norm z-score outlier vs cross-layer baseline (severity 0.5 when z>2.5)
+    4. L2 norm instability within layer across steps (severity 0.3 when CV>0.5)
 
     Args:
         layers_by_step: For each step, a list of LayerSummary (same order as layer_index).
+        num_layers: Optional total layer count (unused currently; reserved for future use).
 
     Returns:
-        Sorted unique list of layer indices (0-based) that had anomalies or collapse.
+        List of dicts: [{"layer": int, "reasons": [str], "severity": float}]
+        Sorted by layer index. Only layers with at least one reason are included.
     """
-    blamed: set[int] = set()
+    if not layers_by_step:
+        return []
+
+    layer_stats: Dict[int, Dict] = {}
+
     for step_layers in layers_by_step:
         for layer in step_layers:
+            idx = layer.layer_index
+            if idx not in layer_stats:
+                layer_stats[idx] = {
+                    "nan_inf": False,
+                    "collapsed_steps": 0,
+                    "l2_norms": [],
+                    "entropy_means": [],
+                    "total_steps": 0,
+                }
+            stats = layer_stats[idx]
+            stats["total_steps"] += 1
+
             if layer.anomalies and (layer.anomalies.has_nan or layer.anomalies.has_inf):
-                blamed.add(layer.layer_index)
-            if layer.attention_summary and getattr(layer.attention_summary, "collapsed_head_count", 0) > 0:
-                blamed.add(layer.layer_index)
-    return sorted(blamed)
+                stats["nan_inf"] = True
+
+            if layer.attention_summary:
+                cc = getattr(layer.attention_summary, "collapsed_head_count", 0)
+                if cc and cc > 0:
+                    stats["collapsed_steps"] += 1
+                ent = getattr(layer.attention_summary, "entropy_mean", None)
+                if ent is not None:
+                    stats["entropy_means"].append(ent)
+
+            if layer.hidden_summary:
+                norm = getattr(layer.hidden_summary, "l2_norm_mean", None)
+                if norm is not None:
+                    stats["l2_norms"].append(norm)
+
+    # Cross-layer L2 baseline for z-score computation
+    all_l2_means: List[Tuple[int, float]] = []
+    for idx, stats in layer_stats.items():
+        if stats["l2_norms"]:
+            all_l2_means.append((idx, sum(stats["l2_norms"]) / len(stats["l2_norms"])))
+
+    global_l2_mean = (sum(m for _, m in all_l2_means) / len(all_l2_means)) if all_l2_means else 0.0
+    global_l2_std = 0.0
+    if len(all_l2_means) >= 2:
+        global_l2_std = statistics.stdev(m for _, m in all_l2_means)
+
+    blamed: List[Dict] = []
+    for idx, stats in sorted(layer_stats.items()):
+        reasons: List[str] = []
+        severity = 0.0
+
+        # 1. NaN/Inf
+        if stats["nan_inf"]:
+            reasons.append("NaN/Inf detected")
+            severity = max(severity, 1.0)
+
+        # 2. Attention collapse rate
+        total = max(1, stats["total_steps"])
+        collapse_rate = stats["collapsed_steps"] / total
+        if collapse_rate > 0.5:
+            reasons.append(f"Attention collapse in {collapse_rate:.0%} of steps")
+            severity = max(severity, 0.4)
+
+        # 3. L2 norm z-score outlier
+        if stats["l2_norms"] and global_l2_std > 0:
+            layer_l2_mean = sum(stats["l2_norms"]) / len(stats["l2_norms"])
+            z_score = (layer_l2_mean - global_l2_mean) / global_l2_std
+            if z_score > 2.5:
+                reasons.append(f"L2 norm outlier (z={z_score:.1f})")
+                severity = max(severity, 0.5)
+
+        # 4. L2 norm instability (coefficient of variation within layer across steps)
+        if len(stats["l2_norms"]) >= 3:
+            l2_cv = statistics.stdev(stats["l2_norms"]) / max(1e-10, statistics.mean(stats["l2_norms"]))
+            if l2_cv > 0.5:
+                reasons.append(f"Unstable L2 norms (CV={l2_cv:.2f})")
+                severity = max(severity, 0.3)
+
+        if reasons:
+            blamed.append({
+                "layer": idx,
+                "reasons": reasons,
+                "severity": round(severity, 2),
+            })
+
+    return blamed
+
+
+def compute_layer_blame_flat(layers_by_step: List[List[LayerSummary]]) -> List[int]:
+    """Backward-compatible wrapper: return flat sorted list of blamed layer indices.
+
+    Delegates to compute_layer_blame and extracts the "layer" field.
+    """
+    return [b["layer"] for b in compute_layer_blame(layers_by_step)]
