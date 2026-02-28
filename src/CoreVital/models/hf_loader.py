@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional, Type, cast
 
@@ -48,6 +49,27 @@ from CoreVital.config import Config
 from CoreVital.errors import ModelLoadError
 from CoreVital.logging_utils import get_logger
 from CoreVital.models.registry import ModelCapabilities
+
+
+def _probe_attentions_available(
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    device: torch.device,
+) -> bool:
+    """Run a 1-token forward with output_attentions=True and check if attentions are returned.
+
+    Used at load time to set ModelCapabilities.attentions_available (Issue 52).
+    """
+    try:
+        dummy = tokenizer("test", return_tensors="pt").to(device)
+        with torch.no_grad():
+            out = model(**dummy, output_attentions=True, return_dict=True)
+        return (
+            getattr(out, "attentions", None) is not None
+            and len(out.attentions) > 0
+        )
+    except Exception:
+        return False
 
 logger = get_logger(__name__)
 
@@ -266,6 +288,20 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
             except Exception as e:
                 logger.warning(f"Could not set attention implementation to 'eager': {e}")
                 # Continue anyway - some models might not support this or might already work
+
+        # Probe whether model actually returns attentions (Issue 52)
+        with _op("_probe_attentions"):
+            attentions_available = _probe_attentions_available(
+                model, tokenizer, device
+            )
+            capabilities = dataclasses.replace(
+                capabilities, attentions_available=attentions_available
+            )
+            if not attentions_available:
+                logger.warning(
+                    "Attention capture probe: model did not return attentions "
+                    "from a 1-token forward. Attention metrics will be omitted."
+                )
 
         # Extract metadata (use model.config which is already loaded) - CoreVital logic
         with _op("_extract_metadata"):

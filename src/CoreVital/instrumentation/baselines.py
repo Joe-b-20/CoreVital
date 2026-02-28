@@ -107,19 +107,23 @@ def run_baseline(
     config: Config,
     inputs: Any,
     is_seq2seq: bool,
+    generator: Optional[torch.Generator] = None,
 ) -> float:
     """Run baseline inference (no instrumentation) and return elapsed ms."""
     start = time.perf_counter()
     with torch.no_grad():
         if is_seq2seq:
-            run_baseline_seq2seq(model_bundle, config, inputs)
+            run_baseline_seq2seq(model_bundle, config, inputs, generator=generator)
         else:
-            run_baseline_causal(model_bundle, config, inputs)
+            run_baseline_causal(model_bundle, config, inputs, generator=generator)
     return (time.perf_counter() - start) * 1000
 
 
 def run_baseline_causal(
-    model_bundle: ModelBundle, config: Config, inputs: Any
+    model_bundle: ModelBundle,
+    config: Config,
+    inputs: Any,
+    generator: Optional[torch.Generator] = None,
 ) -> None:
     """Baseline CausalLM generation (no output_hidden_states/attentions/scores)."""
     num_beams = getattr(config.generation, "num_beams", 1) or 1
@@ -137,11 +141,15 @@ def run_baseline_causal(
             config.generation, "early_stopping", False
         )
         gen_config["do_sample"] = False
+    # HF generate() does not accept generator kwarg; baseline runs under collector's lock when seed set.
     cast(Any, model_bundle.model).generate(**inputs, **gen_config)
 
 
 def run_baseline_seq2seq(
-    model_bundle: ModelBundle, config: Config, inputs: Any
+    model_bundle: ModelBundle,
+    config: Config,
+    inputs: Any,
+    generator: Optional[torch.Generator] = None,
 ) -> None:
     """Baseline Seq2Seq generation: encoder + decoder loop, no hidden_states/attentions.
 
@@ -197,7 +205,9 @@ def run_baseline_seq2seq(
                 decoder_input_ids, next_token_logits
             )
             probs = torch.softmax(next_token_logits, dim=-1)
-            next_token_id = torch.multinomial(probs, num_samples=1)
+            next_token_id = torch.multinomial(
+                probs, num_samples=1, generator=generator
+            )
         else:
             next_token_id = torch.argmax(
                 next_token_logits, dim=-1, keepdim=True

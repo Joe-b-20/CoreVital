@@ -73,6 +73,7 @@ def run_seq2seq_generation(
             bool,
         ]
     ] = None,
+    generator: Optional[torch.Generator] = None,
 ) -> Seq2SeqGenerationResult:
     """Manual Seq2Seq generation with per-step instrumentation.
 
@@ -191,7 +192,9 @@ def run_seq2seq_generation(
                 decoder_input_ids, raw_logits
             )
             probs = torch.softmax(next_token_logits, dim=-1)
-            next_token = torch.multinomial(probs, num_samples=1)
+            next_token = torch.multinomial(
+                probs, num_samples=1, generator=generator
+            )
         else:
             next_token = torch.argmax(raw_logits, dim=-1, keepdim=True)
 

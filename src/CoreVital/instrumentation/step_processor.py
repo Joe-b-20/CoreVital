@@ -79,11 +79,33 @@ def normalize_step_tensors(
     - Slice attention to last query token: [:, :, -1:, :]
     - .detach().cpu() everything
     - Optional beam slicing via beam_handler
+    - Shape assertions per NormalizedStepPayload contract (Issue 54)
     """
     hidden = _normalize_hidden(raw_hidden, num_layers, beam_handler)
     attn = _normalize_attention(raw_attention, beam_handler)
     cross = _normalize_attention(raw_cross_attention, None)
     logits = _normalize_logits(raw_logits, beam_handler)
+
+    # Shape contract: hidden (1, 1, hidden_dim), attention (1, heads, 1, key_len), logits 1D or 2D
+    if hidden is not None:
+        for i, t in enumerate(hidden):
+            assert t.dim() == 3, (
+                f"hidden_states[{i}] must be 3D (batch, seq, hidden), got dim={t.dim()}"
+            )
+    if attn is not None:
+        for i, t in enumerate(attn):
+            assert t.dim() == 4, (
+                f"attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
+            )
+    if cross is not None:
+        for i, t in enumerate(cross):
+            assert t.dim() == 4, (
+                f"cross_attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
+            )
+    if logits is not None:
+        assert logits.dim() in (1, 2), (
+            f"logits must be 1D or 2D, got dim={logits.dim()}"
+        )
 
     return NormalizedStepPayload(
         hidden_states=hidden,

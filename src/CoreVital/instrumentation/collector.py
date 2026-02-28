@@ -14,6 +14,7 @@
 #   - step_processor.py (tensor→summary lifecycle)
 # ============================================================================
 
+import threading
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -39,6 +40,10 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+# When seed is set, CausalLM path may still use global RNG if HF generate() does not
+# honor the generator kwarg. This lock ensures single-flight for reproducibility (Issue 47).
+_generation_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +113,11 @@ class InstrumentationCollector:
 
     This class loads the model, dispatches generation to the appropriate
     path (CausalLM or Seq2Seq), and collects all data for report generation.
+
+    Thread safety (Issue 41): This class is NOT thread-safe. For concurrent use
+    in a server context, create one InstrumentationCollector per request or use
+    a model pool with locks. The cached model_bundle shares PyTorch model state
+    that is mutated during inference.
     """
 
     def __init__(self, config: Config, backend: Optional["Backend"] = None):
@@ -156,7 +166,6 @@ class InstrumentationCollector:
     ) -> InstrumentationResults:
         """Built-in Hugging Face instrumented run."""
         try:
-
             def _op(name: str):
                 return monitor.operation(name) if monitor else nullcontext()
 
@@ -176,6 +185,7 @@ class InstrumentationCollector:
                 inputs = self.model_bundle.tokenizer(
                     prompt, return_tensors="pt", padding=False
                 ).to(self.model_bundle.device)
+                assert inputs.input_ids.shape[0] == 1, "CoreVital only supports batch_size=1"
 
                 logger.debug("Perf: running warmup (2 rounds)...")
                 warmup_start = time.perf_counter()
@@ -185,12 +195,15 @@ class InstrumentationCollector:
                 monitor.set_warmup_ms(warmup_ms)
                 logger.debug(f"Perf: warmup done ({warmup_ms:.2f}ms)")
 
-                if self.config.generation.seed is not None:
-                    torch.manual_seed(self.config.generation.seed)
-                    if torch.cuda.is_available():
-                        torch.cuda.manual_seed_all(self.config.generation.seed)
+                seed = self.config.generation.seed
+                generator = None
+                if seed is not None:
+                    generator = torch.Generator(device=self.model_bundle.device).manual_seed(seed)
                 logger.debug("Perf: running baseline...")
-                baseline_ms = run_baseline(self.model_bundle, self.config, inputs, is_seq2seq)
+                with _generation_lock if seed is not None else nullcontext():
+                    baseline_ms = run_baseline(
+                        self.model_bundle, self.config, inputs, is_seq2seq, generator=generator
+                    )
                 monitor.set_baseline_ms(baseline_ms)
                 logger.debug(f"Perf: baseline done ({baseline_ms:.2f}ms)")
 
@@ -199,12 +212,11 @@ class InstrumentationCollector:
                 if self.model_bundle is None:
                     self.model_bundle = load_model(self.config, monitor=monitor)
 
-            # === Seed ===
-            with _op("torch.manual_seed"):
-                if self.config.generation.seed is not None:
-                    torch.manual_seed(self.config.generation.seed)
-                    if torch.cuda.is_available():
-                        torch.cuda.manual_seed_all(self.config.generation.seed)
+            # Per-request generator for reproducibility (Issue 47); no global torch.manual_seed
+            seed = self.config.generation.seed
+            generator = None
+            if seed is not None:
+                generator = torch.Generator(device=self.model_bundle.device).manual_seed(seed)
 
             # === Tokenize ===
             with _op("tokenize"):
@@ -212,8 +224,19 @@ class InstrumentationCollector:
                 inputs = self.model_bundle.tokenizer(
                     prompt, return_tensors="pt", padding=False
                 ).to(self.model_bundle.device)
+                assert inputs.input_ids.shape[0] == 1, "CoreVital only supports batch_size=1"
                 prompt_token_ids = inputs.input_ids[0].tolist()
                 logger.debug(f"Prompt tokens: {len(prompt_token_ids)}")
+
+            # === Prompt length vs context window (Issue 42) ===
+            max_len = getattr(
+                self.model_bundle.model.config, "max_position_embeddings", None
+            )
+            if isinstance(max_len, int) and len(prompt_token_ids) >= max_len:
+                raise InstrumentationError(
+                    f"Prompt ({len(prompt_token_ids)} tokens) exceeds model context "
+                    f"({max_len} max_position_embeddings)"
+                )
 
             is_seq2seq = self.model_bundle.capabilities.is_seq2seq
 
@@ -237,41 +260,44 @@ class InstrumentationCollector:
             warnings: List[Dict[str, str]] = []
 
             with _op("model_inference"):
-                with torch.no_grad():
-                    if is_seq2seq:
-                        logger.info("Using manual generation for Seq2Seq model")
-                        with _op("_generate_seq2seq_manual"):
-                            seq_result = run_seq2seq_generation(
+                with _generation_lock if seed is not None else nullcontext():
+                    with torch.no_grad():
+                        if is_seq2seq:
+                            logger.info("Using manual generation for Seq2Seq model")
+                            with _op("_generate_seq2seq_manual"):
+                                seq_result = run_seq2seq_generation(
+                                    self.model_bundle,
+                                    self.config,
+                                    inputs,
+                                    prompt_token_ids,
+                                    monitor=monitor,
+                                    step_callback=step_callback,
+                                    generator=generator,
+                                )
+                            generated_token_ids = seq_result.generated_token_ids
+                            generated_text = seq_result.generated_text
+                            timeline = seq_result.timeline
+                            warnings = seq_result.warnings
+                            encoder_hidden_states = seq_result.encoder_hidden_states
+                            encoder_attentions = seq_result.encoder_attentions
+                            if seq_result.prompt_forward is not None:
+                                prompt_forward = seq_result.prompt_forward
+                        else:
+                            causal_result = run_causal_generation(
                                 self.model_bundle,
                                 self.config,
                                 inputs,
                                 prompt_token_ids,
                                 monitor=monitor,
-                                step_callback=step_callback,
+                                generator=generator,
                             )
-                        generated_token_ids = seq_result.generated_token_ids
-                        generated_text = seq_result.generated_text
-                        timeline = seq_result.timeline
-                        warnings = seq_result.warnings
-                        encoder_hidden_states = seq_result.encoder_hidden_states
-                        encoder_attentions = seq_result.encoder_attentions
-                        if seq_result.prompt_forward is not None:
-                            prompt_forward = seq_result.prompt_forward
-                    else:
-                        causal_result = run_causal_generation(
-                            self.model_bundle,
-                            self.config,
-                            inputs,
-                            prompt_token_ids,
-                            monitor=monitor,
-                        )
-                        generated_token_ids = causal_result.generated_token_ids
-                        generated_text = causal_result.generated_text
-                        timeline = causal_result.timeline
-                        warnings = causal_result.warnings
+                            generated_token_ids = causal_result.generated_token_ids
+                            generated_text = causal_result.generated_text
+                            timeline = causal_result.timeline
+                            warnings = causal_result.warnings
 
-                logger.debug(f"Generated tokens: {len(generated_token_ids)}")
-                logger.debug(f"Generated text: {generated_text}")
+                    logger.debug(f"Generated tokens: {len(generated_token_ids)}")
+                    logger.debug(f"Generated text: {generated_text}")
 
             elapsed_ms = int((time.time() - start_time) * 1000)
             logger.info(f"Generation complete in {elapsed_ms}ms")
@@ -300,6 +326,9 @@ class InstrumentationCollector:
         except Exception as e:
             logger.exception("Instrumentation failed")
             raise InstrumentationError("Failed during instrumented inference", details=str(e)) from e
+        finally:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
 
 # ============================================================================

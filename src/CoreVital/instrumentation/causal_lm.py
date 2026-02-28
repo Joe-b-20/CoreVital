@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
 import torch
 
 from CoreVital.config import Config
+from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
 from CoreVital.models.hf_loader import ModelBundle
 
@@ -42,6 +43,7 @@ def run_causal_generation(
     inputs: Any,
     prompt_token_ids: List[int],
     monitor: Optional["PerformanceMonitor"] = None,
+    generator: Optional[torch.Generator] = None,
 ) -> CausalGenerationResult:
     """Run CausalLM generation with full instrumentation.
 
@@ -53,6 +55,15 @@ def run_causal_generation(
         return monitor.operation(name) if monitor else nullcontext()
 
     num_beams = getattr(config.generation, "num_beams", 1) or 1
+
+    # Issue 49: Beam search with per-layer capture is not supported.
+    if num_beams > 1 and (
+        config.summaries.hidden.enabled or config.summaries.attention.enabled
+    ):
+        raise InstrumentationError(
+            "Beam search (num_beams > 1) is not supported with hidden_states or "
+            "attentions capture. Use num_beams=1 or disable hidden/attention summaries."
+        )
     gen_config: Dict[str, Any] = {
         "max_new_tokens": config.generation.max_new_tokens,
         "do_sample": config.generation.do_sample,
@@ -71,6 +82,10 @@ def run_causal_generation(
             config.generation, "early_stopping", False
         )
         gen_config["do_sample"] = False
+
+    # HF generate() does not accept a generator kwarg (rejected as unused model_kwarg).
+    # For reproducibility when seed is set, collector holds _generation_lock so only
+    # one run uses global RNG at a time.
 
     with _op("model.generate"):
         outputs = cast(Any, model_bundle.model).generate(
