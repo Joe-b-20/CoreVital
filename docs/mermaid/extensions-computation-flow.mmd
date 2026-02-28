@@ -1,101 +1,138 @@
-%% Extensions Computation Flow: How risk, fingerprint, narrative, and early_warning are computed
-%% Shows dependencies and order of computation in report_build
-%% Ref: src/CoreVital/reporting/report_builder.py (lines 247-321)
+%% Extensions Computation Flow: How risk, compound signals, early warning, fingerprint,
+%% narrative, calibration, and metric consistency are computed.
+%% Shows dependencies and order of computation in report_builder.build()
+%% Ref: src/CoreVital/reporting/report_builder.py
+%% Updated: 2026-02-28 — audit-57 refactor (Phases 0–5)
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
 
 flowchart TB
-    Start([Report assembled<br/>health_flags, timeline, summary])
+    Start([Report assembled<br/>health_flags, timeline, summary,<br/>timeline_layers_for_flags, basin_scores])
 
-    %% Phase-2: Risk Score
-    subgraph SG_Risk["Phase-2: Risk Score & Layer Blame"]
+    %% Compound Signals
+    subgraph SG_Compound["Compound Signal Detection"]
         direction TB
-        Risk1[compute_risk_score<br/>health_flags, summary]
-        Risk2[compute_layer_blame<br/>timeline_layers_for_flags]
-        Risk1 --> RiskExt["extensions.risk = {<br/>risk_score, risk_factors,<br/>blamed_layers}"]
+        CS1["detect_compound_signals()<br/>timeline, layers_by_step, basin_scores"]
+        CS1 --> CSExt["extensions.compound_signals =<br/>List of {name, description, severity, evidence}"]
+    end
+
+    %% Risk Score & Layer Blame
+    subgraph SG_Risk["Composite Risk Score & Enriched Layer Blame"]
+        direction TB
+        Risk1["compute_risk_score()<br/>health_flags, summary, timeline,<br/>layers_by_step, compound_signals"]
+        Risk2["compute_layer_blame()<br/>timeline_layers → List~dict~ {layer, reasons, severity}"]
+        Risk3["compute_layer_blame_flat()<br/>→ List~int~ (backward compat)"]
+        Risk1 --> RiskExt["extensions.risk = {<br/>risk_score, risk_factors,<br/>blamed_layers (enriched),<br/>blamed_layers_flat}"]
         Risk2 --> RiskExt
+        Risk3 --> RiskExt
     end
 
     %% on_risk logic
     subgraph SG_OnRisk["on_risk Capture Mode Logic"]
         direction TB
         OnRisk1{risk_score >= threshold<br/>OR any health_flag?}
-        OnRisk1 -->|yes| OnRisk2[Attach full timeline layers<br/>to report.timeline]
-        OnRisk1 -->|yes| OnRisk3[Rebuild prompt_analysis<br/>with sparse heads]
-        OnRisk1 -->|no| OnRisk4[Keep summary mode<br/>no full layers]
-        OnRisk2 --> OnRisk3
+        OnRisk1 -->|yes| OnRisk2[Attach full timeline layers<br/>+ rebuild prompt_analysis]
+        OnRisk1 -->|no| OnRisk4[Keep summary mode]
     end
 
-    %% Phase-3: Fingerprint
-    subgraph SG_Fingerprint["Phase-3: Fingerprint"]
+    %% Fingerprint
+    subgraph SG_Fingerprint["Fingerprint v2 (25 elements)"]
         direction TB
-        Finger1[compute_fingerprint_vector<br/>timeline, summary, health_flags, risk_score]
-        Finger2[compute_prompt_hash<br/>prompt, model_id]
-        Finger1 --> FingerExt["extensions.fingerprint = {<br/>vector, prompt_hash}"]
+        Finger1["compute_fingerprint_vector()<br/>timeline, health_flags, summary,<br/>risk_score, layers_by_step<br/>→ 25-element vector"]
+        Finger2["compute_prompt_hash()<br/>prompt, model_id"]
+        Finger1 --> FingerExt["extensions.fingerprint = {<br/>vector (25), version: 2,<br/>prompt_hash}"]
         Finger2 --> FingerExt
     end
 
-    %% Phase-4: Early Warning
-    subgraph SG_EarlyWarn["Phase-4: Early Warning"]
+    %% Early Warning
+    subgraph SG_EarlyWarn["Early Warning (5 trend detectors)"]
         direction TB
-        EW1[compute_early_warning<br/>timeline, health_flags]
-        EW1 --> EWExt["extensions.early_warning = {<br/>failure_risk, warning_signals}"]
+        EW1["compute_early_warning()<br/>health_flags, timeline,<br/>high_entropy_threshold (from profile)"]
+        EW1 --> EWExt["extensions.early_warning = {<br/>failure_risk,<br/>warning_signals}"]
     end
 
-    %% Phase-7: Narrative
-    subgraph SG_Narrative["Phase-7: Narrative"]
+    %% Narrative
+    subgraph SG_Narrative["Narrative (data-specific)"]
         direction TB
-        Nar1[build_narrative<br/>health_flags, risk_score,<br/>blamed_layers, warning_signals]
-        Nar1 --> NarExt["extensions.narrative = {<br/>summary: str}"]
+        Nar1["build_narrative()<br/>health_flags, risk_score,<br/>risk_factors, blamed_layers,<br/>warning_signals, timeline,<br/>compound_signals, summary"]
+        Nar1 --> NarExt["extensions.narrative = {<br/>summary: 2-6 sentence text with<br/>actual values, step indices,<br/>token text, recommendations}"]
+    end
+
+    %% Calibration (optional)
+    subgraph SG_Calibration["Calibration (optional, when profile configured)"]
+        direction TB
+        Cal1{calibration_profile<br/>configured?}
+        Cal1 -->|yes| Cal2["CalibrationProfile.load(path)"]
+        Cal2 --> Cal3["compute_divergence_score()<br/>trace, baseline"]
+        Cal3 --> CalExt["extensions.calibration = {<br/>divergence_score, anomalies,<br/>baseline_model_id, baseline_num_runs}"]
+        Cal1 -->|no| CalSkip[Skip calibration]
+    end
+
+    %% Metric Consistency (DEBUG only)
+    subgraph SG_Consistency["Metric Consistency (DEBUG level only)"]
+        direction TB
+        MC1{logger at<br/>DEBUG level?}
+        MC1 -->|yes| MC2["validate_metric_consistency()<br/>perplexity=2^entropy, margin≤mass,<br/>non-negative entropy, perplexity≥1"]
+        MC2 --> MCExt["extensions.metric_consistency = {<br/>warnings, count}<br/>(if any violations)"]
+        MC1 -->|no| MCSkip[Skip validation]
     end
 
     %% RAG Context (optional)
     subgraph SG_RAG["RAG Context (if provided)"]
         direction TB
-        RAG1{config.rag_context<br/>provided?}
-        RAG1 -->|yes| RAG2[RAGContext.model_dump<br/>from config]
-        RAG2 --> RAGExt["extensions.rag = RAGContext"]
-        RAG1 -->|no| RAGExt
+        RAG1{rag_context<br/>provided?}
+        RAG1 -->|yes| RAGExt["extensions.rag = RAGContext"]
+        RAG1 -->|no| RAGSkip[Skip]
     end
 
     %% Performance (injected by CLI)
-    subgraph SG_Perf["Performance (injected by CLI if --perf)"]
+    subgraph SG_Perf["Performance (if --perf)"]
         direction TB
         Perf1[mark_run_end]
         Perf2[build_summary_dict]
-        Perf3[write detailed file<br/>if detailed/strict]
-        Perf4[report.extensions.performance = summary]
         Perf1 --> Perf2
-        Perf2 --> Perf3
-        Perf3 --> Perf4
+        Perf2 --> Perf3["report.extensions.performance"]
     end
 
-    Start --> SG_Risk
+    %% Flow
+    Start --> SG_Compound
     Start --> SG_OnRisk
+
+    CSExt --> SG_Risk
+    Start --> SG_Risk
+
     Start --> SG_Fingerprint
     Start --> SG_EarlyWarn
-    Start --> SG_RAG
 
     RiskExt --> SG_Narrative
     EWExt --> SG_Narrative
+    CSExt --> SG_Narrative
 
-    SG_Narrative --> SG_Perf
+    SG_Narrative --> SG_Calibration
+    SG_Calibration --> SG_Consistency
+    SG_Consistency --> SG_RAG
+    SG_RAG --> SG_Perf
+
     SG_OnRisk --> SG_Perf
 
-    Perf4 --> End([Report ready for sink.write])
+    Perf3 --> End([Report ready for sink.write])
 
     %% Styling
     style Start fill:#059669,stroke:#10b981,color:#d1fae5
     style End fill:#059669,stroke:#10b981,color:#d1fae5
 
+    style SG_Compound fill:#4c1d9515,stroke:#a78bfa
+    style CS1 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style CSExt fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+
     style SG_Risk fill:#7c2d1215,stroke:#fb923c
     style Risk1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
     style Risk2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style Risk3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
     style RiskExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
 
     style SG_OnRisk fill:#7c2d1215,stroke:#fb923c
     style OnRisk1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
     style OnRisk2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
-    style OnRisk3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
     style OnRisk4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
 
     style SG_Fingerprint fill:#7c2d1215,stroke:#fb923c
@@ -111,13 +148,25 @@ flowchart TB
     style Nar1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
     style NarExt fill:#7c2d12,stroke:#fb923c,color:#fed7aa
 
+    style SG_Calibration fill:#065f4615,stroke:#10b981
+    style Cal1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style Cal2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style Cal3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style CalExt fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style CalSkip fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style SG_Consistency fill:#1e3a5f15,stroke:#60a5fa
+    style MC1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style MC2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style MCExt fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style MCSkip fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
     style SG_RAG fill:#1e3a5f15,stroke:#60a5fa
     style RAG1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
-    style RAG2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
     style RAGExt fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style RAGSkip fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
 
     style SG_Perf fill:#0e749015,stroke:#22d3ee
     style Perf1 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
     style Perf2 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
     style Perf3 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
-    style Perf4 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc

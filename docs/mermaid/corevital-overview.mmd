@@ -1,0 +1,111 @@
+%% CoreVital Overview — What it does and why, for someone with basic LLM knowledge
+%% Think of CoreVital as an ECG for LLMs: it monitors the model's internal state
+%% during text generation and tells you when something is wrong.
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    subgraph WHAT["WHAT CoreVital MONITORS"]
+        direction LR
+        HS["🧠 Hidden States<br/>Internal representations at every layer.<br/>Are they stable? Growing? Collapsing?"]
+        ATT["👁️ Attention Patterns<br/>Which tokens is each head focusing on?<br/>Is any head collapsed (ignoring everything)?"]
+        LOG["📊 Logits / Probabilities<br/>How confident is the model at each step?<br/>How many tokens is it choosing between?"]
+    end
+
+    subgraph WHY["WHY you need it"]
+        direction TB
+        W1["LLMs can fail silently:<br/>repetition loops, hallucinations,<br/>numerical instability, attention collapse"]
+        W2["You can't tell from output text alone<br/>whether the model was confused internally"]
+        W3["CoreVital catches problems<br/>before they reach the user"]
+    end
+
+    subgraph HOW["HOW it works (3 stages)"]
+        direction TB
+
+        subgraph STAGE1["Stage 1: Capture"]
+            direction LR
+            S1A["Configure HF model to return<br/>hidden_states, attentions, logits<br/>at every generation step"]
+            S1B["No PyTorch hooks needed —<br/>uses HF output flags"]
+        end
+
+        subgraph STAGE2["Stage 2: Summarize"]
+            direction LR
+            S2A["For each step, compute<br/>lightweight summary statistics:<br/>entropy, L2 norms, concentration"]
+            S2B["Discard raw tensors immediately<br/>→ StepSummary (scalars only)<br/>No GPU memory accumulation"]
+        end
+
+        subgraph STAGE3["Stage 3: Interpret"]
+            direction LR
+            S3A["Risk Score (0–1)<br/>Combines boolean flags +<br/>continuous metrics + compound signals"]
+            S3B["Health Flags<br/>NaN/Inf, repetition loop,<br/>attention collapse, mid-layer anomaly"]
+            S3C["Early Warning<br/>Trend detectors that predict<br/>failures before they happen"]
+            S3D["Narrative<br/>Human-readable 2–6 sentence<br/>summary with actionable advice"]
+        end
+    end
+
+    subgraph OUTPUT["WHAT you get"]
+        direction LR
+        O1["📈 Per-step timeline<br/>entropy, perplexity, surprisal,<br/>top-K margin, top-K mass"]
+        O2["🚩 Health flags<br/>Boolean alerts for<br/>critical issues"]
+        O3["🎯 Risk score 0–1<br/>Single number: how likely<br/>is this output bad?"]
+        O4["🔍 Compound signals<br/>Multi-metric failure patterns<br/>(context loss, confusion, etc.)"]
+        O5["📋 Narrative<br/>Plain-English summary<br/>with recommendations"]
+        O6["🔢 Fingerprint<br/>25-element vector for<br/>clustering similar runs"]
+    end
+
+    subgraph STORE["WHERE it goes"]
+        direction LR
+        ST1["SQLite<br/>(default)"]
+        ST2["JSON files"]
+        ST3["Datadog"]
+        ST4["Prometheus"]
+        ST5["W&B"]
+        ST6["OpenTelemetry"]
+    end
+
+    WHAT --> HOW
+    WHY --> HOW
+    STAGE1 --> STAGE2
+    STAGE2 --> STAGE3
+    HOW --> OUTPUT
+    OUTPUT --> STORE
+
+    %% Styling
+    style WHAT fill:#1e3a5f15,stroke:#60a5fa
+    style HS fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style ATT fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style LOG fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    style WHY fill:#7f1d1d15,stroke:#f87171
+    style W1 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style W2 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style W3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style HOW fill:#0f172a,stroke:#334155
+    style STAGE1 fill:#1e3a5f15,stroke:#60a5fa
+    style S1A fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style S1B fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style STAGE2 fill:#14532d15,stroke:#4ade80
+    style S2A fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style S2B fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style STAGE3 fill:#4c1d9515,stroke:#a78bfa
+    style S3A fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style S3B fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style S3C fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style S3D fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+
+    style OUTPUT fill:#92400e15,stroke:#f59e0b
+    style O1 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O2 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O3 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O4 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O5 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O6 fill:#92400e,stroke:#f59e0b,color:#fde68a
+
+    style STORE fill:#0e749015,stroke:#22d3ee
+    style ST1 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style ST2 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style ST3 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style ST4 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style ST5 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style ST6 fill:#0e7490,stroke:#22d3ee,color:#a5f3fc

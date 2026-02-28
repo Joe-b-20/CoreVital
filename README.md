@@ -10,20 +10,29 @@ Use it to debug why a model repeats itself, monitor inference health in producti
 
 ## Features
 
--  **Deep Instrumentation**: Capture hidden states, attention patterns, and logits at every generation step
--  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors
+-  **Deep Instrumentation**: Capture hidden states, attention patterns, and logits at every generation step via HF-output-based capture (no PyTorch hooks)
+-  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors. Raw tensors are discarded immediately after summary computation via `StepSummary`
+-  **Composite Risk Scoring**: Continuous metrics (entropy, margin, surprisal, top-K mass) combined with boolean health flags and compound multi-metric signals for a 0–1 risk score with explanatory factors
+-  **Compound Signal Detection**: Five multi-metric failure patterns (context loss, confident confusion, degenerating generation, attention bottleneck, confident repetition risk)
+-  **Early Warning**: Trend detectors (entropy acceleration, margin collapse/decline, surprisal volatility, entropy-margin divergence) that predict failures before they trip health-flag thresholds
+-  **Enriched Layer Blame**: Blamed layers include structured reasons and severity (NaN/Inf, attention collapse rate, L2 norm outlier, L2 instability)
+-  **Data-Driven Calibration**: Build baseline profiles from known-healthy runs (`corevital calibrate`), then score production traces by statistical divergence. ECE + Platt scaling for benchmark validation
+-  **Per-Model Profiles**: Calibrated thresholds per model family (GPT-2, LLaMA, Mistral, Mixtral, Qwen2, Phi-3) in `configs/model_profiles/`
+-  **25-Element Fingerprint**: Compact run-summary vector with temporal patterns, cross-metric correlations, and trend slopes for clustering and pattern detection
+-  **Actionable Narratives**: Data-specific 2–6 sentence summaries citing actual entropy values, step indices, token text, compound signals, and recommendations
+-  **Metric Consistency Validation**: Information-theoretic invariant checks (perplexity = 2^entropy, margin ≤ mass, non-negative entropy)
 -  **Performance Monitoring**: Track operation times with `--perf` flag (summary, detailed, or strict mode)
--  **Model Registry**: Single source of truth for model type detection via `ModelCapabilities`
+-  **Model Registry**: Single source of truth for model type detection via `ModelCapabilities` (includes attention availability probing)
 -  **Extensible Persistence**: Pluggable Sink interface — SQLite (default), LocalFile, Datadog, Prometheus, W&B, HTTP, OpenTelemetry
 -  **CI/CD**: GitHub Actions workflow with pytest, Ruff linting, and MyPy type checking
--  **Configurable**: YAML configuration with environment variable overrides
+-  **Configurable**: YAML configuration with environment variable overrides; entropy mode (`full` / `topk_approx`), calibration profiles, per-model thresholds
 -  **CPU/CUDA Support**: Automatic device detection or manual override
 -  **Quantization Support**: 4-bit and 8-bit quantization via bitsandbytes for memory-efficient inference
 -  **Structured Artifacts**: JSON trace files with schema version `0.4.0` for future compatibility
 
-**Tested with:** Llama 3 (e.g. meta-llama/Llama-3.2-1B), Mistral 7B, Mixtral 8x7B, Qwen2. See [Model compatibility](docs/model-compatibility.md) and smoke tests in `tests/test_models_production.py` (run with `pytest -m slow`).
+**Tested with:** Llama 3 (e.g. meta-llama/Llama-3.2-1B), Mistral 7B, Mixtral 8x7B, Qwen2, Phi-3. See [Model compatibility](docs/model-compatibility.md) and smoke tests in `tests/test_models_production.py` (run with `pytest -m slow`).
 
-**Status (v0.4.0):** Phases 0--2 (instrumentation, metrics, risk scoring) and the dashboard are fully implemented and tested. Phases 3--8 (fingerprinting, early warning, health-aware decoding, comparison, narratives, library API) have working implementations that are iterative -- functional but expected to evolve. Streaming (Phase 4) is post-run replay; real-time per-step events are planned. See [Roadmap](#roadmap).
+**Status (v0.5.0-rc):** Full refactor complete (Phases 0–5). Instrumentation pipeline split into focused modules (`collector.py`, `causal_lm.py`, `seq2seq.py`, `step_processor.py`, `baselines.py`). Summaries split into subpackage (`summaries/{logits,attention,hidden_states,utils}.py`). Risk scoring, compound signals, early warning, narratives, calibration, fingerprinting, and metric validation all implemented and tested (436 tests). See [Roadmap](#roadmap).
 
 ## Try CoreVital
 
@@ -43,23 +52,32 @@ Every run produces a structured report. Here is a condensed example from a real 
 ```json
 {
   "risk_score": 0.35,
+  "risk_factors": ["elevated_entropy", "low_confidence_margin"],
   "health_flags": {
     "nan_detected": false,
     "attention_collapse_detected": true,
     "high_entropy_steps": 1,
     "repetition_loop_detected": false
   },
-  "narrative": "Moderate risk. Attention collapse detected in 3 heads. One high-entropy step at position 2.",
+  "narrative": "Moderate risk (score: 0.35). Peak entropy 5.12 bits at step 3 (token: \"the\"). Entropy trend: stable.",
+  "compound_signals": [
+    { "name": "confident_confusion", "severity": 0.5, "description": "..." }
+  ],
+  "early_warning": { "failure_risk": 0.2, "warning_signals": ["margin_declining"] },
+  "blamed_layers": [
+    { "layer": 5, "reasons": ["attention_collapse_rate"], "severity": 0.4 }
+  ],
   "timeline": [
     {
       "step_index": 0,
       "token": { "token_text": " the", "prob": 0.222 },
       "entropy": 4.02,
       "perplexity": 16.22,
-      "surprisal": 3.91
+      "surprisal": 3.91,
+      "topk_mass": 0.85
     }
   ],
-  "fingerprint_vector": [0.35, 4.02, 0.22, 5, 12, ...]
+  "fingerprint": { "vector": [0.35, 4.02, ...], "version": 2 }
 }
 ```
 
@@ -69,11 +87,13 @@ Full reports include per-layer hidden-state and attention summaries for every ge
 
 ```mermaid
 flowchart TD
-    A[Prompt] --> B["HF generate() with output_hidden_states/output_attentions"]
+    A[Prompt] --> B["HF generate() / manual decoder loop\n(causal_lm.py / seq2seq.py)"]
     B --> C["Hidden states, attention weights, logits\n(per layer, per step)"]
-    C --> D["Summary computation\nmean, std, entropy, L2 norm\n(raw tensors discarded)"]
-    D --> E["Report builder\nrisk score, health flags, layer blame,\nfingerprint, narrative"]
-    E --> F{Sink}
+    C --> D["step_processor.py\nnormalize → compute summaries → discard tensors\n(StepSummary: scalars only)"]
+    D --> E["Report builder\nrisk score, compound signals, early warning,\nlayer blame, fingerprint, narrative"]
+    E --> E2["Calibration scoring\n(optional: divergence from baseline profile)"]
+    E2 --> E3["Metric consistency validation\n(DEBUG mode)"]
+    E3 --> F{Sink}
     F --> G[SQLite]
     F --> H[JSON]
     F --> I[Datadog]
@@ -189,7 +209,8 @@ asyncio.run(main())
 
 ### CLI commands
 
-- **`run`** — Run instrumented generation (default sink: SQLite at `runs/corevital.db`).
+- **`run`** — Run instrumented generation (default sink: SQLite at `runs/corevital.db`). Supports `--calibration <path>` for divergence scoring against a baseline profile.
+- **`calibrate`** — Build a calibration profile from known-healthy prompts: `corevital calibrate --model <id> --prompts <file> --out <path>` (see [Risk Calibration](docs/risk-calibration.md)).
 - **`serve`** — Run the local API server so the hosted dashboard can list and load your traces (`corevital serve`; optional: `pip install "CoreVital[serve]"`).
 - **`migrate`** — Migrate `trace_*.json` files from a directory into a SQLite DB (`corevital migrate --from-dir runs --to-db runs/corevital.db`).
 - **`compare`** — Summarize runs by model from a SQLite DB (`corevital compare --db runs/corevital.db`).
@@ -215,6 +236,7 @@ Options:
   --rag-context PATH        Path to JSON file with RAG context metadata
   --export-otel             Export run to OpenTelemetry (OTLP); requires pip install CoreVital[otel]
   --otel-endpoint HOST:PORT OTLP gRPC endpoint (or set OTEL_EXPORTER_OTLP_ENDPOINT)
+  --calibration PATH        Path to calibration profile JSON for divergence scoring
   --config PATH             Path to custom config YAML file
   --log_level TEXT          Logging level: DEBUG|INFO|WARNING|ERROR [default: INFO]
   --perf [MODE]             Performance monitoring: summary (default), detailed, or strict
@@ -254,12 +276,12 @@ Report structure:
     {
       "step_index": 0,
       "token": { "token_id": 123, "token_text": "hello", "is_prompt_token": false },
-      "logits_summary": { "entropy": 8.12, "top1_top2_margin": 0.34, "topk": [...] },
+      "logits_summary": { "entropy": 8.12, "top_k_margin": 0.34, "topk_mass": 0.72, "topk_probs": [...] },
       "layers": [
         {
           "layer_index": 0,
           "hidden_summary": { "mean": 0.001, "std": 0.98, ... },
-          "attention_summary": { "entropy_mean": 2.31, ... },
+          "attention_summary": { "entropy_mean": 2.31, "entropy_mean_normalized": 0.42, ... },
           "cross_attention": { "entropy_mean": 0.92, ... },
           "extensions": {}
         }
@@ -275,7 +297,14 @@ Report structure:
   },
   "warnings": [],
   "health_flags": { "nan_detected": false, "high_entropy_steps": 0, ... },
-  "extensions": { "risk": { "risk_score": 0.2, "risk_factors": [] }, "fingerprint": { ... }, "narrative": { ... } },
+  "extensions": {
+    "risk": { "risk_score": 0.2, "risk_factors": [], "blamed_layers": [], "blamed_layers_flat": [] },
+    "compound_signals": [],
+    "early_warning": { "failure_risk": 0.0, "warning_signals": [] },
+    "fingerprint": { "vector": [...], "version": 2, "prompt_hash": "..." },
+    "narrative": { "summary": "..." },
+    "calibration": { "divergence_score": 0.1, "anomalies": [], "baseline_model_id": "...", "baseline_num_runs": 50 }
+  },
   "encoder_layers": [
     {
       "layer_index": 0,
@@ -293,19 +322,19 @@ Report structure:
 - **prompt**: Contains the input prompt text, number of tokens and token IDs
 - **generated**: Contains the generated output text, number of tokens and token IDs
 - **timeline**: Per-token trace covering generated tokens. Each step contains decoder layer summaries.
-- **hidden_summary**: Mean, std, L2 norm, max abs value, random projection sketch; `clipped` is true when values were clamped for numerical stability
-- **attention_summary**: Entropy statistics (entropy_mean, entropy_min), concentration metrics (concentration_max), and per-head max weight (max_weight_per_head) to spot specialist or failing heads. 
+- **hidden_summary**: Mean, std, L2 norm, max abs value, random projection sketch; `clipped` is true when values were clamped for numerical stability. When clipping occurs, includes `clip_fraction` (fraction of elements clipped) and `clip_max_before` (max abs before clamping)
+- **attention_summary**: Entropy statistics (entropy_mean, entropy_mean_normalized, entropy_min), concentration metrics (concentration_max), and per-head max weight (max_weight_per_head) to spot specialist or failing heads. `entropy_mean_normalized` is entropy / log(K) in [0, 1] for consistent cross-sequence-length comparison
   - For decoder layers (in timeline): Contains decoder self-attention
   - For encoder layers (in encoder_layers): Contains encoder self-attention
   - This field ALWAYS contains self-attention, regardless of model type
 - **cross_attention**: (Seq2Seq only) Cross-attention statistics showing how the decoder attends to encoder outputs at each generation step. Only used in decoder layers (in timeline). Always null for CausalLM models and for encoder layers.
 - **encoder_layers**: (Seq2Seq only) Encoder layer summaries computed once at the start of generation. Each layer includes `hidden_summary` and `attention_summary` (encoder self-attention). Always null for CausalLM models.
-- **logits_summary**: Entropy, top-1/top-2 margin, and top-k token probabilities
+- **logits_summary**: Entropy, top-K margin, top-K mass (`topk_mass`), top-K probs (`topk_probs`), perplexity, and surprisal. Supports `entropy_mode: "full"` (default) or `"topk_approx"` for approximate entropy from top-K logits
 - **model.dtype**: Model dtype as string. `Optional[str]` — may be `null` or `"quantized_unknown"` when dtype cannot be definitively detected for quantized models.
 - **model.revision**: Model commit hash/revision extracted from model config
 - **model.quantization**: Quantization information (enabled: bool, method: "4-bit"|"8-bit"|null). The dtype field shows quantized dtypes (int8, uint8) when detectable, or `"quantized_unknown"` otherwise.
-- **health_flags**: Aggregated flags (nan_detected, attention_collapse_detected, high_entropy_steps, repetition_loop_detected, etc.).
-- **extensions**: Risk (risk_score, risk_factors, blamed_layers), fingerprint (vector, prompt_hash; when available), early_warning (when available), narrative, RAG, performance.
+- **health_flags**: Aggregated flags (nan_detected, attention_collapse_detected, high_entropy_steps, repetition_loop_detected, mid_layer_anomaly_detected, etc.).
+- **extensions**: Risk (`risk_score`, `risk_factors`, `blamed_layers` (enriched List[dict] with layer/reasons/severity), `blamed_layers_flat` (List[int] for backward compat)), compound_signals (List[{name, description, severity, evidence}]), early_warning (`failure_risk`, `warning_signals`), fingerprint (`vector` (25 elements, v2), `version`, `prompt_hash`), narrative, calibration (when profile configured: `divergence_score`, `anomalies`, `baseline_model_id`, `baseline_num_runs`), metric_consistency (when DEBUG logging), RAG, performance.
 
 ### Trace File Sizes
 
@@ -331,7 +360,7 @@ The `--perf` flag enables performance monitoring with three modes:
 **Summary Mode** (`--perf` or `--perf summary`):
 - Adds `performance` extension to the main trace JSON
 - Shows total wall time and breakdown by parent operations
-- Tracks: config_load, setup_logging, model_load, torch.manual_seed, tokenize, model_inference, report_build
+- Tracks: config_load, setup_logging, model_load, tokenize, model_inference, report_build
 
 **Detailed Mode** (`--perf detailed`):
 - Everything in summary mode, plus:
@@ -378,14 +407,21 @@ CoreVital instruments LLM inference via HF-output-based capture: the model is co
 - **Pluggable Sinks**: Multiple persistence backends (SQLite, local files, Datadog, Prometheus, OTLP)
 
 **Architecture Diagrams:**
+- [CoreVital Overview](docs/mermaid/corevital-overview.mmd) — What CoreVital does and why (start here)
+- [Module Architecture](docs/mermaid/module-architecture.mmd) — Codebase layout and module dependencies
 - [Data Flow](docs/mermaid/metrics-data-flow.mmd) — How data flows from model inference to reports
-- [Computation Pipeline](docs/mermaid/phase-1-computation-pipeline.mmd) — Phase-1 metrics computation flow
+- [Step Processor Lifecycle](docs/mermaid/step-processor-lifecycle.mmd) — Raw tensors → StepSummary (scalars only)
+- [Computation Pipeline](docs/mermaid/phase-1-computation-pipeline.mmd) — Full metrics computation flow
 - [Schema Structure](docs/mermaid/schema-v03-structure.mmd) — Report schema v0.4.0 organization
 - [Metrics Dependency Chain](docs/mermaid/metrics-dependency-chain.mmd) — How metrics depend on each other
-- [Signal Interpretation](docs/mermaid/metrics-signal-interpretation.mmd) — What each metric means
+- [Signal Interpretation](docs/mermaid/metrics-signal-interpretation.mmd) — What each metric means and when to act
+- [Risk Score Computation](docs/mermaid/risk-score-computation.mmd) — How the composite 0–1 risk score is built
+- [Compound Signal Detection](docs/mermaid/compound-signals-detection.mmd) — The 5 multi-metric failure patterns
+- [Early Warning Detectors](docs/mermaid/early-warning-detectors.mmd) — The 5 trend detectors
+- [Calibration Workflow](docs/mermaid/calibration-workflow.mmd) — Building and using calibration profiles
+- [Extensions Computation](docs/mermaid/extensions-computation-flow.mmd) — How all extensions are computed in report_builder
 - [Performance Monitoring](docs/mermaid/operations-hierarchy.mmd) — Operation timing hierarchy
 - [Execution Flow](docs/mermaid/operations-flow-sequential.mmd) — Sequential execution order
-- [Extensions Computation](docs/mermaid/extensions-computation-flow.mmd) — How risk, fingerprint, narrative, and early_warning are computed
 
 **Production Deployment:** See [Production Deployment Guide](docs/production-deployment.md) for sampling strategies, database setup, metrics export, and alerting.
 
@@ -580,7 +616,7 @@ corevital compare --db runs/corevital.db
 
 **Repetition Loop:** When the model gets stuck repeating the same tokens. Detected by comparing last-layer hidden states across steps (high cosine similarity indicates repetition).
 
-**Risk Score:** Single number (0-1) summarizing overall run health. Computed from health flags, entropy patterns, and attention anomalies. Higher = more likely to produce poor output.
+**Risk Score:** Single number (0-1) summarizing overall run health. Computed from boolean health flags (hard ceilings), continuous timeline metrics (entropy, margin, surprisal, top-K mass), and compound signals (multi-metric patterns). Higher = more likely to produce poor output. See [Risk Calibration](docs/risk-calibration.md).
 
 **Health Flags:** Boolean indicators for specific issues: NaN/Inf detected, attention collapse, high entropy steps, repetition loop, mid-layer anomaly.
 
@@ -588,7 +624,15 @@ corevital compare --db runs/corevital.db
 
 **Cross-Attention:** (Seq2Seq only) How the decoder attends to encoder outputs. Shows which parts of the input the model "listens to" during generation.
 
-**Top-K mass:** Sum of probabilities of the top-K tokens (default K=10). High top-K mass means most probability is concentrated on a small set of candidates; low values indicate spread across many tokens.
+**Top-K mass:** Sum of probabilities of the top-K tokens (default K=10). High top-K mass means most probability is concentrated on a small set of candidates; low values indicate spread across many tokens. Formerly exposed as `voter_agreement` (deprecated alias still written for backward compatibility).
+
+**Compound Signals:** Multi-metric failure patterns detected from timeline data. Five patterns: context loss (high entropy + low basin), confident confusion (high entropy + high margin), degenerating generation (rising entropy + declining margin), attention bottleneck (high collapse + elevated entropy), confident repetition risk (low entropy + very high mass).
+
+**Early Warning:** Trend-based predictors that detect degradation patterns before they trip health-flag thresholds. Signals: entropy acceleration, margin collapse/decline, surprisal volatility, entropy-margin divergence.
+
+**Calibration Profile:** Empirical baseline built from known-healthy runs. Contains per-metric distributions (entropy, margin, surprisal per step; L2 norm, attention entropy per layer). Production traces are scored by statistical divergence (z-scores) from the baseline.
+
+**Divergence Score:** 0–1 value measuring how far a trace deviates from a calibration profile baseline (mean |z-score| / 6, capped). Low = similar to baseline, high = anomalous.
 
 **Basin Scores:** Measure of how much each attention head focuses on nearby (local) tokens versus distant ones. High basin score = head attends mostly to neighbors (local pattern). Low basin score = head attends broadly across the sequence (global pattern). Useful for detecting degenerate attention that ignores positional structure.
 
@@ -598,7 +642,7 @@ corevital compare --db runs/corevital.db
 
 **Concentration:** The maximum attention weight any single token receives from a query in an attention head. High concentration (>0.5) means the head is "focused" on specific tokens. Extremely high concentration (>0.95) indicates potential attention collapse.
 
-**Fingerprint:** A compact 9-element numeric vector summarizing a run's behavior (mean/max entropy, risk score, health flag booleans). Used for clustering similar runs and detecting patterns. Includes a SHA256 prompt hash for exact duplicate detection.
+**Fingerprint:** A compact 25-element numeric vector (v2) summarizing a run's behavior: entropy/margin/surprisal/agreement profiles with temporal slopes, cross-metric correlations, risk score, and health flag booleans. Used for clustering similar runs and detecting patterns. Includes a SHA256 prompt hash for exact duplicate detection. Use `is_legacy_fingerprint()` to detect old 9-element vectors.
 
 **L2 Norm:** The Euclidean length (magnitude) of a vector. In CoreVital, L2 norm of hidden states tracks how "large" representations become across layers and steps. Sudden L2 norm growth ("explosion") can indicate numerical instability.
 
@@ -681,15 +725,30 @@ pytest tests/test_mock_instrumentation.py::TestMockInstrumentationIntegration -v
 ### Project Structure
 
 - `src/CoreVital/`: Main package
-  - `models/`: Model loading, management, and `ModelCapabilities` registry
-  - `instrumentation/`: Hooks, collectors, summary computation, and performance monitoring
-  - `reporting/`: Schema (v0.4.0), validation, and report building
+  - `models/`: Model loading, management, and `ModelCapabilities` registry (includes attention availability probing)
+  - `instrumentation/`: Modular instrumentation pipeline
+    - `collector.py` — orchestrator (~250 lines)
+    - `causal_lm.py` — CausalLM generation path
+    - `seq2seq.py` — Seq2Seq manual decoder loop
+    - `step_processor.py` — per-step tensor → `StepSummary` lifecycle
+    - `baselines.py` — warmup, baseline, prompt forward, shared helpers
+    - `hooks.py` — unused stub (documented: HF output flags, not PyTorch hooks)
+    - `summaries/` — subpackage: `logits.py`, `attention.py`, `hidden_states.py`, `utils.py`
+  - `reporting/`: Schema (v0.4.0), validation (including metric consistency), and report building
   - `sinks/`: Persistence backends (SQLite, LocalFile, HTTP, Datadog, Prometheus, W&B)
+  - `risk.py`: Risk scoring and enriched layer blame
+  - `compound_signals.py`: Multi-metric failure pattern detection
+  - `early_warning.py`: Trend-based degradation prediction
+  - `narrative.py`: Human-readable report summaries
+  - `fingerprint.py`: 25-element fingerprint vectors (v2) and prompt hashing
+  - `calibration.py`: Data-driven baseline profiling and divergence scoring
+  - `calibration_risk.py`: ECE computation and Platt scaling
+  - `config.py`: Configuration with model profiles, entropy mode, calibration options
   - `utils/`: Shared utilities
 - `.github/workflows/`: CI/CD pipeline (test.yaml)
-- `configs/`: YAML configuration files
+- `configs/`: YAML configuration files and `model_profiles/` (gpt2, llama, mistral, mixtral, qwen2, phi3, default)
 - `runs/`: Default output directory for trace artifacts
-- `tests/`: Test suite
+- `tests/`: Test suite (436 tests)
 
 ## Roadmap
 

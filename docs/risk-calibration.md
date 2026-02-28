@@ -5,22 +5,75 @@ CoreVital's risk score and health-flag thresholds are heuristic defaults tuned f
 ## Current behavior
 
 - **Risk score** (`risk.py`): Aggregates health flags, continuous metrics, and compound signals into a single 0-1 score. Used for `should_intervene()` and `--capture on_risk`.
-- **Thresholds** are overridable per model family via [per-model profiles](model-compatibility.md#per-model-threshold-profiles) in `configs/model_profiles/` (e.g. `gpt2.yaml`, `llama.yaml`).
+- **Thresholds** are overridable per model family via [per-model profiles](model-compatibility.md#per-model-threshold-profiles) in `configs/model_profiles/` (e.g. `gpt2.yaml`, `llama.yaml`, `mistral.yaml`, `mixtral.yaml`, `qwen2.yaml`, `phi3.yaml`).
 - **Calibration profiles** (`calibration.py`): Data-driven baselines from known-healthy runs — divergence scoring replaces static thresholds when a profile is present.
 
-### Default risk contributions (heuristic)
+### Composite risk scoring (Phase 2)
+
+The risk score combines three layers of evidence:
+
+**1. Boolean health flags (hard ceilings)**
+
+Boolean flags act as a floor via `max()` — the score is at least as high as the worst boolean flag:
 
 | Signal | Default risk | Notes |
 |--------|--------------|--------|
-| NaN/Inf | 1.0 | Catastrophic; always flag. |
+| NaN/Inf | 1.0 | Catastrophic; always flag. Score is exactly 1.0. |
 | Repetition loop | 0.9 | Strong indicator of degenerate output. |
 | Mid-layer anomaly | 0.7 | Suggests factual processing failure. |
-| Attention collapse | 0.15 | Common in healthy runs. |
-| Elevated entropy | up to 0.3 | Additive, based on mean entropy / 8.0. |
-| Low confidence margin | up to 0.2 | Additive, based on top-k margin. |
-| Compound signals | severity-dependent | From `compound_signals.py`. |
+| Attention collapse | 0.15 | Common in healthy runs; mild. |
 
-These weights have not yet been validated on a large labeled dataset.
+**2. Continuous timeline metrics (additive)**
+
+When timeline data is available, continuous metrics add components on top of the boolean floor:
+
+| Signal | Max contribution | How it's computed |
+|--------|-----------------|-------------------|
+| Elevated entropy | 0.3 | `mean_entropy / 8.0`, capped at 0.3 |
+| Entropy rising trend | 0.15 | Late-half entropy mean > early-half mean |
+| Low confidence margin | 0.2 | `max(0, 0.3 - mean_margin) / 0.3 * 0.2` |
+| Low top-K mass | 0.15 | `max(0, 0.5 - mean_agreement) / 0.5 * 0.15` |
+| Elevated surprisal | 0.1 | `(mean_surprisal - 3) / 7 * 0.1`, only when mean > 3 |
+
+Each component contributes to `risk_factors` (e.g., `elevated_entropy`, `entropy_rising`, `low_confidence_margin`, `low_topk_mass`, `elevated_surprisal`).
+
+**3. Compound signals (severity-based)**
+
+Detected multi-metric patterns from `compound_signals.py` add their severity to the score:
+
+| Signal | Typical severity | Trigger |
+|--------|-----------------|---------|
+| `context_loss` | 0.6 | High entropy + low basin scores |
+| `confident_confusion` | 0.5 | High entropy + high margin |
+| `degenerating_generation` | 0.5 | Rising entropy + declining margin |
+| `attention_bottleneck` | 0.4 | High collapse + elevated entropy |
+| `confident_repetition_risk` | 0.3 | Low entropy + very high mass |
+
+Each adds `compound:<name>` to risk_factors.
+
+**Final score:** `min(1.0, max(boolean_floor, boolean_floor + continuous_sum + compound_sum))`.
+
+**Legacy fallback:** When no timeline is available, `compute_risk_score_legacy` uses boolean flags only with the same ceiling values. This preserves backward compatibility for consumers that don't pass timeline data.
+
+### Enriched layer blame
+
+Layer blame now returns structured evidence for each blamed layer:
+
+```python
+from CoreVital.risk import compute_layer_blame, compute_layer_blame_flat
+
+blamed = compute_layer_blame(timeline_layers, health_flags)
+# [{"layer": 5, "reasons": ["l2_norm_outlier"], "severity": 0.5}, ...]
+
+blamed_flat = compute_layer_blame_flat(timeline_layers, health_flags)
+# [5, ...]  (backward-compatible)
+```
+
+Blame conditions: NaN/Inf (severity 1.0), attention collapse rate > 50% across steps (0.4), L2 norm z-score outlier z > 2.5 (0.5), L2 norm instability CV > 0.5 (0.3).
+
+### Early warning
+
+Early warning signals detect degradation patterns *before* they become hard failures. Signals: `entropy_accelerating`, `margin_collapsed`, `margin_declining`, `surprisal_volatile`, `entropy_margin_divergence`. See [Metrics Interpretation Guide](metrics-interpretation.md#early-warning) for details.
 
 ## Benchmark Calibration with ECE
 
@@ -74,7 +127,10 @@ For each prompt in the benchmark, run CoreVital instrumentation and collect the 
 # Option A: Use the CLI
 corevital run --model <model_id> --prompt "<prompt>" --out trace.json
 
-# Option B: Use the Python API
+# Option B: Use the CLI with a calibration profile
+corevital run --model <model_id> --prompt "<prompt>" --calibration calibration/gpt2.json
+
+# Option C: Use the Python API
 from CoreVital import CoreVitalMonitor, Config
 monitor = CoreVitalMonitor(Config())
 result = monitor.run(model, tokenizer, prompt)
@@ -133,7 +189,7 @@ calibrated_risk = apply_platt_scaling(raw_risk, cal.a, cal.b)
 
 ### Combining with calibration profiles
 
-Calibration profiles (`calibration.py`, Issue 33) provide *divergence scores* — how far a trace deviates from a known-healthy baseline. These divergence scores can also be calibrated:
+Calibration profiles (`calibration.py`) provide *divergence scores* — how far a trace deviates from a known-healthy baseline. These divergence scores can also be calibrated:
 
 ```python
 from CoreVital.calibration import CalibrationProfile, compute_divergence_score
@@ -153,11 +209,53 @@ for prompt, ground_truth in benchmark:
 result = evaluate_calibration(div_scores, labels)
 ```
 
+### Building a calibration profile
+
+Use the CLI to build a calibration profile from known-healthy prompts:
+
+```bash
+# Build profile from a prompt file (one prompt per line)
+corevital calibrate --model gpt2 --prompts prompts.txt --out calibration/gpt2.json
+
+# Use additional options
+corevital calibrate \
+  --model gpt2 \
+  --prompts prompts.txt \
+  --out calibration/gpt2.json \
+  --device cuda \
+  --max_new_tokens 50 \
+  --config configs/custom.yaml
+```
+
+The resulting JSON file contains empirical distributions for entropy, margin, surprisal (per-step) and L2 norm, attention entropy (per-layer). Pass it to `corevital run --calibration <path>` or set `calibration_profile` in config to enable divergence scoring.
+
+## Per-model threshold profiles
+
+Different model families have different threshold needs:
+
+| Model | `high_entropy_threshold_bits` | `l2_explosion_multiplier` | Notes |
+|-------|------------------------------|--------------------------|-------|
+| GPT-2 | 5.0 | 5 | Higher entropy tolerance for creative generation |
+| LLaMA | 3.5 | 10 | Tighter entropy threshold; higher L2 tolerance |
+| Mistral | 4.0 (default) | 8 (default) | Stub — not yet calibrated |
+| Mixtral | 4.5 | 8 (default) | MoE routing adds entropy variance |
+| Qwen2 | 4.5 | 8 (default) | Large vocab (~152k) raises baseline entropy |
+| Phi-3 | 3.8 | 7.0 | Small model; slightly tighter |
+| Default | 4.0 | 8 | Fallback for unrecognized architectures |
+
+GPT-2 and LLaMA also have `typical_entropy_range` and `typical_l2_norm_range` ([p10, p90]) from calibration runs. Other profiles are stubs awaiting calibration data. Contributors can run `corevital calibrate` to produce empirical thresholds.
+
 ## Current status
 
 - **Risk score** (`risk.py`): Composite heuristic with continuous metrics and compound signals. Implemented (Phase 2).
+- **Enriched layer blame** (`risk.py`): Structured blame with reasons and severity. Implemented (Phase 2).
+- **Compound signals** (`compound_signals.py`): Five multi-metric patterns. Implemented (Phase 2).
+- **Early warning** (`early_warning.py`): Five trend detectors. Implemented (Phase 2).
+- **Narratives** (`narrative.py`): Data-specific text with step indices, token text, recommendations. Implemented (Phase 2).
 - **Calibration profiles** (`calibration.py`): Data-driven baselines with divergence scoring. Implemented (Phase 4).
 - **ECE + Platt scaling** (`calibration_risk.py`): Functions implemented (Phase 5). Benchmark runs pending.
+- **Model profiles** (`configs/model_profiles/`): GPT-2 and LLaMA calibrated; Mistral, Mixtral, Qwen2, Phi-3 stubs. (Phase 4).
+- **Metric consistency validation** (`reporting/validation.py`): Information-theoretic invariant checks. Implemented (Phase 5).
 - **Benchmark validation**: Not yet run. Contributions welcome — see data collection workflow above.
 
 Until benchmark results are available, treat risk scores as indicative: use for relative comparison and alerting, and tune per model via `configs/model_profiles/` as needed.

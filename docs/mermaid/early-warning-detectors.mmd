@@ -1,0 +1,132 @@
+%% Early Warning Detectors — The 5 trend detectors that predict failures
+%% Unlike the risk score (which aggregates what already happened),
+%% early warning predicts whether the NEXT tokens are likely to fail.
+%% Ref: src/CoreVital/early_warning.py → compute_early_warning()
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    Input(["Inputs: timeline, health_flags,<br/>high_entropy_threshold (from model profile)"])
+
+    %% Detector 1
+    subgraph D1["1. ENTROPY ACCELERATION"]
+        direction TB
+        D1A["Extract entropy per step"]
+        D1B["Compute sliding window means"]
+        D1C["Check: are the deltas between<br/>windows themselves increasing?"]
+        D1D["Signal: entropy_accelerating<br/>Meaning: confusion is speeding up"]
+        D1A --> D1B --> D1C --> D1D
+    end
+
+    %% Detector 2
+    subgraph D2["2. MARGIN COLLAPSE"]
+        direction TB
+        D2A["Extract top_k_margin per step"]
+        D2B["Check recent window:<br/>margin near zero?"]
+        D2C["Signal: margin_collapsed<br/>Meaning: model can't choose<br/>between top tokens"]
+        D2A --> D2B --> D2C
+    end
+
+    %% Detector 3
+    subgraph D3["3. MARGIN DECLINE"]
+        direction TB
+        D3A["Compare early margin level<br/>to recent margin level"]
+        D3B["Check: dropped to < 30%<br/>of early level?"]
+        D3C["Signal: margin_declining<br/>Meaning: confidence is eroding"]
+        D3A --> D3B --> D3C
+    end
+
+    %% Detector 4
+    subgraph D4["4. SURPRISAL VOLATILITY"]
+        direction TB
+        D4A["Extract surprisal per step"]
+        D4B["Compute coefficient of variation<br/>(std / mean) in recent window"]
+        D4C["Check: CV > 1.5?"]
+        D4D["Signal: surprisal_volatile<br/>Meaning: erratic token choices"]
+        D4A --> D4B --> D4C --> D4D
+    end
+
+    %% Detector 5
+    subgraph D5["5. ENTROPY–MARGIN DIVERGENCE"]
+        direction TB
+        D5A["Check entropy vs threshold<br/>(model profile: 3.5–5.0 bits)"]
+        D5B["Check margin: stays high<br/>despite high entropy"]
+        D5C["Signal: entropy_margin_divergence<br/>Meaning: confident but confused"]
+        D5A --> D5C
+        D5B --> D5C
+    end
+
+    %% Health flag passthrough
+    subgraph PASS["HEALTH FLAG PASSTHROUGH (hard ceilings)"]
+        direction LR
+        P1["repetition_loop → risk ceiling"]
+        P2["mid_layer_anomaly → risk ceiling"]
+        P3["attention_collapse → risk ceiling"]
+    end
+
+    %% Output
+    subgraph OUT["OUTPUT"]
+        direction TB
+        O1["failure_risk: 0.0 – 1.0<br/>(max of detector risks + flag ceilings)"]
+        O2["warning_signals: List~str~<br/>e.g. ['entropy_accelerating', 'margin_declining']"]
+        O3["Empty timeline → (0.0, [])<br/>(not 0.3 like old behavior)"]
+    end
+
+    Input --> D1
+    Input --> D2
+    Input --> D3
+    Input --> D4
+    Input --> D5
+    Input --> PASS
+
+    D1D --> OUT
+    D2C --> OUT
+    D3C --> OUT
+    D4D --> OUT
+    D5C --> OUT
+    PASS --> OUT
+
+    %% Note about old signals
+    OLD["⚠️ Old signal names REMOVED:<br/>entropy_rising → entropy_accelerating<br/>high_entropy → (removed entirely)"]
+
+    %% Styling
+    style Input fill:#059669,stroke:#10b981,color:#d1fae5
+
+    style D1 fill:#312e8115,stroke:#818cf8
+    style D1A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D1B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D1C fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D1D fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style D2 fill:#312e8115,stroke:#818cf8
+    style D2A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D2B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D2C fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style D3 fill:#312e8115,stroke:#818cf8
+    style D3A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D3B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D3C fill:#713f12,stroke:#f59e0b,color:#fde68a
+
+    style D4 fill:#312e8115,stroke:#818cf8
+    style D4A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D4B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D4C fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D4D fill:#713f12,stroke:#f59e0b,color:#fde68a
+
+    style D5 fill:#312e8115,stroke:#818cf8
+    style D5A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D5B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style D5C fill:#713f12,stroke:#f59e0b,color:#fde68a
+
+    style PASS fill:#83184315,stroke:#f472b6
+    style P1 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style P2 fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style P3 fill:#831843,stroke:#f472b6,color:#fbcfe8
+
+    style OUT fill:#92400e15,stroke:#f59e0b
+    style O1 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O2 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style O3 fill:#92400e,stroke:#f59e0b,color:#fde68a
+
+    style OLD fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
