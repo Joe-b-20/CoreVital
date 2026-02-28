@@ -420,8 +420,12 @@ class ReportBuilder:
         When capture_mode is summary or on_risk, layer summaries are computed for health
         flags but not stored in the report (layers=[]); the second return value holds
         them for _build_health_flags.
+
+        Supports both pre-computed StepSummary objects (Phase 1.3+) and legacy StepData.
         """
         import time
+
+        from CoreVital.instrumentation.step_processor import StepSummary
 
         capture_mode = getattr(self.config.capture, "capture_mode", "full")
         store_layers = capture_mode == "full"
@@ -433,37 +437,47 @@ class ReportBuilder:
         for step_data in results.timeline:
             step_start = time.perf_counter()
 
-            # Token info
             token_info = TokenInfo(
                 token_id=step_data.token_id,
                 token_text=step_data.token_text,
                 is_prompt_token=step_data.is_prompt_token,
             )
 
-            # Logits summary (always computed for time series and high_entropy_steps)
-            logits_summary = LogitsSummary()
-            if step_data.logits is not None:
-                try:
-                    logits_dict = compute_logits_summary(
-                        step_data.logits,
-                        results.model_bundle.tokenizer,
-                        self.config.summaries.logits,
-                        actual_token_id=step_data.token_id,
-                    )
-                    logits_summary = LogitsSummary(**logits_dict)
-                except Exception as e:
-                    logger.warning(f"Failed to compute logits summary for step {step_data.step_index}: {e}")
+            if isinstance(step_data, StepSummary):
+                # Pre-computed summaries from step_processor
+                logits_summary = LogitsSummary()
+                if step_data.logits_summary:
+                    try:
+                        logits_summary = LogitsSummary(**step_data.logits_summary)
+                    except Exception as e:
+                        logger.warning(f"Failed to build logits summary for step {step_data.step_index}: {e}")
 
-            # Layer summaries: always compute (needed for health flags); store only when full
-            layers = []
-            if step_data.hidden_states is not None:
-                layers = self._build_layer_summaries(
-                    step_data.hidden_states,
-                    step_data.attentions,
-                    results.model_bundle.num_layers,
-                    cross_attentions=step_data.cross_attentions,
-                    profile=profile,
-                )
+                layers = self._build_layers_from_step_summary(step_data)
+            else:
+                # Legacy path: raw tensors (StepData)
+                logits_summary = LogitsSummary()
+                if step_data.logits is not None:
+                    try:
+                        logits_dict = compute_logits_summary(
+                            step_data.logits,
+                            results.model_bundle.tokenizer,
+                            self.config.summaries.logits,
+                            actual_token_id=step_data.token_id,
+                        )
+                        logits_summary = LogitsSummary(**logits_dict)
+                    except Exception as e:
+                        logger.warning(f"Failed to compute logits summary for step {step_data.step_index}: {e}")
+
+                layers = []
+                if step_data.hidden_states is not None:
+                    layers = self._build_layer_summaries(
+                        step_data.hidden_states,
+                        step_data.attentions,
+                        results.model_bundle.num_layers,
+                        cross_attentions=step_data.cross_attentions,
+                        profile=profile,
+                    )
+
             layers_by_step.append(layers)
 
             timeline_step = TimelineStep(
@@ -477,10 +491,8 @@ class ReportBuilder:
             timeline.append(timeline_step)
             step_times_ms.append((time.perf_counter() - step_start) * 1000)
 
-        # Store per_step stats in the monitor's current operation (_build_timeline itself)
         monitor = results.monitor
         if monitor and monitor.stack and step_times_ms:
-            # The current operation on stack IS _build_timeline
             current_op = monitor.stack[-1]
             if current_op.operation_name == "_build_timeline":
                 current_op.metadata["per_step"] = {
@@ -491,6 +503,30 @@ class ReportBuilder:
                 }
 
         return timeline, layers_by_step
+
+    def _build_layers_from_step_summary(self, step_data: Any) -> List[LayerSummary]:
+        """Build LayerSummary objects from pre-computed StepSummary.layer_summaries."""
+        layers: List[LayerSummary] = []
+        for layer_idx, ls in enumerate(step_data.layer_summaries):
+            hidden_summary = HiddenSummary(**ls.hidden_summary) if ls.hidden_summary else HiddenSummary()
+            attention_summary = (
+                AttentionSummary(**ls.attention_summary) if ls.attention_summary else AttentionSummary()
+            )
+            cross_attention = None
+            if ls.cross_attention_summary:
+                cross_attention = AttentionSummary(**ls.cross_attention_summary)
+            anomalies = TensorAnomalies(**ls.anomalies) if ls.anomalies else None
+            layers.append(
+                LayerSummary(
+                    layer_index=layer_idx,
+                    hidden_summary=hidden_summary,
+                    attention_summary=attention_summary,
+                    cross_attention=cross_attention,
+                    anomalies=anomalies,
+                    extensions={},
+                )
+            )
+        return layers
 
     def _build_layer_summaries(
         self,
@@ -772,18 +808,24 @@ class ReportBuilder:
         timeline[].layers is empty; pass timeline_layers_override (computed but not stored).
         """
         # --- Transient buffer: allocate ---
-        # Extract last-layer hidden state vector (last token) from generated steps
+        # Extract last-layer hidden state vector (last token) from generated steps.
+        # StepSummary carries a pre-extracted _last_layer_hidden_vec;
+        # legacy StepData falls back to extracting from raw hidden_states.
+        from CoreVital.instrumentation.step_processor import StepSummary as _StepSummary
+
         generated_steps = [s for s in results.timeline if not s.is_prompt_token]
         buffer_steps = generated_steps[-5:]  # FIFO capacity 5
 
         hidden_state_buffer: list[torch.Tensor] = []
         for step in buffer_steps:
-            if step.hidden_states is not None and len(step.hidden_states) > 0:
+            if isinstance(step, _StepSummary):
+                if step._last_layer_hidden_vec is not None:
+                    hidden_state_buffer.append(step._last_layer_hidden_vec)
+            elif hasattr(step, "hidden_states") and step.hidden_states is not None and len(step.hidden_states) > 0:
                 try:
-                    last_layer = step.hidden_states[-1]  # (batch, seq_len, hidden_dim)
+                    last_layer = step.hidden_states[-1]
                     if isinstance(last_layer, torch.Tensor) and last_layer.dim() >= 2:
-                        # Last token of batch 0
-                        vec = last_layer[0, -1, :].detach().cpu()  # (hidden_dim,)
+                        vec = last_layer[0, -1, :].detach().cpu()
                         hidden_state_buffer.append(vec)
                     elif isinstance(last_layer, torch.Tensor):
                         hidden_state_buffer.append(last_layer.detach().cpu().flatten())

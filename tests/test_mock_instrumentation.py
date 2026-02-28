@@ -23,6 +23,7 @@ import torch
 
 from CoreVital.config import Config
 from CoreVital.instrumentation.collector import InstrumentationCollector, InstrumentationResults
+from CoreVital.instrumentation.step_processor import StepSummary
 from CoreVital.reporting.report_builder import ReportBuilder
 from CoreVital.reporting.schema import Report
 from CoreVital.utils.serialization import serialize_report_to_json
@@ -59,14 +60,15 @@ class TestMockCausalLMInstrumentation:
         assert results.elapsed_ms >= 0  # Can be 0 for very fast mock execution
         assert len(results.timeline) > 0
 
-        # Verify timeline has data
+        # Verify timeline has data (StepSummary objects after Phase 1.3)
         for step in results.timeline:
+            assert isinstance(step, StepSummary)
             assert step.step_index >= 0
             assert step.token_id >= 0
             assert step.token_text is not None
             assert not step.is_prompt_token  # Only generated tokens in timeline
-            # At least some steps should have logits, hidden_states, or attentions
-            assert step.logits is not None or step.hidden_states is not None or step.attentions is not None
+            # StepSummary should have pre-computed summaries
+            assert step.logits_summary or step.layer_summaries
 
         # Phase-1b: prompt forward data should be captured
         assert results.prompt_forward is not None, "CausalLM should have prompt forward data"
@@ -260,7 +262,7 @@ class TestMockCausalLMInstrumentation:
         assert rag.get("retrieval_metadata") == {"k": 5, "scores": [0.9, 0.8]}
 
     def test_mock_causal_output_shapes(self, mock_model_bundle):
-        """Test that mock CausalLM model returns correctly shaped tensors."""
+        """Test that mock CausalLM model returns StepSummary with correct layer counts."""
         config = Config()
         config.model.hf_id = "mock-causal"
         config.device.requested = "cpu"
@@ -272,36 +274,19 @@ class TestMockCausalLMInstrumentation:
 
         results = collector.run("Test")
 
-        # Check that we have timeline steps
         assert len(results.timeline) > 0
 
-        # Check tensor shapes in timeline
         for step in results.timeline:
-            if step.logits is not None:
-                # Logits should be (batch_size, vocab_size)
-                assert step.logits.shape == (1, 50257) or len(step.logits.shape) == 2
+            assert isinstance(step, StepSummary)
+            # Logits summary should have entropy (computed from mock tensors)
+            assert step.logits_summary, "Should have logits_summary"
+            assert "entropy" in step.logits_summary
 
-            if step.hidden_states is not None:
-                # Hidden states should be a list of tensors, one per layer
-                assert isinstance(step.hidden_states, list)
-                assert len(step.hidden_states) == mock_model_bundle.num_layers
-                for hidden in step.hidden_states:
-                    assert isinstance(hidden, torch.Tensor)
-                    # Shape should be (batch_size, seq_len, hidden_size)
-                    assert len(hidden.shape) == 3
-                    assert hidden.shape[0] == 1  # batch_size
-                    assert hidden.shape[2] == mock_model_bundle.hidden_size
-
-            if step.attentions is not None:
-                # Attentions should be a list of tensors, one per layer
-                assert isinstance(step.attentions, list)
-                assert len(step.attentions) == mock_model_bundle.num_layers
-                for attn in step.attentions:
-                    assert isinstance(attn, torch.Tensor)
-                    # Shape should be (batch_size, num_heads, seq_len, seq_len)
-                    assert len(attn.shape) == 4
-                    assert attn.shape[0] == 1  # batch_size
-                    assert attn.shape[1] == mock_model_bundle.num_attention_heads
+            # Layer summaries: one per transformer layer
+            assert len(step.layer_summaries) == mock_model_bundle.num_layers
+            for ls in step.layer_summaries:
+                assert "mean" in ls.hidden_summary
+                assert ls.anomalies is not None
 
 
 class TestMockSeq2SeqInstrumentation:
@@ -346,8 +331,9 @@ class TestMockSeq2SeqInstrumentation:
         assert results.prompt_forward.logits is None, "Seq2Seq encoder has no next-token logits"
         assert results.prompt_forward.prompt_token_ids == results.prompt_token_ids
 
-        # Verify timeline has data
+        # Verify timeline has data (StepSummary objects)
         for step in results.timeline:
+            assert isinstance(step, StepSummary)
             assert step.step_index >= 0
             assert step.token_id >= 0
             assert step.token_text is not None
@@ -462,7 +448,7 @@ class TestMockSeq2SeqInstrumentation:
 
     @pytest.mark.parametrize("mock_model_bundle", ["seq2seq"], indirect=True)
     def test_mock_seq2seq_output_shapes(self, mock_model_bundle):
-        """Test that mock Seq2Seq model returns correctly shaped tensors."""
+        """Test that mock Seq2Seq model returns StepSummary with correct layer counts."""
         config = Config()
         config.model.hf_id = "mock-seq2seq"
         config.device.requested = "cpu"
@@ -474,33 +460,25 @@ class TestMockSeq2SeqInstrumentation:
 
         results = collector.run("Test")
 
-        # Check encoder outputs
+        # Check encoder outputs (still raw tensors — encoder is not per-step)
         assert results.encoder_hidden_states is not None
         assert len(results.encoder_hidden_states) == mock_model_bundle.num_layers
         for enc_hidden in results.encoder_hidden_states:
             assert isinstance(enc_hidden, torch.Tensor)
-            # Encoder hidden states: (batch_size, encoder_seq_len, hidden_size)
             assert len(enc_hidden.shape) == 3
             assert enc_hidden.shape[0] == 1
             assert enc_hidden.shape[2] == mock_model_bundle.hidden_size
 
-        # Check timeline steps
+        # Check timeline steps (StepSummary objects — no raw tensors)
         assert len(results.timeline) > 0
         for step in results.timeline:
-            if step.hidden_states is not None:
-                # Decoder hidden states: list of (batch_size, 1, hidden_size) per layer
-                assert isinstance(step.hidden_states, list)
-                assert len(step.hidden_states) == mock_model_bundle.num_layers
-
-            if step.cross_attentions is not None:
-                # Cross-attentions: list of (batch_size, num_heads, 1, encoder_seq_len) per layer
-                assert isinstance(step.cross_attentions, list)
-                assert len(step.cross_attentions) == mock_model_bundle.num_layers
-                for cross_attn in step.cross_attentions:
-                    assert isinstance(cross_attn, torch.Tensor)
-                    assert len(cross_attn.shape) == 4
-                    assert cross_attn.shape[0] == 1
-                    assert cross_attn.shape[1] == mock_model_bundle.num_attention_heads
+            assert isinstance(step, StepSummary)
+            # Layer summaries should cover decoder layers
+            assert len(step.layer_summaries) == mock_model_bundle.num_layers
+            for ls in step.layer_summaries:
+                assert "mean" in ls.hidden_summary
+                # Cross-attention summary should be present for Seq2Seq
+                assert ls.cross_attention_summary is not None
 
 
 class TestMockInstrumentationIntegration:
