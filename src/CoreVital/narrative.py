@@ -25,14 +25,19 @@ def build_narrative(
     """Build a specific, actionable narrative from run data."""
     parts: List[str] = []
 
-    # Lead with risk level and primary cause
+    has_any_signals = bool(risk_factors or warning_signals or compound_signals or blamed_layers)
+
+    # Lead with risk level
     if risk_score > 0.7:
-        primary = risk_factors[0] if risk_factors else "multiple signals"
-        parts.append(f"High risk (score: {risk_score:.2f}), primarily driven by {_humanize_factor(primary)}.")
+        primary = _dominant_factor(risk_factors)
+        parts.append(f"High risk (score: {risk_score:.2f}), driven by {_humanize_factor(primary)}.")
     elif risk_score > 0.3:
         parts.append(f"Moderate risk (score: {risk_score:.2f}).")
     else:
-        parts.append(f"Low risk (score: {risk_score:.2f}). No significant anomalies detected.")
+        if has_any_signals:
+            parts.append(f"Low risk (score: {risk_score:.2f}), though some mild signals were observed.")
+        else:
+            parts.append(f"Low risk (score: {risk_score:.2f}). No significant anomalies detected.")
 
     # Entropy specifics
     entropies = [
@@ -50,7 +55,9 @@ def build_narrative(
                 f"(mean: {mean_ent:.1f}); the model was most uncertain "
                 f'when generating "{token_text or "?"}".'
             )
-        if "entropy_rising" in warning_signals and len(entropies) >= 6:
+        # Accept both old and new signal names
+        entropy_trend = "entropy_accelerating" in warning_signals or "entropy_rising" in warning_signals
+        if entropy_trend and len(entropies) >= 6:
             early = sum(entropies[:3]) / 3
             late = sum(entropies[-3:]) / 3
             parts.append(
@@ -67,7 +74,11 @@ def build_narrative(
     # and List[int] (current simple blame)
     if blamed_layers:
         if isinstance(blamed_layers[0], dict):
-            top_blame = sorted(blamed_layers, key=lambda b: b.get("severity", 0), reverse=True)[:3]
+            top_blame = sorted(
+                blamed_layers,
+                key=lambda b: b.get("severity", 0),
+                reverse=True,
+            )[:3]
             for b in top_blame:
                 reasons_str = "; ".join(b.get("reasons", []))
                 if reasons_str:
@@ -88,11 +99,39 @@ def build_narrative(
             )
         elif "elevated_entropy" in risk_factors:
             parts.append(
-                "Consider: refine the prompt for clarity, provide more context, "
-                "or try a model better suited to this domain."
+                "Consider: refine the prompt for clarity, provide more "
+                "context, or try a model better suited to this domain."
             )
 
     return " ".join(parts) if parts else "No notable issues detected."
+
+
+def _dominant_factor(risk_factors: List[str]) -> str:
+    """Pick the most significant factor from an unordered list.
+
+    Boolean-flag factors are ranked above continuous-metric factors
+    because they represent hard ceilings in the risk score.
+    Falls back to the first factor or 'multiple signals'.
+    """
+    priority = [
+        "nan_or_inf",
+        "repetition_loop",
+        "mid_layer_anomaly",
+        "attention_collapse",
+        "elevated_entropy",
+        "entropy_rising",
+        "low_confidence_margin",
+        "low_topk_mass",
+        "elevated_surprisal",
+    ]
+    for p in priority:
+        if p in risk_factors:
+            return p
+    # Compound signals
+    for f in risk_factors:
+        if f.startswith("compound:"):
+            return f
+    return risk_factors[0] if risk_factors else "multiple signals"
 
 
 def _humanize_factor(factor: str) -> str:
@@ -104,15 +143,24 @@ def _humanize_factor(factor: str) -> str:
         "elevated_entropy": "elevated output uncertainty",
         "nan_or_inf": "numerical instability (NaN/Inf)",
         "entropy_rising": "rising entropy over generation",
+        "entropy_accelerating": "accelerating entropy over generation",
         "low_confidence_margin": "low confidence between top token choices",
         "low_topk_mass": "low top-K probability mass (dispersed predictions)",
         "elevated_surprisal": "elevated surprisal (unexpected token choices)",
     }
+    if factor.startswith("compound:"):
+        name = factor.split(":", 1)[1]
+        return name.replace("_", " ")
     return mapping.get(factor, factor.replace("_", " "))
 
 
 def _token_at_step(timeline: List[TimelineStep], step_idx: int) -> str:
-    """Return the token text generated at a given step index."""
-    if step_idx < len(timeline) and timeline[step_idx].token:
-        return timeline[step_idx].token.token_text or "?"
+    """Return the token text generated at a given step_index.
+
+    Searches by TimelineStep.step_index (not list position) to handle
+    timelines where step indices are offset by prompt length.
+    """
+    for step in timeline:
+        if step.step_index == step_idx and step.token:
+            return step.token.token_text or "?"
     return "?"

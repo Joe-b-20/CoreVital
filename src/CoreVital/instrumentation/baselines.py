@@ -181,7 +181,7 @@ def run_baseline_seq2seq(
         past_key_values = getattr(decoder_outputs, "past_key_values", None)
         next_token_logits = decoder_outputs.logits[:, -1, :]
         if do_sample:
-            next_token_logits = logits_processor(decoder_input_ids, next_token_logits)
+            next_token_logits = logits_processor(decoder_input_ids, next_token_logits)  # type: ignore[arg-type]
             probs = torch.softmax(next_token_logits, dim=-1)
             next_token_id = torch.multinomial(probs, num_samples=1, generator=generator)
         else:

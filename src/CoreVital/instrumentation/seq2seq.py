@@ -174,7 +174,7 @@ def run_seq2seq_generation(
 
         # --- Sample next token ---
         if do_sample:
-            next_token_logits = logits_processor(decoder_input_ids, raw_logits)
+            next_token_logits = logits_processor(decoder_input_ids, raw_logits)  # type: ignore[arg-type]
             probs = torch.softmax(next_token_logits, dim=-1)
             next_token = torch.multinomial(probs, num_samples=1, generator=generator)
         else:

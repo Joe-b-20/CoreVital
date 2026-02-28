@@ -9,7 +9,7 @@ flowchart TB
     Input(["Inputs: timeline, layers_by_step, basin_scores"])
 
     %% Signal 1: Context Loss
-    subgraph S1["1. CONTEXT LOSS (severity: 0.6)"]
+    subgraph S1["1. CONTEXT LOSS (severity: 0.75)"]
         direction TB
         S1A["High entropy<br/>(model confused)"]
         S1B["Low basin scores < 0.3<br/>(model ignoring middle tokens)"]
@@ -29,7 +29,7 @@ flowchart TB
     end
 
     %% Signal 3: Degenerating Generation
-    subgraph S3["3. DEGENERATING GENERATION (severity: 0.5)"]
+    subgraph S3["3. DEGENERATING GENERATION (severity: 0.7)"]
         direction TB
         S3A["Positive entropy slope<br/>(uncertainty growing over time)"]
         S3B["Declining margin<br/>(confidence dropping over time)"]
@@ -39,7 +39,7 @@ flowchart TB
     end
 
     %% Signal 4: Attention Bottleneck
-    subgraph S4["4. ATTENTION BOTTLENECK (severity: 0.4)"]
+    subgraph S4["4. ATTENTION BOTTLENECK (severity: 0.65)"]
         direction TB
         S4A["High collapsed head counts<br/>(attention heads shutting down)"]
         S4B["Elevated entropy<br/>(model confused despite having heads)"]
@@ -49,7 +49,7 @@ flowchart TB
     end
 
     %% Signal 5: Confident Repetition Risk
-    subgraph S5["5. CONFIDENT REPETITION RISK (severity: 0.3)"]
+    subgraph S5["5. CONFIDENT REPETITION RISK (severity: 0.4)"]
         direction TB
         S5A["Low entropy<br/>(very confident)"]
         S5B["Very high top-K mass<br/>(probability concentrated)"]

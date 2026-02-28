@@ -354,7 +354,10 @@ class TestEndToEndTraceRiskNarrative:
         score, factors, narrative, _ = self._run_pipeline(tl, HealthFlags())
         assert score < 0.3, f"Healthy trace should be low risk, got {score}"
         assert "Low risk" in narrative
-        assert "No significant anomalies" in narrative
+        if factors:
+            assert "mild signals" in narrative.lower()
+        else:
+            assert "No significant anomalies" in narrative
 
     def test_known_bad_repetition_trace(self):
         """Simulated repetition loop: repetition flag on → high risk, narrative mentions it."""

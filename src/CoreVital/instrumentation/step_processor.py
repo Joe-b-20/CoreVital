@@ -255,8 +255,8 @@ def _safe_hidden(
 ) -> Dict[str, Any]:
     try:
         return compute_hidden_summary(
-            payload.hidden_states[layer_idx],
-            config.hidden,  # type: ignore[index]
+            payload.hidden_states[layer_idx],  # type: ignore[index]
+            config.hidden,
         )
     except Exception as e:
         logger.warning(f"Failed hidden summary for step {step_index} layer {layer_idx}: {e}")

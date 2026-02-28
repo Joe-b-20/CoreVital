@@ -63,24 +63,27 @@ def compute_logits_summary(
         entropy_mode = getattr(config, "entropy_mode", "full")
 
         if entropy_mode == "topk_approx":
-            # Approximate entropy from top-K with tail mass correction
-            topk_logits = logits[topk_indices]
-            topk_log_probs = F.log_softmax(topk_logits, dim=-1)
-            topk_probs_local = torch.exp(topk_log_probs)
-
-            # For margin/topk_mass/topk_probs we still need full probs at topk positions
+            # Approximate entropy using top-K probabilities from the full distribution,
+            # with a proper tail correction: H ≈ -sum(p_i * log2(p_i)) for top-K
+            # plus tail_mass * log2(remaining) as an upper bound on tail entropy.
             log_probs_full = F.log_softmax(logits, dim=-1)
             probs_full = torch.exp(log_probs_full)
             topk_probs = probs_full[topk_indices]
+            topk_log_probs_full = log_probs_full[topk_indices]
 
-            tail_mass = 1.0 - topk_probs.sum().item()
-            topk_entropy = -(topk_probs_local * topk_log_probs).sum().item() / math.log(2)
-            if tail_mass > 0.01:
+            # Entropy contribution from top-K tokens (exact for these tokens)
+            topk_h = -(topk_probs * topk_log_probs_full).sum().item() / math.log(2)
+
+            # Tail correction: assume uniform distribution over remaining tokens
+            tail_mass = max(0.0, 1.0 - topk_probs.sum().item())
+            if tail_mass > 1e-9:
                 remaining = len(logits) - len(topk_indices)
-                tail_entropy = tail_mass * math.log2(remaining) if remaining > 0 else 0.0
-                entropy_bits = topk_entropy + tail_entropy
+                # -tail_mass * log2(tail_mass) + tail_mass * log2(remaining)
+                tail_self = -tail_mass * math.log2(tail_mass) if tail_mass > 0 else 0.0
+                tail_spread = tail_mass * math.log2(remaining) if remaining > 0 else 0.0
+                entropy_bits = topk_h + tail_self + tail_spread
             else:
-                entropy_bits = topk_entropy
+                entropy_bits = topk_h
         else:
             # Full computation (default)
             log_probs_full = F.log_softmax(logits, dim=-1)
