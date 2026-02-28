@@ -56,21 +56,41 @@ def compute_logits_summary(
 
         summary: Dict[str, Any] = {}
 
-        # ── Shared intermediates (compute once, use many) ──────────────
-        # Use log_softmax for numerical stability (log-sum-exp trick)
-        log_probs_full = F.log_softmax(logits, dim=-1)
-        probs_full = torch.exp(log_probs_full)
-
-        # Top-k values (shared by margin, topk_mass, topk_probs)
+        # Top-k values (shared by margin, topk_mass, topk_probs, and topk_approx entropy)
         topk_k = max(config.topk, MIN_TOPK_FOR_STATS)
         topk_values, topk_indices = torch.topk(logits, k=min(topk_k, len(logits)))
-        topk_probs = probs_full[topk_indices]
 
-        # ── Shannon Entropy (numerically stable via log_softmax) ───────
-        # Always compute internally — perplexity depends on it even if "entropy" not in stats
-        p_log_p = probs_full * log_probs_full
-        entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
-        entropy_bits = float(entropy_nats.item()) / math.log(2)
+        entropy_mode = getattr(config, "entropy_mode", "full")
+
+        if entropy_mode == "topk_approx":
+            # Approximate entropy from top-K with tail mass correction
+            topk_logits = logits[topk_indices]
+            topk_log_probs = F.log_softmax(topk_logits, dim=-1)
+            topk_probs_local = torch.exp(topk_log_probs)
+
+            # For margin/topk_mass/topk_probs we still need full probs at topk positions
+            log_probs_full = F.log_softmax(logits, dim=-1)
+            probs_full = torch.exp(log_probs_full)
+            topk_probs = probs_full[topk_indices]
+
+            tail_mass = 1.0 - topk_probs.sum().item()
+            topk_entropy = -(topk_probs_local * topk_log_probs).sum().item() / math.log(2)
+            if tail_mass > 0.01:
+                remaining = len(logits) - len(topk_indices)
+                tail_entropy = tail_mass * math.log2(remaining) if remaining > 0 else 0.0
+                entropy_bits = topk_entropy + tail_entropy
+            else:
+                entropy_bits = topk_entropy
+        else:
+            # Full computation (default)
+            log_probs_full = F.log_softmax(logits, dim=-1)
+            probs_full = torch.exp(log_probs_full)
+            topk_probs = probs_full[topk_indices]
+
+            p_log_p = probs_full * log_probs_full
+            entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
+            entropy_bits = float(entropy_nats.item()) / math.log(2)
+
         if "entropy" in config.stats:
             summary["entropy"] = entropy_bits
 
@@ -156,20 +176,21 @@ def compute_prompt_surprisal(
     """
     if logits.dim() == 3:
         logits = logits[0]  # (seq_len, vocab_size)
-    logits = logits.float()
+    logits = logits.detach().cpu().float()
 
     if len(prompt_token_ids) < 2:
         return []
 
-    # Autoregressive shift: logits[i] predicts token[i+1]
-    shift_logits = logits[:-1, :].contiguous()
-    shift_labels = torch.tensor(prompt_token_ids[1:], dtype=torch.long, device=logits.device).contiguous()
+    with torch.no_grad():
+        # Autoregressive shift: logits[i] predicts token[i+1]
+        shift_logits = logits[:-1, :].contiguous()
+        shift_labels = torch.tensor(prompt_token_ids[1:], dtype=torch.long).contiguous()
 
-    # CrossEntropyLoss with no reduction → per-token loss in nats
-    loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-    loss_per_token = loss_fct(shift_logits, shift_labels)
+        # CrossEntropyLoss with no reduction → per-token loss in nats
+        loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+        loss_per_token = loss_fct(shift_logits, shift_labels)
 
-    # Convert nats to bits: bits = nats / ln(2)
-    surprisals_bits = loss_per_token / math.log(2)
+        # Convert nats to bits: bits = nats / ln(2)
+        surprisals_bits = loss_per_token / math.log(2)
 
     return [round(s, 4) for s in surprisals_bits.tolist()]

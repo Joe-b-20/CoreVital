@@ -515,3 +515,174 @@ class TestComputeHiddenSummaryClipping:
         hidden = torch.randn(1, 64) * 0.1
         out = compute_hidden_summary(hidden, config)
         assert out.get("clipped") is False
+
+
+# ---------------------------------------------------------------------------
+# Issue 26: detect_repetition_loop with token_id_buffer cross-check
+# ---------------------------------------------------------------------------
+
+
+class TestIssue26TokenIdBuffer:
+    """Issue 26: token_id_buffer n-gram confirmation in detect_repetition_loop."""
+
+    def test_hidden_only_still_works_without_token_buffer(self):
+        """Without token_id_buffer, behavior is unchanged (backward compat)."""
+        v = torch.randn(5, 64)
+        v[1] = v[0].clone()
+        v[2] = v[0].clone()
+        v[3] = v[0].clone()
+        v[4] = v[0].clone()
+        assert detect_repetition_loop(v, threshold=0.9995) is True
+
+    def test_token_buffer_confirms_hidden_repetition(self):
+        """When hidden states AND token n-grams both repeat, returns True."""
+        v = torch.randn(5, 64)
+        v[1] = v[0].clone()
+        v[2] = v[0].clone()
+        v[3] = v[0].clone()
+        v[4] = v[0].clone()
+        tokens = [10, 20, 10, 20, 10, 20]  # repeated bigram (10, 20)
+        assert detect_repetition_loop(v, token_id_buffer=tokens, threshold=0.9995) is True
+
+    def test_hidden_fires_without_token_ngram(self):
+        """Hidden states fire but tokens don't repeat — still returns True (hidden-only)."""
+        v = torch.randn(5, 64)
+        v[1] = v[0].clone()
+        v[2] = v[0].clone()
+        v[3] = v[0].clone()
+        v[4] = v[0].clone()
+        tokens = [1, 2, 3, 4, 5, 6]  # all unique — no n-gram repeat
+        assert detect_repetition_loop(v, token_id_buffer=tokens, threshold=0.9995) is True
+
+    def test_no_hidden_fire_no_detection(self):
+        """When hidden states don't fire, token buffer is irrelevant."""
+        v = torch.randn(5, 64)  # random = low cosine sim
+        tokens = [10, 20, 10, 20, 10, 20]  # repeated bigram
+        assert detect_repetition_loop(v, token_id_buffer=tokens, threshold=0.9995) is False
+
+    def test_consecutive_required_parameter(self):
+        """Custom consecutive_required adjusts detection sensitivity."""
+        v = torch.randn(4, 64)
+        v[1] = v[0].clone()
+        v[2] = v[0].clone()
+        v[3] = v[0].clone()
+        assert detect_repetition_loop(v, consecutive_required=3, threshold=0.9995) is True
+        assert detect_repetition_loop(v, consecutive_required=4, threshold=0.9995) is False
+
+
+# ---------------------------------------------------------------------------
+# Issue 27: detect_mid_layer_anomaly uses median baseline
+# ---------------------------------------------------------------------------
+
+
+class TestIssue27MedianBaseline:
+    """Issue 27: L2 explosion baseline uses median, not mean."""
+
+    def test_outlier_early_layer_does_not_inflate_baseline(self):
+        """One extreme early-layer norm shouldn't inflate the baseline, allowing
+        mid-layer explosions to go undetected."""
+        layer_norm = MagicMock(anomalies=None)
+
+        def _layer(norm_val):
+            m = MagicMock(anomalies=None, hidden_summary=MagicMock(l2_norm_mean=norm_val))
+            return m
+
+        # 6 layers: early (0,1) mid (2,3) late (4,5)
+        # Early layers: one normal (10.0), one extreme (10000.0)
+        # With mean baseline: (10 + 10000)/2 = 5005 → threshold = 5005*8 = 40040 → mid 500 NOT detected
+        # With median baseline: median(10, 10000) = 5005 ... actually we need 3 early layers
+        # Let's use 9 layers so early = 0,1,2 (mid_start = 3, mid_end = 6)
+        early_0 = _layer(10.0)
+        early_1 = _layer(10.0)
+        early_2 = _layer(10000.0)  # outlier
+        mid_3 = _layer(500.0)  # would be explosion relative to median(10, 10, 10000) = 10
+        mid_4 = _layer(10.0)
+        mid_5 = _layer(10.0)
+        late_6 = _layer(10.0)
+        late_7 = _layer(10.0)
+        late_8 = _layer(10.0)
+        step = [early_0, early_1, early_2, mid_3, mid_4, mid_5, late_6, late_7, late_8]
+        # median of [10, 10, 10000] = 10.0
+        # threshold = 10 * 8 = 80; mid norm 500 > 80 → detected
+        assert detect_mid_layer_anomaly([step], num_layers=9) is True
+
+    def test_even_early_layers_uses_average_of_two_middle(self):
+        """With even number of early layers, median is avg of two middle values."""
+        def _layer(norm_val):
+            return MagicMock(anomalies=None, hidden_summary=MagicMock(l2_norm_mean=norm_val))
+
+        # 6 layers: early = 0,1 (mid_start=2, mid_end=4)
+        # early norms: [5.0, 15.0] → median = (5+15)/2 = 10 → threshold = 80
+        early_0 = _layer(5.0)
+        early_1 = _layer(15.0)
+        mid_2 = _layer(100.0)  # 100 > 80 → detected
+        mid_3 = _layer(10.0)
+        late_4 = _layer(10.0)
+        late_5 = _layer(10.0)
+        step = [early_0, early_1, mid_2, mid_3, late_4, late_5]
+        assert detect_mid_layer_anomaly([step], num_layers=6) is True
+
+    def test_no_explosion_when_mid_below_threshold(self):
+        """Mid-layer norm below median-based threshold → no anomaly."""
+        def _layer(norm_val):
+            return MagicMock(anomalies=None, hidden_summary=MagicMock(l2_norm_mean=norm_val))
+
+        early_0 = _layer(10.0)
+        early_1 = _layer(10.0)
+        early_2 = _layer(10.0)
+        mid_3 = _layer(50.0)  # 50 < 10*8=80 → not detected
+        mid_4 = _layer(10.0)
+        mid_5 = _layer(10.0)
+        late_6 = _layer(10.0)
+        late_7 = _layer(10.0)
+        late_8 = _layer(10.0)
+        step = [early_0, early_1, early_2, mid_3, mid_4, mid_5, late_6, late_7, late_8]
+        assert detect_mid_layer_anomaly([step], num_layers=9) is False
+
+
+# ---------------------------------------------------------------------------
+# Issue 28: Hidden clipping stores clip_fraction and clip_max_before
+# ---------------------------------------------------------------------------
+
+
+class TestIssue28ClipDiagnostics:
+    """Issue 28: compute_hidden_summary stores magnitude info when clipping fires."""
+
+    def test_clip_fraction_reported(self):
+        """When clipping fires, clip_fraction reports fraction of clipped elements."""
+        config = HiddenSummariesConfig(
+            enabled=True,
+            stats=["mean"],
+            sketch=SketchConfig(enabled=False, method="randproj", dim=8, seed=0),
+        )
+        # 4 elements: 2 exceed 1e6 → clip_fraction = 0.5
+        hidden = torch.tensor([[2e6, -3e6, 0.5, 0.1]])
+        out = compute_hidden_summary(hidden, config)
+        assert out["clipped"] is True
+        assert abs(out["clip_fraction"] - 0.5) < 1e-6
+        assert out["clip_max_before"] >= 3e6 - 1.0  # max abs is 3e6
+
+    def test_clip_max_before_captures_original_magnitude(self):
+        """clip_max_before stores the original max abs value before clamping."""
+        config = HiddenSummariesConfig(
+            enabled=True,
+            stats=["mean"],
+            sketch=SketchConfig(enabled=False, method="randproj", dim=8, seed=0),
+        )
+        hidden = torch.tensor([[5e8, 0.0, 0.0]])
+        out = compute_hidden_summary(hidden, config)
+        assert out["clipped"] is True
+        assert abs(out["clip_max_before"] - 5e8) < 1.0
+
+    def test_no_clip_diagnostics_when_not_clipped(self):
+        """When no clipping occurs, clip_fraction and clip_max_before are absent."""
+        config = HiddenSummariesConfig(
+            enabled=True,
+            stats=["mean"],
+            sketch=SketchConfig(enabled=False, method="randproj", dim=8, seed=0),
+        )
+        hidden = torch.randn(1, 64) * 0.1
+        out = compute_hidden_summary(hidden, config)
+        assert out["clipped"] is False
+        assert "clip_fraction" not in out
+        assert "clip_max_before" not in out

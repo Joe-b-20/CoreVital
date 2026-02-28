@@ -266,23 +266,16 @@ def compute_basin_scores(
     num_heads, seq_len, _ = attention.shape
 
     if seq_len < 3:
-        # Too short to meaningfully split into thirds
         return [1.0] * num_heads
 
     mid_start = seq_len // 3
     mid_end = 2 * seq_len // 3
 
-    # Build a boolean mask for the middle third of keys
-    mid_mask = torch.zeros(seq_len, dtype=torch.bool)
-    mid_mask[mid_start:mid_end] = True
+    # Vectorized over all heads: sum over key dim, mean over query dim
+    middle_attn = attention[:, :, mid_start:mid_end].sum(dim=-1).mean(dim=-1)  # (heads,)
+    boundary_mask = torch.ones(seq_len, dtype=torch.bool)
+    boundary_mask[mid_start:mid_end] = False
+    boundary_attn = attention[:, :, boundary_mask].sum(dim=-1).mean(dim=-1)  # (heads,)
 
-    scores: List[float] = []
-    for head_idx in range(num_heads):
-        head_attn = attention[head_idx]  # (seq_len, seq_len)
-        # Sum over key dimension, then average over query dimension
-        middle_attn = head_attn[:, mid_mask].sum(dim=-1).mean()  # scalar
-        boundary_attn = head_attn[:, ~mid_mask].sum(dim=-1).mean()  # scalar
-        basin = (middle_attn / (boundary_attn + 1e-10)).item()
-        scores.append(round(basin, 4))
-
-    return scores
+    scores = (middle_attn / (boundary_attn + 1e-10)).tolist()
+    return [round(s, 4) for s in scores]

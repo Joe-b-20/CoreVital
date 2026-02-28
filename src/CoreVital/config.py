@@ -106,6 +106,7 @@ class LogitsSummariesConfig(BaseModel):
         ]
     )
     topk: int = 5
+    entropy_mode: Literal["full", "topk_approx"] = "full"
 
 
 class SummariesConfig(BaseModel):

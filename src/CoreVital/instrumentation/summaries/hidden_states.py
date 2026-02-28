@@ -47,13 +47,17 @@ def compute_hidden_summary(
         # Move to CPU for computation
         hidden_state = hidden_state.cpu().float()
 
-        # Numerical stability: clamp extremes to avoid NaN propagation (Branch 5 / #28)
         CLIP_BOUND = 1e6
         clamped = torch.clamp(hidden_state, -CLIP_BOUND, CLIP_BOUND)
         was_clipped = not torch.equal(hidden_state, clamped)
-        hidden_state = clamped
 
         summary: Dict[str, Any] = {"clipped": was_clipped}
+        if was_clipped:
+            clip_mask = hidden_state.abs() > CLIP_BOUND
+            summary["clip_fraction"] = float(clip_mask.float().mean().item())
+            summary["clip_max_before"] = float(hidden_state.abs().max().item())
+
+        hidden_state = clamped
 
         if "mean" in config.stats:
             summary["mean"] = float(hidden_state.mean().item())
@@ -163,16 +167,20 @@ def compute_layer_transformations(
 
 def detect_repetition_loop(
     hidden_state_buffer: List[torch.Tensor],
+    token_id_buffer: Optional[List[int]] = None,
     threshold: float = 0.9995,
+    consecutive_required: int = 3,
     profile: Optional[Any] = None,
 ) -> bool:
-    """Detect if the model is stuck in a repetition loop using cosine similarity.
+    """Detect if the model is stuck in a repetition loop using cosine similarity
+    and optional token-level n-gram confirmation.
 
-    Compares consecutive hidden state vectors in the buffer. If 3+ consecutive
-    pairs have cosine_sim > threshold, a repetition loop is detected.
-
-    The buffer should contain the last-layer hidden state vector from the most
-    recent generation steps (transient — never serialized).
+    Compares consecutive hidden state vectors in the buffer. If ``consecutive_required``+
+    consecutive pairs have cosine_sim > threshold, a repetition loop is flagged via
+    hidden states. When ``token_id_buffer`` is provided, the hidden-state signal is
+    cross-checked with n-gram repetition in recent token IDs — if both agree, the
+    detection is confirmed; if only hidden states fire, the result is still returned
+    (backward-compatible) but a future confidence field may distinguish the two.
 
     Note on threshold: The default of 0.9995 accounts for the anisotropy problem
     in transformer last-layer representations. In float16 models (e.g., GPT-2 on CUDA),
@@ -182,7 +190,10 @@ def detect_repetition_loop(
     Args:
         hidden_state_buffer: List of 1D hidden state vectors (last layer, last token).
             Typically the last 5 steps. Each tensor shape: (hidden_dim,)
+        token_id_buffer: Optional list of recently generated token IDs. When provided,
+            hidden-state similarity is cross-checked with n-gram repetition.
         threshold: Cosine similarity threshold for "same direction" (default 0.9995)
+        consecutive_required: Number of consecutive high-similarity pairs needed (default 3)
         profile: Optional model profile; if set, threshold = profile.repetition_cosine_threshold
 
     Returns:
@@ -190,7 +201,7 @@ def detect_repetition_loop(
     """
     if profile is not None and hasattr(profile, "repetition_cosine_threshold"):
         threshold = float(profile.repetition_cosine_threshold)
-    if len(hidden_state_buffer) < 4:
+    if len(hidden_state_buffer) < consecutive_required + 1:
         return False
 
     consecutive_count = 0
@@ -198,7 +209,6 @@ def detect_repetition_loop(
         prev_h = hidden_state_buffer[i - 1].float()
         curr_h = hidden_state_buffer[i].float()
 
-        # Ensure 1D
         if prev_h.dim() > 1:
             prev_h = prev_h.flatten()
         if curr_h.dim() > 1:
@@ -207,12 +217,26 @@ def detect_repetition_loop(
         cosine_sim = F.cosine_similarity(prev_h.unsqueeze(0), curr_h.unsqueeze(0)).item()
         if cosine_sim > threshold:
             consecutive_count += 1
-            if consecutive_count >= 3:
-                return True
+            if consecutive_count >= consecutive_required:
+                break
         else:
-            consecutive_count = 0  # Reset on a non-matching pair
+            consecutive_count = 0
 
-    return False
+    hidden_repetition = consecutive_count >= consecutive_required
+
+    if token_id_buffer is None:
+        return hidden_repetition
+
+    # Token-level n-gram confirmation
+    if hidden_repetition and len(token_id_buffer) >= consecutive_required + 1:
+        recent = token_id_buffer[-(consecutive_required + 3):]
+        for n in (3, 2):
+            if len(recent) >= n * 2:
+                ngrams = [tuple(recent[i : i + n]) for i in range(len(recent) - n + 1)]
+                if len(ngrams) != len(set(ngrams)):
+                    return True
+
+    return hidden_repetition
 
 
 def detect_mid_layer_anomaly(
@@ -278,7 +302,13 @@ def detect_mid_layer_anomaly(
                     step_early_norms.append(float(norm))
 
         if step_early_norms:
-            baseline = sum(step_early_norms) / len(step_early_norms)
+            sorted_norms = sorted(step_early_norms)
+            n = len(sorted_norms)
+            baseline = (
+                sorted_norms[n // 2]
+                if n % 2 == 1
+                else (sorted_norms[n // 2 - 1] + sorted_norms[n // 2]) / 2
+            )
             explosion_threshold = baseline * multiplier
         else:
             explosion_threshold = 1000.0  # Conservative fallback

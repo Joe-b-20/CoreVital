@@ -22,24 +22,18 @@ def _random_projection_sketch(
     Returns:
         List of sketch values
     """
-    # Use numpy for deterministic random projection
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
 
-    # Flatten or average across sequence
     if tensor.dim() == 2:
-        # Average across sequence dimension
         vector = tensor.mean(dim=0).numpy()
     else:
         vector = tensor.numpy().flatten()
 
     hidden_dim = len(vector)
 
-    # Generate random projection matrix
-    projection_matrix = np.random.randn(hidden_dim, sketch_dim)
-    projection_matrix /= np.sqrt(hidden_dim)  # Normalize
+    projection_matrix = rng.standard_normal((hidden_dim, sketch_dim))
+    projection_matrix /= np.sqrt(hidden_dim)
 
-    # Project
     sketch = vector @ projection_matrix
 
-    # Return as list, rounded
     return [round(float(x), 2) for x in sketch.tolist()]
