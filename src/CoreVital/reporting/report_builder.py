@@ -255,7 +255,13 @@ class ReportBuilder:
             risk_score = 0.0
             if health_flags is not None:
                 try:
-                    risk_score, risk_factors = compute_risk_score(health_flags, summary)
+                    # New composite score from timeline; fallback to legacy if timeline is None
+                    risk_score, risk_factors = compute_risk_score(
+                        health_flags,
+                        summary,
+                        timeline=timeline,
+                        layers_by_step=timeline_layers_for_flags,
+                    )
                     blamed_layers = compute_layer_blame(timeline_layers_for_flags)
                     report.extensions["risk"] = {
                         "risk_score": risk_score,

@@ -8,10 +8,31 @@ from CoreVital.reporting.schema import (
     HealthFlags,
     HiddenSummary,
     LayerSummary,
+    LogitsSummary,
     Summary,
     TensorAnomalies,
+    TimelineStep,
+    TokenInfo,
 )
 from CoreVital.risk import compute_layer_blame, compute_risk_score
+
+
+def _step(step_index: int, entropy: float = None, top_k_margin: float = None, voter_agreement: float = None, surprisal: float = None) -> TimelineStep:
+    """Build a minimal TimelineStep with optional logits metrics."""
+    logits = LogitsSummary()
+    if entropy is not None:
+        logits.entropy = entropy
+    if top_k_margin is not None:
+        logits.top_k_margin = top_k_margin
+    if voter_agreement is not None:
+        logits.voter_agreement = voter_agreement
+    if surprisal is not None:
+        logits.surprisal = surprisal
+    return TimelineStep(
+        step_index=step_index,
+        token=TokenInfo(token_id=0, token_text="x", is_prompt_token=False),
+        logits_summary=logits,
+    )
 
 
 class TestComputeRiskScore:
@@ -74,6 +95,60 @@ class TestComputeRiskScore:
         )
         score, _ = compute_risk_score(flags, summary)
         assert score <= 1.0
+
+    def test_high_entropy_and_low_margin_scores_higher_than_either_alone(self):
+        """High entropy + low margin together should score higher than either alone."""
+        summary = Summary(prompt_tokens=0, generated_tokens=10, total_steps=10, elapsed_ms=100)
+        flags = HealthFlags()
+
+        timeline_high_entropy_only = [_step(i, entropy=5.0, top_k_margin=0.8) for i in range(10)]
+        timeline_low_margin_only = [_step(i, entropy=1.0, top_k_margin=0.05) for i in range(10)]
+        timeline_both = [_step(i, entropy=5.0, top_k_margin=0.05) for i in range(10)]
+
+        score_entropy, _ = compute_risk_score(flags, summary, timeline=timeline_high_entropy_only)
+        score_margin, _ = compute_risk_score(flags, summary, timeline=timeline_low_margin_only)
+        score_both, _ = compute_risk_score(flags, summary, timeline=timeline_both)
+
+        assert score_both > score_entropy
+        assert score_both > score_margin
+
+    def test_nan_inf_always_returns_one(self):
+        """NaN/Inf must always return 1.0 regardless of timeline."""
+        summary = Summary(prompt_tokens=1, generated_tokens=5, total_steps=6, elapsed_ms=100)
+        timeline = [_step(i, entropy=1.0) for i in range(6)]
+
+        score_nan, factors = compute_risk_score(
+            HealthFlags(nan_detected=True, inf_detected=False), summary, timeline=timeline
+        )
+        assert score_nan == 1.0
+        assert "nan_or_inf" in factors
+
+        score_inf, factors2 = compute_risk_score(
+            HealthFlags(nan_detected=False, inf_detected=True), summary, timeline=timeline
+        )
+        assert score_inf == 1.0
+        assert "nan_or_inf" in factors2
+
+    def test_factors_contain_expected_strings(self):
+        """Factors list should contain the right signal names."""
+        summary = Summary(prompt_tokens=0, generated_tokens=8, total_steps=8, elapsed_ms=100)
+        flags = HealthFlags()
+        timeline = [
+            _step(i, entropy=6.0, top_k_margin=0.08, voter_agreement=0.3)
+            for i in range(8)
+        ]
+        score, factors = compute_risk_score(flags, summary, timeline=timeline)
+        assert "elevated_entropy" in factors
+        assert "low_confidence_margin" in factors
+        assert "low_topk_mass" in factors
+
+    def test_empty_timeline_returns_zero(self):
+        """Empty timeline should return 0.0 and no factors (no NaN/Inf)."""
+        summary = Summary(prompt_tokens=0, generated_tokens=0, total_steps=0, elapsed_ms=0)
+        flags = HealthFlags()
+        score, factors = compute_risk_score(flags, summary, timeline=[])
+        assert score == 0.0
+        assert factors == []
 
 
 class TestComputeLayerBlame:
