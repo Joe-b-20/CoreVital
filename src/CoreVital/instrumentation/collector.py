@@ -45,6 +45,13 @@ if TYPE_CHECKING:
 
 import torch
 
+from transformers import (
+    LogitsProcessorList,
+    TemperatureLogitsWarper,
+    TopKLogitsWarper,
+    TopPLogitsWarper,
+)
+
 from CoreVital.config import Config
 from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
@@ -55,6 +62,52 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+
+def _resolve_special_token(
+    tokenizer: Any, model_config: Any, attr_name: str, fallback: Optional[Any] = None
+) -> Any:
+    """Resolve a special token ID from tokenizer, then model config, then fallback.
+
+    Used for eos_token_id and decoder_start_token_id so instrumented and baseline
+    paths use the same resolution order (tokenizer -> config -> fallback).
+    """
+    val = getattr(tokenizer, attr_name, None)
+    if val is None:
+        val = getattr(model_config, attr_name, None)
+    if val is None:
+        val = fallback
+    return val
+
+
+def _normalize_eos(
+    tokenizer: Any, model_config: Any, fallback: Optional[int] = None
+) -> set:
+    """Normalize EOS token ID to a set for membership checks.
+
+    model.config.eos_token_id can be int, list, or tuple on modern models (e.g. LLaMA 3).
+    Returns a set so we can use `if next_token_id in eos_ids`.
+    """
+    eos = _resolve_special_token(tokenizer, model_config, "eos_token_id", fallback=None)
+    if eos is None:
+        eos = fallback
+    if eos is None:
+        return set()
+    if isinstance(eos, (list, tuple)):
+        return set(eos)
+    return {eos}
+
+
+def _build_logits_processor(gen_config: Any) -> LogitsProcessorList:
+    """Build HF LogitsProcessorList for temperature, top-k, and top-p (no custom sampling)."""
+    processors = LogitsProcessorList()
+    if getattr(gen_config, "temperature", None) and gen_config.temperature != 1.0:
+        processors.append(TemperatureLogitsWarper(gen_config.temperature))
+    if getattr(gen_config, "top_k", None) and gen_config.top_k > 0:
+        processors.append(TopKLogitsWarper(gen_config.top_k))
+    if getattr(gen_config, "top_p", None) and gen_config.top_p < 1.0:
+        processors.append(TopPLogitsWarper(gen_config.top_p))
+    return processors
 
 
 def _last_layer_hidden_buffer(
@@ -518,61 +571,39 @@ class InstrumentationCollector:
             return_dict=True,
         )
 
-        # Decoder loop
-        decoder_start_token_id = getattr(model.config, "decoder_start_token_id", None)
-        if decoder_start_token_id is None:
-            decoder_start_token_id = getattr(tokenizer, "pad_token_id", 0)
-        eos_token_id = getattr(model.config, "eos_token_id", None)
-        if eos_token_id is None:
-            eos_token_id = getattr(tokenizer, "eos_token_id", 2)
+        # Decoder loop — shared token resolution and sampling with _generate_seq2seq_manual
+        _pad_or_eos = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None) or 0
+        decoder_start_token_id = _resolve_special_token(
+            tokenizer, model.config, "decoder_start_token_id", fallback=_pad_or_eos
+        )
+        eos_ids = _normalize_eos(tokenizer, model.config, fallback=2)
 
         decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device)
         max_new_tokens = self.config.generation.max_new_tokens
-
-        # Generation parameters (must match _generate_seq2seq_manual)
         do_sample = self.config.generation.do_sample
-        temperature = self.config.generation.temperature
-        top_k = self.config.generation.top_k
-        top_p = self.config.generation.top_p
+        logits_processor = _build_logits_processor(self.config.generation)
+        past_key_values = None
 
         for _ in range(max_new_tokens):
             decoder_outputs = model(
                 encoder_outputs=encoder_outputs,
-                decoder_input_ids=decoder_input_ids,
+                decoder_input_ids=decoder_input_ids[:, -1:] if past_key_values is not None else decoder_input_ids,
                 output_hidden_states=False,
                 output_attentions=False,
-                use_cache=False,
+                use_cache=True,
+                past_key_values=past_key_values,
                 return_dict=True,
             )
+            past_key_values = getattr(decoder_outputs, "past_key_values", None)
             next_token_logits = decoder_outputs.logits[:, -1, :]
-            # Sample next token (must match _generate_seq2seq_manual exactly)
             if do_sample:
-                # Apply temperature
-                if temperature != 1.0:
-                    next_token_logits = next_token_logits / temperature
-
-                # Apply top-k filtering
-                if top_k > 0:
-                    indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
-                    next_token_logits[indices_to_remove] = float("-inf")
-
-                # Apply top-p (nucleus) filtering
-                if top_p < 1.0:
-                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-                    sorted_indices_to_remove = cumulative_probs > top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                    sorted_indices_to_remove[..., 0] = 0
-                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    next_token_logits[indices_to_remove] = float("-inf")
-
-                # Sample from filtered distribution
+                next_token_logits = logits_processor(decoder_input_ids, next_token_logits)
                 probs = torch.softmax(next_token_logits, dim=-1)
                 next_token_id = torch.multinomial(probs, num_samples=1)
             else:
                 next_token_id = torch.argmax(next_token_logits, dim=-1, keepdim=True)
             decoder_input_ids = torch.cat([decoder_input_ids, next_token_id], dim=-1)
-            if next_token_id.item() == eos_token_id:
+            if next_token_id.item() in eos_ids:
                 break
 
     def _run_prompt_forward(
@@ -721,14 +752,11 @@ class InstrumentationCollector:
             )
             logger.debug(f"Extracted {len(encoder_attentions)} encoder attention layers")
 
-        # Prepare decoder inputs
-        # For T5, decoder_start_token_id is typically pad_token_id
-        decoder_start_token_id = getattr(model.config, "decoder_start_token_id", None)
-        if decoder_start_token_id is None:
-            decoder_start_token_id = tokenizer.pad_token_id
-            if decoder_start_token_id is None:
-                decoder_start_token_id = tokenizer.eos_token_id
-
+        # Prepare decoder inputs — shared resolution with baseline
+        _pad_or_eos = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None) or 0
+        decoder_start_token_id = _resolve_special_token(
+            tokenizer, model.config, "decoder_start_token_id", fallback=_pad_or_eos
+        )
         decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device, dtype=torch.long)
 
         # Storage for outputs
@@ -740,13 +768,10 @@ class InstrumentationCollector:
         generated_token_ids: List[int] = []
 
         max_new_tokens = self.config.generation.max_new_tokens
-        eos_token_id = tokenizer.eos_token_id or model.config.eos_token_id
-
-        # Generation parameters
+        eos_ids = _normalize_eos(tokenizer, model.config, fallback=2)
         do_sample = self.config.generation.do_sample
-        temperature = self.config.generation.temperature
-        top_k = self.config.generation.top_k
-        top_p = self.config.generation.top_p
+        logits_processor = _build_logits_processor(self.config.generation)
+        past_key_values: Any = None
 
         logger.debug(f"Starting manual decoder generation (max_new_tokens={max_new_tokens})...")
 
@@ -756,22 +781,22 @@ class InstrumentationCollector:
 
         for step in range(max_new_tokens):
             _step_start = time.perf_counter()
-            # Forward pass through decoder
-            # For T5 and other Seq2Seq models, we pass encoder_outputs as a BaseModelOutput
+            # Forward pass through decoder (KV cache: only feed new token when cache exists)
             decoder_outputs = model(
                 input_ids=None,  # Not needed when using encoder_outputs
                 encoder_outputs=encoder_outputs,
-                decoder_input_ids=decoder_input_ids,
+                decoder_input_ids=decoder_input_ids[:, -1:] if past_key_values is not None else decoder_input_ids,
                 output_hidden_states=True,
                 output_attentions=True,
-                use_cache=False,  # Disable cache to get all hidden states
+                use_cache=True,
+                past_key_values=past_key_values,
                 return_dict=True,
             )
+            past_key_values = getattr(decoder_outputs, "past_key_values", None)
 
             # Extract logits for next token prediction; keep unmodified copy for all_scores and step_callback
             raw_logits = decoder_outputs.logits[:, -1, :].clone()  # Shape: (batch_size, vocab_size)
             all_scores.append(raw_logits)
-            next_token_logits = raw_logits.clone()  # Working copy for temperature/top_k/top_p
 
             # Extract hidden states (decoder hidden states)
             # decoder_hidden_states is a tuple: (embedding, layer1, layer2, ..., layerN)
@@ -850,33 +875,13 @@ class InstrumentationCollector:
                 all_cross_attentions.append(None)
                 logger.debug(f"No cross-attentions extracted at step {step}")
 
-            # Sample next token
+            # Sample next token (HF LogitsProcessorList — no hand-rolled sampling)
             if do_sample:
-                # Apply temperature
-                if temperature != 1.0:
-                    next_token_logits = next_token_logits / temperature
-
-                # Apply top-k filtering
-                if top_k > 0:
-                    indices_to_remove = next_token_logits < torch.topk(next_token_logits, top_k)[0][..., -1, None]
-                    next_token_logits[indices_to_remove] = float("-inf")
-
-                # Apply top-p (nucleus) filtering
-                if top_p < 1.0:
-                    sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
-                    cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-                    sorted_indices_to_remove = cumulative_probs > top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                    sorted_indices_to_remove[..., 0] = 0
-                    indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
-                    next_token_logits[indices_to_remove] = float("-inf")
-
-                # Sample from filtered distribution
+                next_token_logits = logits_processor(decoder_input_ids, raw_logits)
                 probs = torch.softmax(next_token_logits, dim=-1)
                 next_token = torch.multinomial(probs, num_samples=1)
             else:
-                # Greedy decoding
-                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                next_token = torch.argmax(raw_logits, dim=-1, keepdim=True)
 
             next_token_id = int(next_token.item())
             generated_token_ids.append(next_token_id)
@@ -897,8 +902,8 @@ class InstrumentationCollector:
                 except Exception:
                     logger.exception("step_callback raised")
 
-            # Check for EOS
-            if next_token_id == eos_token_id:
+            # Check for EOS (normalized to set for models with multiple EOS tokens)
+            if next_token_id in eos_ids:
                 logger.debug(f"EOS token generated at step {step}")
                 # Record step time before break
                 _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
