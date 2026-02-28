@@ -106,6 +106,7 @@ from CoreVital.reporting.schema import (
     TokenInfo,
     Warning,
 )
+from CoreVital.reporting.validation import validate_metric_consistency_and_log
 from CoreVital.risk import compute_layer_blame, compute_layer_blame_flat, compute_risk_score
 from CoreVital.utils.time import get_utc_timestamp
 
@@ -399,6 +400,18 @@ class ReportBuilder:
                 report.extensions["narrative"] = {"summary": summary_text}
             except Exception as e:
                 logger.warning(f"Narrative build failed, skipping: {e}")
+
+            # Phase-5: metric consistency validation (Issue 15) — debug mode only
+            if logger.isEnabledFor(10):  # logging.DEBUG == 10
+                try:
+                    consistency_warnings = validate_metric_consistency_and_log(report)
+                    if consistency_warnings:
+                        report.extensions["metric_consistency"] = {
+                            "warnings": consistency_warnings,
+                            "count": len(consistency_warnings),
+                        }
+                except Exception as e:
+                    logger.debug(f"Metric consistency validation failed: {e}")
 
         # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
 
