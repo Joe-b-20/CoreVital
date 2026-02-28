@@ -334,10 +334,15 @@ class ReportBuilder:
             except Exception as e:
                 logger.warning(f"Fingerprint computation failed, skipping: {e}")
 
-            # Phase-4: early warning (failure_risk, warning_signals) from timeline + health_flags
+            # Phase-2.5: early warning (failure_risk, warning_signals) from timeline + health_flags
             try:
                 hf_ew = health_flags if health_flags is not None else HealthFlags()
-                failure_risk, warning_signals = compute_early_warning(timeline, hf_ew)
+                ew_entropy_threshold = 4.0
+                if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
+                    ew_entropy_threshold = float(profile.high_entropy_threshold_bits)
+                failure_risk, warning_signals = compute_early_warning(
+                    timeline, hf_ew, high_entropy_threshold=ew_entropy_threshold,
+                )
                 report.extensions["early_warning"] = {
                     "failure_risk": failure_risk,
                     "warning_signals": warning_signals,
