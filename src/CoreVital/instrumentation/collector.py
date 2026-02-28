@@ -987,6 +987,7 @@ class InstrumentationCollector:
 
         timeline = []
         batch_idx = 0  # We only support batch_size=1 for instrumentation
+        num_layers = self.model_bundle.num_layers
 
         # Note: Transformers generation outputs can be complex
         # Structure:
@@ -1062,6 +1063,9 @@ class InstrumentationCollector:
                 if has_hidden and len(outputs.hidden_states) > step_idx:
                     step_hidden = outputs.hidden_states[step_idx]
                     if isinstance(step_hidden, (tuple, list)):
+                        # HF CausalLM returns (embedding, layer_1, ..., layer_N); skip embedding when present
+                        if len(step_hidden) > num_layers:
+                            step_hidden = step_hidden[1 : num_layers + 1]  # drop index 0 (embedding), keep layers 1..N
                         if num_beams > 1:
                             step_data.hidden_states = [_slice_beam(t, step_idx) for t in step_hidden]
                         else:
