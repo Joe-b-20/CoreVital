@@ -80,6 +80,7 @@ class AttentionSummariesConfig(BaseModel):
     stats: List[str] = Field(
         default_factory=lambda: [
             "entropy_mean",
+            "entropy_mean_normalized",
             "entropy_min",
             "entropy_max",
             "concentration_max",

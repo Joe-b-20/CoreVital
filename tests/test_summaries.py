@@ -17,6 +17,7 @@ from CoreVital.config import (
     SketchConfig,
 )
 from CoreVital.instrumentation.summaries import (
+    NORMALIZED_COLLAPSED_THRESHOLD,
     compute_attention_summary,
     compute_basin_scores,
     compute_hidden_summary,
@@ -103,6 +104,7 @@ class TestComputeAttentionSummary:
             enabled=True,
             stats=[
                 "entropy_mean",
+                "entropy_mean_normalized",
                 "entropy_min",
                 "entropy_max",
                 "concentration_max",
@@ -121,6 +123,7 @@ class TestComputeAttentionSummary:
         attn[1] = attn[1] / attn[1].sum(dim=-1, keepdim=True)
         out = compute_attention_summary(attn, config)
         assert "entropy_mean" in out
+        assert "entropy_mean_normalized" in out
         assert "entropy_min" in out
         assert "entropy_max" in out
         assert "concentration_max" in out
@@ -142,6 +145,180 @@ class TestComputeAttentionSummary:
         attn = torch.ones(2, 4, 4) / 4.0
         out = compute_attention_summary(attn, config)
         assert out == {}
+
+
+# ---------------------------------------------------------------------------
+# Issue 10: Clamp vs additive epsilon
+# ---------------------------------------------------------------------------
+
+
+class TestIssue10ClampVsEpsilon:
+    """Issue 10: torch.log(clamp(attn)) instead of torch.log(attn + eps)."""
+
+    def test_clamp_preserves_nonzero_weights(self):
+        """Weights above 1e-10 contribute the same entropy as exact log(p)."""
+        import math
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean"]
+        )
+        # Single head, 4 tokens, known distribution
+        attn = torch.tensor([[[0.7, 0.2, 0.1, 0.0]]])  # (1, 1, 4)
+        out = compute_attention_summary(attn, config)
+        # Hand-calculated: H = -(0.7*ln0.7 + 0.2*ln0.2 + 0.1*ln0.1 + 0*ln(1e-10))
+        expected = -(0.7 * math.log(0.7) + 0.2 * math.log(0.2) + 0.1 * math.log(0.1))
+        assert abs(out["entropy_mean"] - expected) < 1e-4
+
+    def test_zero_weight_does_not_shift_entropy(self):
+        """A zero-weight token contributes 0 to entropy (0 * log(1e-10) = 0)."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean"]
+        )
+        # All weight on one token
+        attn = torch.tensor([[[1.0, 0.0, 0.0, 0.0]]])
+        out = compute_attention_summary(attn, config)
+        assert abs(out["entropy_mean"]) < 1e-6  # entropy of a delta is 0
+
+    def test_very_small_weight_not_dominated_by_epsilon(self):
+        """A weight of 1e-12 should use log(1e-10) via clamp, not log(1e-12 + 1e-10)."""
+        import math
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean"]
+        )
+        # Near-delta: one big weight, one tiny weight
+        p_big = 1.0 - 1e-12
+        p_tiny = 1e-12
+        attn = torch.tensor([[[p_big, p_tiny]]])
+        out = compute_attention_summary(attn, config)
+        # With clamp: p_tiny is clamped to 1e-10, so contribution is -1e-12 * log(1e-10)
+        # With additive eps: would be -1e-12 * log(1e-12 + 1e-10) ≈ -1e-12 * log(1.01e-10)
+        # Both are tiny; key assertion: entropy is very close to 0
+        assert out["entropy_mean"] < 0.001
+
+
+# ---------------------------------------------------------------------------
+# Issue 23: Division normalization vs softmax
+# ---------------------------------------------------------------------------
+
+
+class TestIssue23DivisionNormalization:
+    """Issue 23: Unnormalized attention uses division, not re-softmax."""
+
+    def test_drifted_attention_renormalized_by_division(self):
+        """Attention summing to 0.99 is renormalized by division, preserving ratios."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean", "concentration_max"]
+        )
+        # Slightly drifted: sums to 0.99, not 1.0
+        attn = torch.tensor([[[0.495, 0.495, 0.0]]])  # sum = 0.99
+        out = compute_attention_summary(attn, config)
+        # After division: [0.5, 0.5, 0.0] — entropy of fair coin in nats
+        import math
+        expected_entropy = math.log(2)
+        assert abs(out["entropy_mean"] - expected_entropy) < 0.01
+
+    def test_softmax_would_change_distribution(self):
+        """Verify that softmax on post-softmax values differs from division."""
+        import torch.nn.functional as F
+        # Drifted distribution
+        raw = torch.tensor([0.8, 0.15, 0.04])  # sum = 0.99
+        # Division normalization preserves ratios
+        div_result = raw / raw.sum()
+        # Softmax treats values as logits — exponential reweighting
+        sm_result = F.softmax(raw, dim=-1)
+        # They should NOT be equal
+        assert not torch.allclose(div_result, sm_result, atol=1e-3)
+
+    def test_already_normalized_unchanged(self):
+        """Attention already summing to 1.0 is not modified."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean"]
+        )
+        attn = torch.tensor([[[0.5, 0.3, 0.2]]])  # sum = 1.0
+        out = compute_attention_summary(attn, config)
+        import math
+        expected = -(0.5 * math.log(0.5) + 0.3 * math.log(0.3) + 0.2 * math.log(0.2))
+        assert abs(out["entropy_mean"] - expected) < 1e-4
+
+
+# ---------------------------------------------------------------------------
+# Issue 21: Normalized entropy and collapse detection
+# ---------------------------------------------------------------------------
+
+
+class TestIssue21NormalizedEntropy:
+    """Issue 21: Entropy normalized by log(K), collapse detection in [0,1] space."""
+
+    def test_uniform_gives_normalized_entropy_one(self):
+        """Uniform attention over K tokens should have normalized entropy = 1.0."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean_normalized"]
+        )
+        K = 16
+        attn = torch.ones(1, 1, K) / K  # uniform
+        out = compute_attention_summary(attn, config)
+        assert abs(out["entropy_mean_normalized"] - 1.0) < 1e-4
+
+    def test_peaked_gives_normalized_entropy_near_zero(self):
+        """Delta attention (all weight on one token) → normalized entropy ≈ 0."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean_normalized"]
+        )
+        attn = torch.zeros(1, 1, 32)
+        attn[0, 0, 0] = 1.0
+        out = compute_attention_summary(attn, config)
+        assert out["entropy_mean_normalized"] < 0.01
+
+    def test_both_raw_and_normalized_stored(self):
+        """Both entropy_mean (raw nats) and entropy_mean_normalized (in [0,1]) are returned."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["entropy_mean", "entropy_mean_normalized"]
+        )
+        K = 8
+        attn = torch.ones(2, 4, K) / K
+        out = compute_attention_summary(attn, config)
+        assert "entropy_mean" in out
+        assert "entropy_mean_normalized" in out
+        import math
+        assert abs(out["entropy_mean"] - math.log(K)) < 0.01
+        assert abs(out["entropy_mean_normalized"] - 1.0) < 0.01
+
+    def test_collapse_detection_same_for_short_and_long_sequences(self):
+        """A collapsed head (delta) is detected regardless of sequence length.
+
+        This is the key property of length-normalized collapse detection:
+        the same "collapsed" pattern should be caught at K=32 and K=2048.
+        """
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["collapsed_head_count", "entropy_mean_normalized"]
+        )
+
+        for K in [32, 128, 512, 2048]:
+            # Head 0: delta (collapsed), Head 1: uniform (not collapsed)
+            attn = torch.zeros(2, 1, K)
+            attn[0, 0, 0] = 1.0  # collapsed
+            attn[1, 0, :] = 1.0 / K  # uniform
+            out = compute_attention_summary(attn, config)
+            assert out["collapsed_head_count"] == 1, (
+                f"At K={K}: expected 1 collapsed head, got {out['collapsed_head_count']}"
+            )
+
+    def test_slightly_focused_not_collapsed(self):
+        """A head that's focused but not a delta should NOT be collapsed."""
+        config = AttentionSummariesConfig(
+            enabled=True, stats=["collapsed_head_count", "entropy_mean_normalized"]
+        )
+        K = 64
+        attn = torch.zeros(1, 1, K)
+        # Spread weight across 5 tokens — normalized entropy ~log(5)/log(64) ≈ 0.27 > 0.03
+        for i in range(5):
+            attn[0, 0, i] = 1.0 / 5.0
+        out = compute_attention_summary(attn, config)
+        assert out["collapsed_head_count"] == 0
+        assert out["entropy_mean_normalized"] > NORMALIZED_COLLAPSED_THRESHOLD
+
+    def test_normalized_threshold_constant(self):
+        """NORMALIZED_COLLAPSED_THRESHOLD is 0.03 in [0,1] space."""
+        assert NORMALIZED_COLLAPSED_THRESHOLD == 0.03
 
 
 # ---------------------------------------------------------------------------

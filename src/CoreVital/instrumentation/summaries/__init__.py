@@ -13,6 +13,7 @@ from .logits import (
 from .attention import (
     COLLAPSED_HEAD_ENTROPY_THRESHOLD,
     FOCUSED_HEAD_CONCENTRATION_THRESHOLD,
+    NORMALIZED_COLLAPSED_THRESHOLD,
     compute_attention_summary,
     compute_basin_scores,
     extract_sparse_attention,
@@ -36,6 +37,7 @@ __all__ = [
     # attention
     "COLLAPSED_HEAD_ENTROPY_THRESHOLD",
     "FOCUSED_HEAD_CONCENTRATION_THRESHOLD",
+    "NORMALIZED_COLLAPSED_THRESHOLD",
     "compute_attention_summary",
     "compute_basin_scores",
     "extract_sparse_attention",

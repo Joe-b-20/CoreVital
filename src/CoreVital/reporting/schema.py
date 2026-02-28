@@ -185,6 +185,7 @@ class AttentionSummary(BaseModel):
     """Attention summary for a layer."""
 
     entropy_mean: Optional[float] = None
+    entropy_mean_normalized: Optional[float] = None  # Entropy / log(K), in [0, 1]
     entropy_min: Optional[float] = None
     concentration_max: Optional[float] = None
     # Phase-1a additions

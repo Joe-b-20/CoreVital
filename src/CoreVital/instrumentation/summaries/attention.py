@@ -1,9 +1,9 @@
 # Attention summary computation: compute_attention_summary, compute_basin_scores, extract_sparse_attention
 
+import math
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import torch
-import torch.nn.functional as F
 
 from CoreVital.errors import SummaryComputationError
 from CoreVital.logging_utils import get_logger
@@ -14,7 +14,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Constants
-COLLAPSED_HEAD_ENTROPY_THRESHOLD = 0.1  # Entropy below this = nearly all weight on one token
+COLLAPSED_HEAD_ENTROPY_THRESHOLD = 0.1  # Legacy raw-nats threshold (deprecated; use NORMALIZED_COLLAPSED_THRESHOLD)
+NORMALIZED_COLLAPSED_THRESHOLD = 0.03  # Normalized entropy in [0,1]; below this = collapsed head
 FOCUSED_HEAD_CONCENTRATION_THRESHOLD = 0.9  # Avg max attention above this = very focused head
 
 
@@ -42,11 +43,8 @@ def compute_attention_summary(
     Raises:
         SummaryComputationError: If computation fails
     """
-    collapsed_threshold = (
-        float(profile.collapsed_head_entropy_threshold)
-        if profile is not None and hasattr(profile, "collapsed_head_entropy_threshold")
-        else COLLAPSED_HEAD_ENTROPY_THRESHOLD
-    )
+    # collapsed_threshold from profile is deprecated; collapse detection now uses
+    # NORMALIZED_COLLAPSED_THRESHOLD in [0,1] space (Issue 21).
     focused_threshold = (
         float(profile.focused_head_concentration_threshold)
         if profile is not None and hasattr(profile, "focused_head_concentration_threshold")
@@ -98,13 +96,13 @@ def compute_attention_summary(
         # Move to CPU
         attention = attention.cpu().float()
 
-        # Normalize attention weights if needed (they should already be normalized from softmax)
-        # But we'll check and normalize if necessary to ensure they sum to 1
-        # This handles cases where attention might not be properly normalized
+        # Issue 23: Renormalize by division, not softmax.
+        # Attention is already post-softmax; numerical drift means it may not sum to exactly 1.
+        # Applying softmax again would exponentially reweight the distribution.
         attention_sum = attention.sum(dim=-1, keepdim=True)
         if not torch.allclose(attention_sum, torch.ones_like(attention_sum), atol=1e-3):
-            logger.debug("Attention weights not normalized, applying softmax")
-            attention = F.softmax(attention, dim=-1)
+            logger.debug("Attention weights not normalized, renormalizing by sum")
+            attention = attention / attention_sum.clamp(min=1e-10)
 
         summary: Dict[str, Any] = {}
 
@@ -113,20 +111,34 @@ def compute_attention_summary(
         # attention shape: (heads, target_len, source_len)
         need_entropy = any(
             s in config.stats
-            for s in ("entropy_mean", "entropy_min", "entropy_max", "collapsed_head_count", "focused_head_count")
+            for s in (
+                "entropy_mean", "entropy_min", "entropy_max",
+                "entropy_mean_normalized",
+                "collapsed_head_count", "focused_head_count",
+            )
         )
 
         per_head_entropy = None
+        per_head_entropy_norm = None
         if need_entropy:
-            # Use log_softmax for numerical stability
-            log_attn = torch.log(attention + 1e-10)
-            # Entropy per (head, query): -sum(p * log(p)) over keys
+            # Issue 10: clamp instead of additive epsilon — preserves actual values
+            # for weights > 1e-10 and only floors true zeros.
+            log_attn = torch.log(torch.clamp(attention, min=1e-10))
             entropy = -(attention * log_attn).sum(dim=-1)  # (heads, target_len)
-            # Average over query positions to get per-head scalar
-            per_head_entropy = entropy.mean(dim=-1)  # (heads,)
+
+            # Issue 21: normalize by log(K) so entropy lives in [0, 1]
+            source_len = attention.shape[-1]
+            max_entropy = math.log(source_len) if source_len > 1 else 1.0
+            normalized_entropy = entropy / max_entropy  # (heads, target_len)
+
+            per_head_entropy = entropy.mean(dim=-1)  # raw nats, (heads,)
+            per_head_entropy_norm = normalized_entropy.mean(dim=-1)  # [0,1], (heads,)
 
             if "entropy_mean" in config.stats:
                 summary["entropy_mean"] = float(per_head_entropy.mean().item())
+
+            if "entropy_mean_normalized" in config.stats:
+                summary["entropy_mean_normalized"] = float(per_head_entropy_norm.mean().item())
 
             if "entropy_min" in config.stats:
                 summary["entropy_min"] = float(per_head_entropy.min().item())
@@ -134,8 +146,10 @@ def compute_attention_summary(
             if "entropy_max" in config.stats:
                 summary["entropy_max"] = float(per_head_entropy.max().item())
 
+            # Issue 21: collapse detection uses normalized entropy
             if "collapsed_head_count" in config.stats:
-                summary["collapsed_head_count"] = int((per_head_entropy < collapsed_threshold).sum().item())
+                norm_threshold = NORMALIZED_COLLAPSED_THRESHOLD
+                summary["collapsed_head_count"] = int((per_head_entropy_norm < norm_threshold).sum().item())
 
             # Focused heads: heads where mean max-attention per query > threshold (concentration).
             # High concentration = sharp/focused attention on specific keys; low entropy = sharp.
