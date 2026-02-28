@@ -146,7 +146,8 @@ class TestMockCausalLMInstrumentation:
         fp = report.extensions.get("fingerprint")
         assert fp is not None, "Report should have extensions['fingerprint']"
         assert "vector" in fp and "prompt_hash" in fp
-        assert len(fp["vector"]) == 9
+        assert len(fp["vector"]) == 25
+        assert fp.get("version") == 2
         assert isinstance(fp["prompt_hash"], str) and len(fp["prompt_hash"]) == 64
 
         # Serialize to JSON

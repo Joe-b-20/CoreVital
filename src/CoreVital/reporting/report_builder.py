@@ -61,7 +61,7 @@ import torch
 from CoreVital.compound_signals import CompoundSignal, detect_compound_signals
 from CoreVital.config import Config, load_model_profile
 from CoreVital.early_warning import compute_early_warning
-from CoreVital.fingerprint import compute_fingerprint_vector, compute_prompt_hash
+from CoreVital.fingerprint import FINGERPRINT_VERSION, compute_fingerprint_vector, compute_prompt_hash
 from CoreVital.instrumentation.collector import InstrumentationResults
 from CoreVital.instrumentation.summaries import (
     compute_attention_summary,
@@ -349,12 +349,19 @@ class ReportBuilder:
                 except Exception as e:
                     logger.warning(f"Calibration divergence scoring failed, skipping: {e}")
 
-            # Phase-3: fingerprint (run-summary vector + prompt hash) for every report
+            # Phase-4.3: fingerprint v2 (25-element vector + prompt hash) for every report
             try:
                 hf = health_flags if health_flags is not None else HealthFlags()
-                vec = compute_fingerprint_vector(timeline, summary, hf, risk_score)
+                vec = compute_fingerprint_vector(
+                    timeline, summary, hf, risk_score,
+                    layers_by_step=timeline_layers_for_flags,
+                )
                 prompt_hash = compute_prompt_hash(prompt, model_info.hf_id)
-                report.extensions["fingerprint"] = {"vector": vec, "prompt_hash": prompt_hash}
+                report.extensions["fingerprint"] = {
+                    "vector": vec,
+                    "prompt_hash": prompt_hash,
+                    "version": FINGERPRINT_VERSION,
+                }
             except Exception as e:
                 logger.warning(f"Fingerprint computation failed, skipping: {e}")
 
