@@ -4,12 +4,6 @@
 #   from CoreVital.instrumentation.summaries import compute_logits_summary, ...
 #
 
-from .logits import (
-    MIN_TOPK_FOR_STATS,
-    VOTER_AGREEMENT_TOP_K,
-    compute_logits_summary,
-    compute_prompt_surprisal,
-)
 from .attention import (
     COLLAPSED_HEAD_ENTROPY_THRESHOLD,
     FOCUSED_HEAD_CONCENTRATION_THRESHOLD,
@@ -26,6 +20,12 @@ from .hidden_states import (
     detect_mid_layer_anomaly,
     detect_repetition_loop,
     detect_tensor_anomalies,
+)
+from .logits import (
+    MIN_TOPK_FOR_STATS,
+    VOTER_AGREEMENT_TOP_K,
+    compute_logits_summary,
+    compute_prompt_surprisal,
 )
 
 __all__ = [

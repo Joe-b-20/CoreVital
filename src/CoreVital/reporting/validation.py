@@ -14,7 +14,6 @@
 #               2^entropy, entropy/concentration correlation, margin ≤ topk_mass
 # ============================================================================
 
-import math
 from typing import List, Optional
 
 from CoreVital.errors import ValidationError
@@ -137,7 +136,7 @@ def validate_metric_consistency(
         perplexity: Optional[float] = logits.perplexity if logits else None
 
         if entropy is not None and perplexity is not None:
-            expected_ppl = 2.0 ** entropy
+            expected_ppl = 2.0**entropy
             denom = max(expected_ppl, 1e-10)
             if abs(perplexity - expected_ppl) / denom > perplexity_rel_tol:
                 warnings_list.append(
@@ -146,15 +145,18 @@ def validate_metric_consistency(
                     f"relative error {abs(perplexity - expected_ppl) / denom:.4f}"
                 )
 
-        # 2. top_k_margin ≤ topk_mass (voter_agreement)
+        # 2. top_k_margin ≤ topk_mass
         margin: Optional[float] = logits.top_k_margin if logits else None
-        topk_mass: Optional[float] = logits.voter_agreement if logits else None
+        topk_mass_val: Optional[float] = None
+        if logits:
+            topk_mass_val = getattr(logits, "topk_mass", None)
+            if topk_mass_val is None:
+                topk_mass_val = getattr(logits, "voter_agreement", None)
 
-        if margin is not None and topk_mass is not None:
-            if margin > topk_mass + 1e-6:
+        if margin is not None and topk_mass_val is not None:
+            if margin > topk_mass_val + 1e-6:
                 warnings_list.append(
-                    f"Step {step_idx}: top_k_margin ({margin:.4f}) > "
-                    f"topk_mass ({topk_mass:.4f}) — impossible"
+                    f"Step {step_idx}: top_k_margin ({margin:.4f}) > topk_mass ({topk_mass_val:.4f}) — impossible"
                 )
 
         # 3. Per-layer: concentration_max vs entropy_min correlation
@@ -174,22 +176,16 @@ def validate_metric_consistency(
 
         # 4. Entropy should be non-negative (information-theoretic invariant)
         if entropy is not None and entropy < -1e-6:
-            warnings_list.append(
-                f"Step {step_idx}: negative entropy ({entropy:.4f})"
-            )
+            warnings_list.append(f"Step {step_idx}: negative entropy ({entropy:.4f})")
 
         # 5. Perplexity should be >= 1 (2^0 = 1 is the minimum for zero entropy)
         if perplexity is not None and perplexity < 1.0 - 1e-6:
-            warnings_list.append(
-                f"Step {step_idx}: perplexity ({perplexity:.4f}) < 1.0"
-            )
+            warnings_list.append(f"Step {step_idx}: perplexity ({perplexity:.4f}) < 1.0")
 
         # 6. Surprisal should be non-negative
         surprisal: Optional[float] = logits.surprisal if logits else None
         if surprisal is not None and surprisal < -1e-6:
-            warnings_list.append(
-                f"Step {step_idx}: negative surprisal ({surprisal:.4f})"
-            )
+            warnings_list.append(f"Step {step_idx}: negative surprisal ({surprisal:.4f})")
 
         # 7. Entropy ≤ log2(vocab_size) — checked loosely via perplexity
         #    max perplexity = vocab_size; we skip this if we don't know vocab size

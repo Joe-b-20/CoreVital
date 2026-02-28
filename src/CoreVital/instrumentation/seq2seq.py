@@ -104,20 +104,14 @@ def run_seq2seq_generation(
     encoder_attentions = _extract_encoder_attentions(encoder_outputs)
 
     # --- Decoder loop ---
-    _pad_or_eos = (
-        getattr(tokenizer, "pad_token_id", None)
-        or getattr(tokenizer, "eos_token_id", None)
-        or 0
-    )
+    _pad_or_eos = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None) or 0
     decoder_start_token_id = _resolve_special_token(
         tokenizer,
         model.config,
         "decoder_start_token_id",
         fallback=_pad_or_eos,
     )
-    decoder_input_ids = torch.tensor(
-        [[decoder_start_token_id]], device=device, dtype=torch.long
-    )
+    decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device, dtype=torch.long)
 
     max_new_tokens = config.generation.max_new_tokens
     eos_ids = _normalize_eos(tokenizer, model.config, fallback=2)
@@ -134,9 +128,7 @@ def run_seq2seq_generation(
     had_hidden = False
     had_attention = False
 
-    logger.debug(
-        f"Starting manual decoder generation (max_new_tokens={max_new_tokens})..."
-    )
+    logger.debug(f"Starting manual decoder generation (max_new_tokens={max_new_tokens})...")
     _decoder_loop_start = time.perf_counter()
     _step_times_ms: List[float] = []
 
@@ -146,11 +138,7 @@ def run_seq2seq_generation(
         decoder_outputs = model(
             input_ids=None,
             encoder_outputs=encoder_outputs,
-            decoder_input_ids=(
-                decoder_input_ids[:, -1:]
-                if past_key_values is not None
-                else decoder_input_ids
-            ),
+            decoder_input_ids=(decoder_input_ids[:, -1:] if past_key_values is not None else decoder_input_ids),
             output_hidden_states=True,
             output_attentions=True,
             use_cache=True,
@@ -165,8 +153,7 @@ def run_seq2seq_generation(
 
         raw_hidden = (
             decoder_outputs.decoder_hidden_states
-            if hasattr(decoder_outputs, "decoder_hidden_states")
-            and decoder_outputs.decoder_hidden_states is not None
+            if hasattr(decoder_outputs, "decoder_hidden_states") and decoder_outputs.decoder_hidden_states is not None
             else None
         )
         if raw_hidden is not None:
@@ -178,8 +165,7 @@ def run_seq2seq_generation(
 
         raw_cross = (
             decoder_outputs.cross_attentions
-            if hasattr(decoder_outputs, "cross_attentions")
-            and decoder_outputs.cross_attentions is not None
+            if hasattr(decoder_outputs, "cross_attentions") and decoder_outputs.cross_attentions is not None
             else None
         )
 
@@ -188,13 +174,9 @@ def run_seq2seq_generation(
 
         # --- Sample next token ---
         if do_sample:
-            next_token_logits = logits_processor(
-                decoder_input_ids, raw_logits
-            )
+            next_token_logits = logits_processor(decoder_input_ids, raw_logits)
             probs = torch.softmax(next_token_logits, dim=-1)
-            next_token = torch.multinomial(
-                probs, num_samples=1, generator=generator
-            )
+            next_token = torch.multinomial(probs, num_samples=1, generator=generator)
         else:
             next_token = torch.argmax(raw_logits, dim=-1, keepdim=True)
 
@@ -211,12 +193,8 @@ def run_seq2seq_generation(
                     buffer,
                     raw_logits,
                 ):
-                    logger.info(
-                        f"Step callback requested stop at step {step}"
-                    )
-                    _step_times_ms.append(
-                        (time.perf_counter() - _step_start) * 1000
-                    )
+                    logger.info(f"Step callback requested stop at step {step}")
+                    _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
                     # Still process this step's tensors before breaking
                     _append_step_summary(
                         timeline,
@@ -238,9 +216,7 @@ def run_seq2seq_generation(
         # --- EOS check ---
         if next_token_id in eos_ids:
             logger.debug(f"EOS token generated at step {step}")
-            _step_times_ms.append(
-                (time.perf_counter() - _step_start) * 1000
-            )
+            _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
             _append_step_summary(
                 timeline,
                 raw_hidden,
@@ -271,20 +247,14 @@ def run_seq2seq_generation(
             next_token_id,
         )
 
-        decoder_input_ids = torch.cat(
-            [decoder_input_ids, next_token], dim=-1
-        )
-        _step_times_ms.append(
-            (time.perf_counter() - _step_start) * 1000
-        )
+        decoder_input_ids = torch.cat([decoder_input_ids, next_token], dim=-1)
+        _step_times_ms.append((time.perf_counter() - _step_start) * 1000)
 
     # --- Record decoder loop timing ---
     _decoder_loop_ms = (time.perf_counter() - _decoder_loop_start) * 1000
     _record_decoder_timing(monitor, _decoder_loop_ms, _step_times_ms)
 
-    logger.info(
-        f"Manual generation complete: {len(generated_token_ids)} tokens generated"
-    )
+    logger.info(f"Manual generation complete: {len(generated_token_ids)} tokens generated")
 
     # --- Decode text ---
     generated_text = cast(
@@ -387,20 +357,14 @@ def _unwrap_decoder_attentions(
     decoder_outputs: Any,
 ) -> Optional[tuple]:
     """Extract and unwrap decoder self-attentions (handles T5 tuple wrapping)."""
-    if (
-        not hasattr(decoder_outputs, "decoder_attentions")
-        or decoder_outputs.decoder_attentions is None
-    ):
+    if not hasattr(decoder_outputs, "decoder_attentions") or decoder_outputs.decoder_attentions is None:
         return None
 
     attn_list: List[torch.Tensor] = []
     for layer_attn_tuple in decoder_outputs.decoder_attentions:
         if layer_attn_tuple is None:
             continue
-        if (
-            isinstance(layer_attn_tuple, tuple)
-            and len(layer_attn_tuple) > 0
-        ):
+        if isinstance(layer_attn_tuple, tuple) and len(layer_attn_tuple) > 0:
             attn_tensor = layer_attn_tuple[0]
             if attn_tensor is not None:
                 attn_list.append(attn_tensor)
@@ -414,10 +378,7 @@ def _extract_encoder_hidden(
     encoder_outputs: Any,
 ) -> Optional[List[torch.Tensor]]:
     """Extract encoder hidden states (skip embedding layer)."""
-    if (
-        not hasattr(encoder_outputs, "hidden_states")
-        or encoder_outputs.hidden_states is None
-    ):
+    if not hasattr(encoder_outputs, "hidden_states") or encoder_outputs.hidden_states is None:
         return None
 
     hs = encoder_outputs.hidden_states
@@ -426,11 +387,7 @@ def _extract_encoder_hidden(
     else:
         hidden_states_tuple = hs
 
-    result = (
-        list(hidden_states_tuple)
-        if isinstance(hidden_states_tuple, tuple)
-        else hidden_states_tuple
-    )
+    result = list(hidden_states_tuple) if isinstance(hidden_states_tuple, tuple) else hidden_states_tuple
     logger.debug(f"Extracted {len(result)} encoder hidden state layers")
     return result
 
@@ -439,10 +396,7 @@ def _extract_encoder_attentions(
     encoder_outputs: Any,
 ) -> Optional[List[torch.Tensor]]:
     """Extract encoder attentions."""
-    if (
-        not hasattr(encoder_outputs, "attentions")
-        or encoder_outputs.attentions is None
-    ):
+    if not hasattr(encoder_outputs, "attentions") or encoder_outputs.attentions is None:
         return None
 
     result = (

@@ -17,7 +17,13 @@ from CoreVital.reporting.schema import (
 from CoreVital.risk import compute_layer_blame, compute_layer_blame_flat, compute_risk_score
 
 
-def _step(step_index: int, entropy: float = None, top_k_margin: float = None, voter_agreement: float = None, surprisal: float = None) -> TimelineStep:
+def _step(
+    step_index: int,
+    entropy: float = None,
+    top_k_margin: float = None,
+    voter_agreement: float = None,
+    surprisal: float = None,
+) -> TimelineStep:
     """Build a minimal TimelineStep with optional logits metrics."""
     logits = LogitsSummary()
     if entropy is not None:
@@ -133,10 +139,7 @@ class TestComputeRiskScore:
         """Factors list should contain the right signal names."""
         summary = Summary(prompt_tokens=0, generated_tokens=8, total_steps=8, elapsed_ms=100)
         flags = HealthFlags()
-        timeline = [
-            _step(i, entropy=6.0, top_k_margin=0.08, voter_agreement=0.3)
-            for i in range(8)
-        ]
+        timeline = [_step(i, entropy=6.0, top_k_margin=0.08, voter_agreement=0.3) for i in range(8)]
         score, factors = compute_risk_score(flags, summary, timeline=timeline)
         assert "elevated_entropy" in factors
         assert "low_confidence_margin" in factors

@@ -5,13 +5,10 @@
 from dataclasses import dataclass
 from typing import List
 
-import pytest
-
-from CoreVital.narrative import build_narrative, _humanize_factor, _token_at_step
+from CoreVital.narrative import _humanize_factor, _token_at_step, build_narrative
 from CoreVital.reporting.schema import (
     HealthFlags,
     LogitsSummary,
-    Summary,
     TimelineStep,
     TokenInfo,
 )

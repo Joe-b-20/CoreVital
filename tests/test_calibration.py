@@ -1,9 +1,6 @@
 """Tests for CoreVital.calibration (Issue 33)."""
 
 import json
-import math
-
-import pytest
 
 from CoreVital.calibration import (
     CalibrationProfile,
@@ -12,10 +9,10 @@ from CoreVital.calibration import (
     compute_divergence_score,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_trace(entropy_values, margin_values=None, surprisal_values=None, layers=None):
     """Build a minimal trace dict matching the report schema."""

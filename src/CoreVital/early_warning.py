@@ -28,41 +28,29 @@ DEFAULT_HIGH_ENTROPY_THRESHOLD = 4.0
 
 
 def _extract_entropies(timeline: List[TimelineStep]) -> List[float]:
-    return [
-        s.logits_summary.entropy
-        for s in timeline
-        if s.logits_summary and s.logits_summary.entropy is not None
-    ]
+    return [s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None]
 
 
 def _extract_margins(timeline: List[TimelineStep]) -> List[float]:
     return [
         s.logits_summary.top_k_margin
         for s in timeline
-        if s.logits_summary
-        and s.logits_summary.top_k_margin is not None
+        if s.logits_summary and s.logits_summary.top_k_margin is not None
     ]
 
 
 def _extract_surprisals(timeline: List[TimelineStep]) -> List[float]:
-    return [
-        s.logits_summary.surprisal
-        for s in timeline
-        if s.logits_summary
-        and s.logits_summary.surprisal is not None
-    ]
+    return [s.logits_summary.surprisal for s in timeline if s.logits_summary and s.logits_summary.surprisal is not None]
 
 
 def _detect_entropy_acceleration(
-    entropies: List[float], window_size: int,
+    entropies: List[float],
+    window_size: int,
 ) -> bool:
     """True when the rate of entropy increase is itself increasing."""
     if len(entropies) < window_size * 2:
         return False
-    windows = [
-        entropies[i : i + window_size]
-        for i in range(0, len(entropies) - window_size + 1)
-    ]
+    windows = [entropies[i : i + window_size] for i in range(0, len(entropies) - window_size + 1)]
     window_means = [sum(w) / len(w) for w in windows]
     if len(window_means) < 3:
         return False
@@ -72,7 +60,8 @@ def _detect_entropy_acceleration(
 
 
 def _detect_margin_collapse(
-    margins: List[float], window_size: int,
+    margins: List[float],
+    window_size: int,
 ) -> Tuple[bool, bool]:
     """Return (collapsed, declining)."""
     collapsed = False
@@ -90,7 +79,8 @@ def _detect_margin_collapse(
 
 
 def _detect_surprisal_volatility(
-    surprisals: List[float], window_size: int,
+    surprisals: List[float],
+    window_size: int,
 ) -> bool:
     """True when coefficient of variation exceeds 1.5 in recent window."""
     if len(surprisals) < window_size:

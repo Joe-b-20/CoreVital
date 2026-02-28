@@ -2,7 +2,6 @@
 # CoreVital - Early Warning Tests (Phase-2.5, Issues 3 & 16)
 # ============================================================================
 
-import pytest
 
 from CoreVital.early_warning import (
     DEFAULT_HIGH_ENTROPY_THRESHOLD,
@@ -41,6 +40,7 @@ def _step(
 
 # ---- Entropy acceleration ----
 
+
 class TestEntropyAcceleration:
     def test_accelerating_entropy_fires(self):
         """Entropy whose rate of increase is itself increasing."""
@@ -62,9 +62,7 @@ class TestEntropyAcceleration:
 
     def test_integration_entropy_accelerating(self):
         """compute_early_warning returns entropy_accelerating signal."""
-        timeline = [_step(e, i) for i, e in enumerate(
-            [1.0, 1.1, 1.2, 1.3, 1.5, 1.8, 2.2, 2.8, 3.6, 4.8]
-        )]
+        timeline = [_step(e, i) for i, e in enumerate([1.0, 1.1, 1.2, 1.3, 1.5, 1.8, 2.2, 2.8, 3.6, 4.8])]
         risk, signals = compute_early_warning(timeline, HealthFlags(), window_size=3)
         assert "entropy_accelerating" in signals
         assert risk >= 0.7
@@ -72,10 +70,12 @@ class TestEntropyAcceleration:
 
 # ---- Margin collapse ----
 
+
 class TestMarginCollapse:
     def test_collapsed_all_below_threshold(self):
         collapsed, declining = _detect_margin_collapse(
-            [0.05, 0.04, 0.03, 0.02, 0.01], window_size=5,
+            [0.05, 0.04, 0.03, 0.02, 0.01],
+            window_size=5,
         )
         assert collapsed
         assert not declining
@@ -89,7 +89,8 @@ class TestMarginCollapse:
 
     def test_healthy_margin(self):
         collapsed, declining = _detect_margin_collapse(
-            [0.5, 0.5, 0.5, 0.5, 0.5], window_size=5,
+            [0.5, 0.5, 0.5, 0.5, 0.5],
+            window_size=5,
         )
         assert not collapsed
         assert not declining
@@ -106,16 +107,16 @@ class TestMarginCollapse:
         assert risk >= 0.6
 
     def test_integration_margin_declining(self):
-        timeline = (
-            [_step(top_k_margin=0.8, step_index=i) for i in range(5)]
-            + [_step(top_k_margin=0.2, step_index=i) for i in range(5, 10)]
-        )
+        timeline = [_step(top_k_margin=0.8, step_index=i) for i in range(5)] + [
+            _step(top_k_margin=0.2, step_index=i) for i in range(5, 10)
+        ]
         risk, signals = compute_early_warning(timeline, HealthFlags())
         assert "margin_declining" in signals
         assert risk >= 0.5
 
 
 # ---- Surprisal volatility ----
+
 
 class TestSurprisalVolatility:
     def test_volatile_surprisal_fires(self):
@@ -133,9 +134,7 @@ class TestSurprisalVolatility:
         assert not _detect_surprisal_volatility([0.0, 0.0, 0.0, 0.0, 0.0], window_size=5)
 
     def test_integration_surprisal_volatile(self):
-        timeline = [_step(surprisal=s, step_index=i) for i, s in enumerate(
-            [0.01, 0.01, 0.01, 0.01, 10.0]
-        )]
+        timeline = [_step(surprisal=s, step_index=i) for i, s in enumerate([0.01, 0.01, 0.01, 0.01, 10.0])]
         risk, signals = compute_early_warning(timeline, HealthFlags())
         assert "surprisal_volatile" in signals
         assert risk >= 0.5
@@ -143,35 +142,49 @@ class TestSurprisalVolatility:
 
 # ---- Entropy-margin divergence ----
 
+
 class TestEntropyMarginDivergence:
     def test_divergence_fires(self):
         assert _detect_entropy_margin_divergence(
-            [5.0] * 5, [0.5] * 5, window_size=5, high_entropy_threshold=4.0,
+            [5.0] * 5,
+            [0.5] * 5,
+            window_size=5,
+            high_entropy_threshold=4.0,
         )
 
     def test_low_entropy_no_divergence(self):
         assert not _detect_entropy_margin_divergence(
-            [2.0] * 5, [0.5] * 5, window_size=5, high_entropy_threshold=4.0,
+            [2.0] * 5,
+            [0.5] * 5,
+            window_size=5,
+            high_entropy_threshold=4.0,
         )
 
     def test_low_margin_no_divergence(self):
         assert not _detect_entropy_margin_divergence(
-            [5.0] * 5, [0.1] * 5, window_size=5, high_entropy_threshold=4.0,
+            [5.0] * 5,
+            [0.1] * 5,
+            window_size=5,
+            high_entropy_threshold=4.0,
         )
 
     def test_custom_threshold(self):
         """Issue 16: threshold from profile, not hardcoded 4.0."""
         assert not _detect_entropy_margin_divergence(
-            [5.0] * 5, [0.5] * 5, window_size=5, high_entropy_threshold=6.0,
+            [5.0] * 5,
+            [0.5] * 5,
+            window_size=5,
+            high_entropy_threshold=6.0,
         )
         assert _detect_entropy_margin_divergence(
-            [5.0] * 5, [0.5] * 5, window_size=5, high_entropy_threshold=4.0,
+            [5.0] * 5,
+            [0.5] * 5,
+            window_size=5,
+            high_entropy_threshold=4.0,
         )
 
     def test_integration_divergence(self):
-        timeline = [
-            _step(entropy=5.0, top_k_margin=0.5, step_index=i) for i in range(5)
-        ]
+        timeline = [_step(entropy=5.0, top_k_margin=0.5, step_index=i) for i in range(5)]
         risk, signals = compute_early_warning(timeline, HealthFlags())
         assert "entropy_margin_divergence" in signals
         assert risk >= 0.55
@@ -179,25 +192,27 @@ class TestEntropyMarginDivergence:
 
 # ---- Profile threshold (Issue 16) ----
 
+
 class TestProfileThreshold:
     def test_default_threshold_is_4(self):
         assert DEFAULT_HIGH_ENTROPY_THRESHOLD == 4.0
 
     def test_custom_threshold_changes_divergence(self):
         """Raising threshold suppresses entropy_margin_divergence."""
-        timeline = [
-            _step(entropy=5.0, top_k_margin=0.5, step_index=i) for i in range(5)
-        ]
+        timeline = [_step(entropy=5.0, top_k_margin=0.5, step_index=i) for i in range(5)]
         _, signals_default = compute_early_warning(timeline, HealthFlags())
         assert "entropy_margin_divergence" in signals_default
 
         _, signals_high = compute_early_warning(
-            timeline, HealthFlags(), high_entropy_threshold=6.0,
+            timeline,
+            HealthFlags(),
+            high_entropy_threshold=6.0,
         )
         assert "entropy_margin_divergence" not in signals_high
 
 
 # ---- Health flags pass-through ----
+
 
 class TestHealthFlagPassthrough:
     def test_repetition_loop(self):
@@ -220,6 +235,7 @@ class TestHealthFlagPassthrough:
 
 
 # ---- Edge cases ----
+
 
 class TestEdgeCases:
     def test_empty_timeline(self):

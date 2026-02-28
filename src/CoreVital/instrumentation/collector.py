@@ -18,7 +18,7 @@ import threading
 import time
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 if TYPE_CHECKING:
     from CoreVital.backends.base import Backend
@@ -166,6 +166,7 @@ class InstrumentationCollector:
     ) -> InstrumentationResults:
         """Built-in Hugging Face instrumented run."""
         try:
+
             def _op(name: str):
                 return monitor.operation(name) if monitor else nullcontext()
 
@@ -182,9 +183,9 @@ class InstrumentationCollector:
 
                 is_seq2seq = self.model_bundle.capabilities.is_seq2seq
 
-                inputs = self.model_bundle.tokenizer(
-                    prompt, return_tensors="pt", padding=False
-                ).to(self.model_bundle.device)
+                inputs = self.model_bundle.tokenizer(prompt, return_tensors="pt", padding=False).to(
+                    self.model_bundle.device
+                )
                 assert inputs.input_ids.shape[0] == 1, "CoreVital only supports batch_size=1"
 
                 logger.debug("Perf: running warmup (2 rounds)...")
@@ -201,9 +202,7 @@ class InstrumentationCollector:
                     generator = torch.Generator(device=self.model_bundle.device).manual_seed(seed)
                 logger.debug("Perf: running baseline...")
                 with _generation_lock if seed is not None else nullcontext():
-                    baseline_ms = run_baseline(
-                        self.model_bundle, self.config, inputs, is_seq2seq, generator=generator
-                    )
+                    baseline_ms = run_baseline(self.model_bundle, self.config, inputs, is_seq2seq, generator=generator)
                 monitor.set_baseline_ms(baseline_ms)
                 logger.debug(f"Perf: baseline done ({baseline_ms:.2f}ms)")
 
@@ -221,21 +220,18 @@ class InstrumentationCollector:
             # === Tokenize ===
             with _op("tokenize"):
                 logger.debug("Tokenizing prompt...")
-                inputs = self.model_bundle.tokenizer(
-                    prompt, return_tensors="pt", padding=False
-                ).to(self.model_bundle.device)
+                inputs = self.model_bundle.tokenizer(prompt, return_tensors="pt", padding=False).to(
+                    self.model_bundle.device
+                )
                 assert inputs.input_ids.shape[0] == 1, "CoreVital only supports batch_size=1"
                 prompt_token_ids = inputs.input_ids[0].tolist()
                 logger.debug(f"Prompt tokens: {len(prompt_token_ids)}")
 
             # === Prompt length vs context window (Issue 42) ===
-            max_len = getattr(
-                self.model_bundle.model.config, "max_position_embeddings", None
-            )
+            max_len = getattr(self.model_bundle.model.config, "max_position_embeddings", None)
             if isinstance(max_len, int) and len(prompt_token_ids) >= max_len:
                 raise InstrumentationError(
-                    f"Prompt ({len(prompt_token_ids)} tokens) exceeds model context "
-                    f"({max_len} max_position_embeddings)"
+                    f"Prompt ({len(prompt_token_ids)} tokens) exceeds model context ({max_len} max_position_embeddings)"
                 )
 
             is_seq2seq = self.model_bundle.capabilities.is_seq2seq
@@ -290,6 +286,7 @@ class InstrumentationCollector:
                                 prompt_token_ids,
                                 monitor=monitor,
                                 generator=generator,
+                                seed=seed,
                             )
                             generated_token_ids = causal_result.generated_token_ids
                             generated_text = causal_result.generated_text

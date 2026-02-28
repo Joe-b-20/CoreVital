@@ -112,9 +112,12 @@ def compute_attention_summary(
         need_entropy = any(
             s in config.stats
             for s in (
-                "entropy_mean", "entropy_min", "entropy_max",
+                "entropy_mean",
+                "entropy_min",
+                "entropy_max",
                 "entropy_mean_normalized",
-                "collapsed_head_count", "focused_head_count",
+                "collapsed_head_count",
+                "focused_head_count",
             )
         )
 

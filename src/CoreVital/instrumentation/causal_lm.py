@@ -6,7 +6,7 @@
 
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 import torch
 
@@ -44,6 +44,7 @@ def run_causal_generation(
     prompt_token_ids: List[int],
     monitor: Optional["PerformanceMonitor"] = None,
     generator: Optional[torch.Generator] = None,
+    seed: Optional[int] = None,
 ) -> CausalGenerationResult:
     """Run CausalLM generation with full instrumentation.
 
@@ -57,9 +58,7 @@ def run_causal_generation(
     num_beams = getattr(config.generation, "num_beams", 1) or 1
 
     # Issue 49: Beam search with per-layer capture is not supported.
-    if num_beams > 1 and (
-        config.summaries.hidden.enabled or config.summaries.attention.enabled
-    ):
+    if num_beams > 1 and (config.summaries.hidden.enabled or config.summaries.attention.enabled):
         raise InstrumentationError(
             "Beam search (num_beams > 1) is not supported with hidden_states or "
             "attentions capture. Use num_beams=1 or disable hidden/attention summaries."
@@ -78,19 +77,17 @@ def run_causal_generation(
     }
     if num_beams > 1:
         gen_config["num_beams"] = num_beams
-        gen_config["early_stopping"] = getattr(
-            config.generation, "early_stopping", False
-        )
+        gen_config["early_stopping"] = getattr(config.generation, "early_stopping", False)
         gen_config["do_sample"] = False
 
-    # HF generate() does not accept a generator kwarg (rejected as unused model_kwarg).
-    # For reproducibility when seed is set, collector holds _generation_lock so only
-    # one run uses global RNG at a time.
+    # HF generate() does not accept a generator kwarg. For reproducibility when
+    # seed is set, the collector holds _generation_lock and we set the global RNG
+    # seed here so do_sample draws are deterministic within the lock scope.
+    if seed is not None and gen_config.get("do_sample", False):
+        torch.manual_seed(seed)
 
     with _op("model.generate"):
-        outputs = cast(Any, model_bundle.model).generate(
-            **inputs, **gen_config
-        )
+        outputs = cast(Any, model_bundle.model).generate(**inputs, **gen_config)
 
     # --- Extract generated tokens ---
     with _op("extract_generated_tokens"):
@@ -161,12 +158,8 @@ def _process_timeline(
     batch_idx = 0
 
     has_scores = hasattr(outputs, "scores") and outputs.scores is not None
-    has_hidden = (
-        hasattr(outputs, "hidden_states") and outputs.hidden_states is not None
-    )
-    has_attention = (
-        hasattr(outputs, "attentions") and outputs.attentions is not None
-    )
+    has_hidden = hasattr(outputs, "hidden_states") and outputs.hidden_states is not None
+    has_attention = hasattr(outputs, "attentions") and outputs.attentions is not None
 
     if not has_scores:
         logger.warning("Scores (logits) not available in outputs")
@@ -180,10 +173,7 @@ def _process_timeline(
         if beam_indices is None or num_beams <= 1:
             return 0
         try:
-            if (
-                hasattr(beam_indices, "shape")
-                and len(beam_indices.shape) >= 2
-            ):
+            if hasattr(beam_indices, "shape") and len(beam_indices.shape) >= 2:
                 pos = len(prompt_token_ids) + step_idx
                 if beam_indices.shape[1] > pos:
                     return int(beam_indices[batch_idx, pos].item())
@@ -210,9 +200,7 @@ def _process_timeline(
     timeline: List[StepSummary] = []
     for step_idx, token_id in enumerate(generated_token_ids):
         _current_step[0] = step_idx
-        token_text = cast(
-            str, model_bundle.tokenizer.decode([token_id])
-        )
+        token_text = cast(str, model_bundle.tokenizer.decode([token_id]))
 
         # Gather raw tensors for this step
         raw_logits = None
@@ -274,9 +262,7 @@ def _collect_warnings(outputs: Any) -> List[Dict[str, str]]:
                 "message": "Model did not return attentions; attention_summary omitted.",
             }
         )
-    if not (
-        hasattr(outputs, "hidden_states") and outputs.hidden_states is not None
-    ):
+    if not (hasattr(outputs, "hidden_states") and outputs.hidden_states is not None):
         warnings.append(
             {
                 "code": "HIDDEN_STATES_NOT_AVAILABLE",

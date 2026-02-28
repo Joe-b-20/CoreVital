@@ -18,7 +18,6 @@ import pytest
 from CoreVital.compound_signals import CompoundSignal, detect_compound_signals
 from CoreVital.config import ModelProfile, load_model_profile
 from CoreVital.early_warning import (
-    DEFAULT_HIGH_ENTROPY_THRESHOLD,
     compute_early_warning,
 )
 from CoreVital.narrative import build_narrative
@@ -34,7 +33,6 @@ from CoreVital.reporting.schema import (
     TokenInfo,
 )
 from CoreVital.risk import compute_layer_blame, compute_risk_score
-
 
 # ---------------------------------------------------------------------------
 # Helpers — mirrors existing pattern from test_risk.py / test_compound_signals.py
@@ -92,8 +90,10 @@ def _layer(
 
 def _summary(generated: int = 10) -> Summary:
     return Summary(
-        prompt_tokens=4, generated_tokens=generated,
-        total_steps=generated, elapsed_ms=100,
+        prompt_tokens=4,
+        generated_tokens=generated,
+        total_steps=generated,
+        elapsed_ms=100,
     )
 
 
@@ -126,10 +126,7 @@ class TestCompoundMetricStates:
         """Every continuous metric bad → all four factor names present."""
         flags = HealthFlags()
         summary = _summary(10)
-        tl = [
-            _step(i, entropy=7.0, top_k_margin=0.02, voter_agreement=0.2, surprisal=5.0)
-            for i in range(10)
-        ]
+        tl = [_step(i, entropy=7.0, top_k_margin=0.02, voter_agreement=0.2, surprisal=5.0) for i in range(10)]
         score, factors = compute_risk_score(flags, summary, timeline=tl)
         assert score > 0.3
         for f in ("elevated_entropy", "low_confidence_margin", "low_topk_mass", "elevated_surprisal"):
@@ -158,7 +155,10 @@ class TestCompoundMetricStates:
 
         s_no_compound, _ = compute_risk_score(flags, summary, timeline=tl)
         s_with, f_with = compute_risk_score(
-            flags, summary, timeline=tl, compound_signals=compound,
+            flags,
+            summary,
+            timeline=tl,
+            compound_signals=compound,
         )
         assert s_with >= s_no_compound
         assert any(f.startswith("compound:") for f in f_with)
@@ -263,18 +263,16 @@ class TestThresholdBoundary:
         layers_s0 = [_layer(0, collapsed_head_count=1)]
         layers_s1 = [_layer(0)]
         result = compute_layer_blame([layers_s0, layers_s1])
-        assert not any(
-            b["layer"] == 0 and any("collapse" in r.lower() for r in b["reasons"])
-            for b in result
-        ), "Exactly 50% collapse should NOT trigger blame"
+        assert not any(b["layer"] == 0 and any("collapse" in r.lower() for r in b["reasons"]) for b in result), (
+            "Exactly 50% collapse should NOT trigger blame"
+        )
 
         layers_s2 = [_layer(0, collapsed_head_count=1)]
         result2 = compute_layer_blame([layers_s0, layers_s2, layers_s1])
         blamed_zero = [b for b in result2 if b["layer"] == 0]
-        assert any(
-            any("collapse" in r.lower() for r in b["reasons"])
-            for b in blamed_zero
-        ), "67% collapse should trigger blame"
+        assert any(any("collapse" in r.lower() for r in b["reasons"]) for b in blamed_zero), (
+            "67% collapse should trigger blame"
+        )
 
     def test_early_warning_default_entropy_threshold(self):
         """Default high_entropy_threshold is 4.0; verify entropy-margin divergence
@@ -297,15 +295,15 @@ class TestThresholdBoundary:
             attention_collapse_detected=True,
         )
         summary = _summary(12)
-        tl = [
-            _step(i, entropy=7.0, top_k_margin=0.01, voter_agreement=0.1, surprisal=9.0)
-            for i in range(12)
-        ]
+        tl = [_step(i, entropy=7.0, top_k_margin=0.01, voter_agreement=0.1, surprisal=9.0) for i in range(12)]
         compound = [
             CompoundSignal(name="test", description="t", severity=0.8, evidence=[]),
         ]
         score, _ = compute_risk_score(
-            flags, summary, timeline=tl, compound_signals=compound,
+            flags,
+            summary,
+            timeline=tl,
+            compound_signals=compound,
         )
         assert score <= 1.0
 
@@ -327,10 +325,15 @@ class TestEndToEndTraceRiskNarrative:
     ):
         summary = _summary(len(timeline))
         compound = detect_compound_signals(
-            timeline, layers_by_step=layers_by_step, basin_scores=basin_scores,
+            timeline,
+            layers_by_step=layers_by_step,
+            basin_scores=basin_scores,
         )
         score, factors = compute_risk_score(
-            flags, summary, timeline=timeline, compound_signals=compound,
+            flags,
+            summary,
+            timeline=timeline,
+            compound_signals=compound,
         )
         blamed = compute_layer_blame(layers_by_step or [])
         _, warning_signals = compute_early_warning(timeline, flags)
@@ -347,10 +350,7 @@ class TestEndToEndTraceRiskNarrative:
         return score, factors, narrative, compound
 
     def test_healthy_trace(self):
-        tl = [
-            _step(i, entropy=1.5, top_k_margin=0.6, surprisal=0.5, voter_agreement=0.85)
-            for i in range(10)
-        ]
+        tl = [_step(i, entropy=1.5, top_k_margin=0.6, surprisal=0.5, voter_agreement=0.85) for i in range(10)]
         score, factors, narrative, _ = self._run_pipeline(tl, HealthFlags())
         assert score < 0.3, f"Healthy trace should be low risk, got {score}"
         assert "Low risk" in narrative
@@ -358,10 +358,7 @@ class TestEndToEndTraceRiskNarrative:
 
     def test_known_bad_repetition_trace(self):
         """Simulated repetition loop: repetition flag on → high risk, narrative mentions it."""
-        tl = [
-            _step(i, entropy=0.5, top_k_margin=0.9, surprisal=0.2, voter_agreement=0.99)
-            for i in range(10)
-        ]
+        tl = [_step(i, entropy=0.5, top_k_margin=0.9, surprisal=0.2, voter_agreement=0.99) for i in range(10)]
         flags = HealthFlags(repetition_loop_detected=True)
         score, factors, narrative, _ = self._run_pipeline(tl, flags)
         assert score >= 0.9
@@ -370,10 +367,7 @@ class TestEndToEndTraceRiskNarrative:
 
     def test_known_bad_high_entropy_low_margin(self):
         """High entropy + low margin → elevated risk and narrative mentions uncertainty."""
-        tl = [
-            _step(i, entropy=6.0, top_k_margin=0.03, surprisal=4.0, voter_agreement=0.25)
-            for i in range(10)
-        ]
+        tl = [_step(i, entropy=6.0, top_k_margin=0.03, surprisal=4.0, voter_agreement=0.25) for i in range(10)]
         score, factors, narrative, _ = self._run_pipeline(tl, HealthFlags())
         assert score > 0.3
         assert "elevated_entropy" in factors
@@ -408,7 +402,9 @@ class TestEndToEndTraceRiskNarrative:
         tl = [_step(i, entropy=5.5, top_k_margin=0.1) for i in range(6)]
         basin_scores = [[0.1, 0.05, 0.08]]
         score, factors, narrative, compound = self._run_pipeline(
-            tl, HealthFlags(), basin_scores=basin_scores,
+            tl,
+            HealthFlags(),
+            basin_scores=basin_scores,
         )
         assert any(c.name == "context_loss" for c in compound)
         assert "context" in narrative.lower()
@@ -416,10 +412,7 @@ class TestEndToEndTraceRiskNarrative:
     def test_blamed_layers_appear_in_narrative(self):
         """Blamed layers with NaN should appear in narrative."""
         tl = [_step(i, entropy=3.0) for i in range(5)]
-        layers = [
-            [_layer(0), _layer(1, has_nan=True), _layer(2)]
-            for _ in range(5)
-        ]
+        layers = [[_layer(0), _layer(1, has_nan=True), _layer(2)] for _ in range(5)]
         score, _, narrative, _ = self._run_pipeline(tl, HealthFlags(), layers_by_step=layers)
         assert "Layer 1" in narrative
 
@@ -538,10 +531,7 @@ class TestPerformanceRegression:
             for i in range(num_steps)
         ]
         layers_by_step = [
-            [
-                _layer(j, l2_norm_mean=10.0 + j * 0.5, entropy_mean=2.0 + j * 0.1)
-                for j in range(num_layers)
-            ]
+            [_layer(j, l2_norm_mean=10.0 + j * 0.5, entropy_mean=2.0 + j * 0.1) for j in range(num_layers)]
             for _ in range(num_steps)
         ]
         return timeline, layers_by_step
@@ -604,15 +594,23 @@ class TestPerformanceRegression:
         for _ in range(50):
             compound = detect_compound_signals(tl, layers_by_step=layers)
             score, factors = compute_risk_score(
-                flags, summary, timeline=tl, layers_by_step=layers,
+                flags,
+                summary,
+                timeline=tl,
+                layers_by_step=layers,
                 compound_signals=compound,
             )
             blamed = compute_layer_blame(layers)
             _, warnings = compute_early_warning(tl, flags)
             build_narrative(
-                health_flags=flags, risk_score=score, risk_factors=factors,
-                blamed_layers=blamed, warning_signals=warnings,
-                timeline=tl, compound_signals=compound, summary=summary,
+                health_flags=flags,
+                risk_score=score,
+                risk_factors=factors,
+                blamed_layers=blamed,
+                warning_signals=warnings,
+                timeline=tl,
+                compound_signals=compound,
+                summary=summary,
             )
         elapsed_ms = (time.perf_counter() - start) * 1000 / 50
 
@@ -628,15 +626,23 @@ class TestPerformanceRegression:
         for _ in range(10):
             compound = detect_compound_signals(tl, layers_by_step=layers)
             score, factors = compute_risk_score(
-                flags, summary, timeline=tl, layers_by_step=layers,
+                flags,
+                summary,
+                timeline=tl,
+                layers_by_step=layers,
                 compound_signals=compound,
             )
             compute_layer_blame(layers)
             compute_early_warning(tl, flags)
             build_narrative(
-                health_flags=flags, risk_score=score, risk_factors=factors,
-                blamed_layers=[], warning_signals=[], timeline=tl,
-                compound_signals=compound, summary=summary,
+                health_flags=flags,
+                risk_score=score,
+                risk_factors=factors,
+                blamed_layers=[],
+                warning_signals=[],
+                timeline=tl,
+                compound_signals=compound,
+                summary=summary,
             )
         elapsed_ms = (time.perf_counter() - start) * 1000 / 10
 

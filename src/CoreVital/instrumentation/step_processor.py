@@ -42,9 +42,7 @@ class LayerStepSummary:
     hidden_summary: Dict[str, Any] = field(default_factory=dict)
     attention_summary: Dict[str, Any] = field(default_factory=dict)
     cross_attention_summary: Optional[Dict[str, Any]] = None
-    anomalies: Dict[str, bool] = field(
-        default_factory=lambda: {"has_nan": False, "has_inf": False}
-    )
+    anomalies: Dict[str, bool] = field(default_factory=lambda: {"has_nan": False, "has_inf": False})
 
 
 @dataclass
@@ -60,9 +58,7 @@ class StepSummary:
     layer_summaries: List[LayerStepSummary] = field(default_factory=list)
     # Small derived 1-D vector for repetition detection buffer.
     # Consumed by _build_health_flags then deleted; not a raw model tensor.
-    _last_layer_hidden_vec: Optional[torch.Tensor] = field(
-        default=None, repr=False
-    )
+    _last_layer_hidden_vec: Optional[torch.Tensor] = field(default=None, repr=False)
 
 
 def normalize_step_tensors(
@@ -83,29 +79,21 @@ def normalize_step_tensors(
     """
     hidden = _normalize_hidden(raw_hidden, num_layers, beam_handler)
     attn = _normalize_attention(raw_attention, beam_handler)
-    cross = _normalize_attention(raw_cross_attention, None)
+    cross = _normalize_attention(raw_cross_attention, beam_handler)
     logits = _normalize_logits(raw_logits, beam_handler)
 
     # Shape contract: hidden (1, 1, hidden_dim), attention (1, heads, 1, key_len), logits 1D or 2D
     if hidden is not None:
         for i, t in enumerate(hidden):
-            assert t.dim() == 3, (
-                f"hidden_states[{i}] must be 3D (batch, seq, hidden), got dim={t.dim()}"
-            )
+            assert t.dim() == 3, f"hidden_states[{i}] must be 3D (batch, seq, hidden), got dim={t.dim()}"
     if attn is not None:
         for i, t in enumerate(attn):
-            assert t.dim() == 4, (
-                f"attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
-            )
+            assert t.dim() == 4, f"attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
     if cross is not None:
         for i, t in enumerate(cross):
-            assert t.dim() == 4, (
-                f"cross_attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
-            )
+            assert t.dim() == 4, f"cross_attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
     if logits is not None:
-        assert logits.dim() in (1, 2), (
-            f"logits must be 1D or 2D, got dim={logits.dim()}"
-        )
+        assert logits.dim() in (1, 2), f"logits must be 1D or 2D, got dim={logits.dim()}"
 
     return NormalizedStepPayload(
         hidden_states=hidden,
@@ -178,11 +166,7 @@ def _normalize_hidden(
         hs = hs[1 : num_layers + 1]
     if beam_handler is not None:
         hs = [beam_handler(t) for t in hs if t is not None]
-    result = [
-        t.detach().cpu()
-        for t in hs
-        if t is not None and isinstance(t, torch.Tensor)
-    ]
+    result = [t.detach().cpu() for t in hs if t is not None and isinstance(t, torch.Tensor)]
     return result if result else None
 
 
@@ -233,9 +217,7 @@ def _compute_logits(
             actual_token_id=token_id,
         )
     except Exception as e:
-        logger.warning(
-            f"Failed to compute logits summary for step {step_index}: {e}"
-        )
+        logger.warning(f"Failed to compute logits summary for step {step_index}: {e}")
         return {}
 
 
@@ -250,12 +232,8 @@ def _compute_layer_summaries(
 
     for layer_idx in range(num_hidden):
         hidden_dict = _safe_hidden(payload, config, step_index, layer_idx)
-        attn_dict = _safe_attention(
-            payload.attentions, config, step_index, layer_idx, profile
-        )
-        cross_dict = _safe_attention(
-            payload.cross_attentions, config, step_index, layer_idx, profile
-        )
+        attn_dict = _safe_attention(payload.attentions, config, step_index, layer_idx, profile)
+        cross_dict = _safe_attention(payload.cross_attentions, config, step_index, layer_idx, profile)
         anomalies_dict = _safe_anomalies(payload, layer_idx, num_hidden)
 
         layers.append(
@@ -277,12 +255,11 @@ def _safe_hidden(
 ) -> Dict[str, Any]:
     try:
         return compute_hidden_summary(
-            payload.hidden_states[layer_idx], config.hidden  # type: ignore[index]
+            payload.hidden_states[layer_idx],
+            config.hidden,  # type: ignore[index]
         )
     except Exception as e:
-        logger.warning(
-            f"Failed hidden summary for step {step_index} layer {layer_idx}: {e}"
-        )
+        logger.warning(f"Failed hidden summary for step {step_index} layer {layer_idx}: {e}")
         return {}
 
 
@@ -296,13 +273,9 @@ def _safe_attention(
     if tensors is None or layer_idx >= len(tensors):
         return {}
     try:
-        return compute_attention_summary(
-            tensors[layer_idx], config.attention, profile=profile
-        )
+        return compute_attention_summary(tensors[layer_idx], config.attention, profile=profile)
     except Exception as e:
-        logger.debug(
-            f"Failed attention summary for step {step_index} layer {layer_idx}: {e}"
-        )
+        logger.debug(f"Failed attention summary for step {step_index} layer {layer_idx}: {e}")
         return {}
 
 
@@ -312,25 +285,14 @@ def _safe_anomalies(
     num_hidden: int,
 ) -> Dict[str, bool]:
     try:
-        h = (
-            payload.hidden_states[layer_idx]
-            if payload.hidden_states and layer_idx < num_hidden
-            else None
-        )
-        a = (
-            payload.attentions[layer_idx]
-            if payload.attentions and layer_idx < len(payload.attentions)
-            else None
-        )
+        h = payload.hidden_states[layer_idx] if payload.hidden_states and layer_idx < num_hidden else None
+        a = payload.attentions[layer_idx] if payload.attentions and layer_idx < len(payload.attentions) else None
         c = (
             payload.cross_attentions[layer_idx]
-            if payload.cross_attentions
-            and layer_idx < len(payload.cross_attentions)
+            if payload.cross_attentions and layer_idx < len(payload.cross_attentions)
             else None
         )
-        return detect_tensor_anomalies(
-            hidden_state=h, attention=a, cross_attention=c
-        )
+        return detect_tensor_anomalies(hidden_state=h, attention=a, cross_attention=c)
     except Exception:
         return {"has_nan": False, "has_inf": False}
 

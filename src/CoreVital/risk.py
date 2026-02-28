@@ -84,22 +84,21 @@ def compute_risk_score(
     factors: List[str] = []
     components: List[float] = []
 
-    # --- Boolean flag components (weighted; act as ceilings via max later) ---
+    # --- Boolean flag ceilings (hard floors via max, never additive) ---
+    bool_ceilings: List[float] = []
     if health_flags.repetition_loop_detected:
-        components.append(0.9)
+        bool_ceilings.append(0.9)
         factors.append("repetition_loop")
     if health_flags.mid_layer_anomaly_detected:
-        components.append(0.7)
+        bool_ceilings.append(0.7)
         factors.append("mid_layer_anomaly")
     if health_flags.attention_collapse_detected:
-        components.append(0.15)
+        bool_ceilings.append(0.15)
         factors.append("attention_collapse")
 
     # --- Continuous metric components (additive) ---
     entropies = [
-        s.logits_summary.entropy
-        for s in timeline
-        if s.logits_summary and s.logits_summary.entropy is not None
+        s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None
     ]
     if entropies:
         mean_ent = sum(entropies) / len(entropies)
@@ -111,16 +110,15 @@ def compute_risk_score(
             k = len(entropies) // 3
             first_third = sum(entropies[:k]) / k
             last_third = sum(entropies[-k:]) / k
-            if last_third > first_third * 1.3:
+            if first_third > 1e-9 and last_third > first_third * 1.3:
                 trend_component = min(0.2, (last_third - first_third) / first_third * 0.1)
                 components.append(trend_component)
                 factors.append("entropy_rising")
 
-    margins = [
-        s.logits_summary.top_k_margin
+    margins: List[float] = [
+        s.logits_summary.top_k_margin  # type: ignore[misc]
         for s in timeline
-        if s.logits_summary
-        and getattr(s.logits_summary, "top_k_margin", None) is not None
+        if s.logits_summary and s.logits_summary.top_k_margin is not None
     ]
     if margins:
         mean_margin = sum(margins) / len(margins)
@@ -129,14 +127,13 @@ def compute_risk_score(
             components.append(margin_component)
             factors.append("low_confidence_margin")
 
-    # topk_mass (prefer) or voter_agreement
     agreements = []
     for s in timeline:
         if not s.logits_summary:
             continue
-        val = getattr(s.logits_summary, "topk_mass", None) or getattr(
-            s.logits_summary, "voter_agreement", None
-        )
+        val = getattr(s.logits_summary, "topk_mass", None)
+        if val is None:
+            val = getattr(s.logits_summary, "voter_agreement", None)
         if val is not None:
             agreements.append(val)
     if agreements:
@@ -146,10 +143,10 @@ def compute_risk_score(
             components.append(agreement_component)
             factors.append("low_topk_mass")
 
-    surprisals = [
-        s.logits_summary.surprisal
+    surprisals: List[float] = [
+        s.logits_summary.surprisal  # type: ignore[misc]
         for s in timeline
-        if s.logits_summary and getattr(s.logits_summary, "surprisal", None) is not None
+        if s.logits_summary and s.logits_summary.surprisal is not None
     ]
     if surprisals:
         mean_surprisal = sum(surprisals) / len(surprisals)
@@ -164,15 +161,10 @@ def compute_risk_score(
             components.append(cs.severity)
             factors.append(f"compound:{cs.name}")
 
-    # Combine: boolean flags dominate via max; continuous are additive (capped at 1.0)
-    if components:
-        bool_components = [c for c in components if c >= 0.5]
-        continuous_components = [c for c in components if c < 0.5]
-        bool_max = max(bool_components) if bool_components else 0.0
-        continuous_sum = sum(continuous_components)
-        score = min(1.0, bool_max + continuous_sum)
-    else:
-        score = 0.0
+    # Combine: boolean ceilings dominate via max; continuous + compound are additive
+    bool_max = max(bool_ceilings) if bool_ceilings else 0.0
+    continuous_sum = sum(components)
+    score = min(1.0, bool_max + continuous_sum) if (bool_ceilings or components) else 0.0
 
     return score, factors
 
@@ -276,11 +268,13 @@ def compute_layer_blame(
                 severity = max(severity, 0.3)
 
         if reasons:
-            blamed.append({
-                "layer": idx,
-                "reasons": reasons,
-                "severity": round(severity, 2),
-            })
+            blamed.append(
+                {
+                    "layer": idx,
+                    "reasons": reasons,
+                    "severity": round(severity, 2),
+                }
+            )
 
     return blamed
 

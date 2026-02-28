@@ -17,7 +17,7 @@ import json
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 @dataclass
@@ -96,8 +96,7 @@ class CalibrationProfile:
                 "values": self.surprisal_per_step.values,
             },
             "l2_norms": {
-                str(k): {"mean": v.mean, "std": v.std, "values": v.values}
-                for k, v in self.l2_norm_per_layer.items()
+                str(k): {"mean": v.mean, "std": v.std, "values": v.values} for k, v in self.l2_norm_per_layer.items()
             },
             "attention_entropy": {
                 str(k): {"mean": v.mean, "std": v.std, "values": v.values}

@@ -344,9 +344,7 @@ class ReportBuilder:
                             "baseline_num_runs": cal_profile.num_runs,
                         }
                     else:
-                        logger.warning(
-                            f"Calibration profile not found at {cal_path}, skipping divergence scoring"
-                        )
+                        logger.warning(f"Calibration profile not found at {cal_path}, skipping divergence scoring")
                 except Exception as e:
                     logger.warning(f"Calibration divergence scoring failed, skipping: {e}")
 
@@ -354,7 +352,10 @@ class ReportBuilder:
             try:
                 hf = health_flags if health_flags is not None else HealthFlags()
                 vec = compute_fingerprint_vector(
-                    timeline, summary, hf, risk_score,
+                    timeline,
+                    summary,
+                    hf,
+                    risk_score,
                     layers_by_step=timeline_layers_for_flags,
                 )
                 prompt_hash = compute_prompt_hash(prompt, model_info.hf_id)
@@ -373,7 +374,9 @@ class ReportBuilder:
                 if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
                     ew_entropy_threshold = float(profile.high_entropy_threshold_bits)
                 failure_risk, warning_signals = compute_early_warning(
-                    timeline, hf_ew, high_entropy_threshold=ew_entropy_threshold,
+                    timeline,
+                    hf_ew,
+                    high_entropy_threshold=ew_entropy_threshold,
                 )
                 report.extensions["early_warning"] = {
                     "failure_risk": failure_risk,
@@ -595,9 +598,7 @@ class ReportBuilder:
         layers: List[LayerSummary] = []
         for layer_idx, ls in enumerate(step_data.layer_summaries):
             hidden_summary = HiddenSummary(**ls.hidden_summary) if ls.hidden_summary else HiddenSummary()
-            attention_summary = (
-                AttentionSummary(**ls.attention_summary) if ls.attention_summary else AttentionSummary()
-            )
+            attention_summary = AttentionSummary(**ls.attention_summary) if ls.attention_summary else AttentionSummary()
             cross_attention = None
             if ls.cross_attention_summary:
                 cross_attention = AttentionSummary(**ls.cross_attention_summary)

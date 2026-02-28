@@ -36,23 +36,19 @@ def build_narrative(
 
     # Entropy specifics
     entropies = [
-        s.logits_summary.entropy
-        for s in timeline
-        if s.logits_summary and s.logits_summary.entropy is not None
+        s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None
     ]
     if entropies:
         mean_ent = sum(entropies) / len(entropies)
         max_ent = max(entropies)
-        max_step = next(
-            i
-            for i, s in enumerate(timeline)
-            if s.logits_summary and s.logits_summary.entropy == max_ent
-        )
+        max_step_obj = next(s for s in timeline if s.logits_summary and s.logits_summary.entropy == max_ent)
+        max_step_idx = max_step_obj.step_index
         if max_ent > 4.0:
+            token_text = max_step_obj.token.token_text if max_step_obj.token else "?"
             parts.append(
-                f"Peak entropy of {max_ent:.1f} bits at step {max_step} "
+                f"Peak entropy of {max_ent:.1f} bits at step {max_step_idx} "
                 f"(mean: {mean_ent:.1f}); the model was most uncertain "
-                f'when generating "{_token_at_step(timeline, max_step)}".'
+                f'when generating "{token_text or "?"}".'
             )
         if "entropy_rising" in warning_signals and len(entropies) >= 6:
             early = sum(entropies[:3]) / 3

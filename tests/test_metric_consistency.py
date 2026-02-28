@@ -1,14 +1,13 @@
 """Tests for metric consistency validation (Issue 15, Phase 5)."""
 
 import logging
-import math
-
-import pytest
 
 from CoreVital.reporting.schema import (
+    AttentionConfig,
     AttentionSummary,
     GeneratedInfo,
     GenerationConfig,
+    HiddenConfig,
     LayerSummary,
     LogitsConfig,
     LogitsSummary,
@@ -19,10 +18,8 @@ from CoreVital.reporting.schema import (
     RunConfig,
     SinkConfig,
     SketchConfig,
-    Summary,
     SummariesConfig,
-    HiddenConfig,
-    AttentionConfig,
+    Summary,
     TimelineStep,
     TokenInfo,
 )
@@ -34,10 +31,10 @@ from CoreVital.reporting.validation import (
     validate_metric_consistency_and_log,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _minimal_report() -> Report:
     return Report(
@@ -61,10 +58,17 @@ def _minimal_report() -> Report:
             device_requested="cpu",
             max_new_tokens=5,
             generation=GenerationConfig(
-                do_sample=True, temperature=0.8, top_k=50, top_p=0.95,
+                do_sample=True,
+                temperature=0.8,
+                top_k=50,
+                top_p=0.95,
             ),
             summaries=SummariesConfig(
-                hidden=HiddenConfig(enabled=True, stats=["mean"], sketch=SketchConfig(method="randproj", dim=32, seed=0)),
+                hidden=HiddenConfig(
+                    enabled=True,
+                    stats=["mean"],
+                    sketch=SketchConfig(method="randproj", dim=32, seed=0),
+                ),
                 attention=AttentionConfig(enabled=True, stats=["entropy_mean"]),
                 logits=LogitsConfig(enabled=True, stats=["entropy"], topk=5),
             ),
@@ -276,7 +280,9 @@ class TestConcentrationEntropy:
         assert validate_metric_consistency(report) == []
         # Strict threshold fires
         warnings = validate_metric_consistency(
-            report, concentration_entropy_threshold=0.7, concentration_entropy_max_nats=0.3,
+            report,
+            concentration_entropy_threshold=0.7,
+            concentration_entropy_max_nats=0.3,
         )
         assert len(warnings) == 1
 

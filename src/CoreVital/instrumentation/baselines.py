@@ -7,7 +7,6 @@
 # - Prompt forward pass (CausalLM only)
 
 import time
-from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 import torch
@@ -19,11 +18,11 @@ from transformers import (
 )
 
 from CoreVital.config import Config
-from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
 from CoreVital.models.hf_loader import ModelBundle
 
 if TYPE_CHECKING:
+    from CoreVital.instrumentation.collector import PromptForwardData
     from CoreVital.instrumentation.performance import PerformanceMonitor
 
 logger = get_logger(__name__)
@@ -49,16 +48,12 @@ def _resolve_special_token(
     return val
 
 
-def _normalize_eos(
-    tokenizer: Any, model_config: Any, fallback: Optional[int] = None
-) -> set:
+def _normalize_eos(tokenizer: Any, model_config: Any, fallback: Optional[int] = None) -> set:
     """Normalize EOS token ID to a set for membership checks.
 
     model.config.eos_token_id can be int, list, or tuple on modern models.
     """
-    eos = _resolve_special_token(
-        tokenizer, model_config, "eos_token_id", fallback=None
-    )
+    eos = _resolve_special_token(tokenizer, model_config, "eos_token_id", fallback=None)
     if eos is None:
         eos = fallback
     if eos is None:
@@ -71,10 +66,7 @@ def _normalize_eos(
 def _build_logits_processor(gen_config: Any) -> LogitsProcessorList:
     """Build HF LogitsProcessorList for temperature, top-k, and top-p."""
     processors = LogitsProcessorList()
-    if (
-        getattr(gen_config, "temperature", None)
-        and gen_config.temperature != 1.0
-    ):
+    if getattr(gen_config, "temperature", None) and gen_config.temperature != 1.0:
         processors.append(TemperatureLogitsWarper(gen_config.temperature))
     if getattr(gen_config, "top_k", None) and gen_config.top_k > 0:
         processors.append(TopKLogitsWarper(gen_config.top_k))
@@ -137,9 +129,7 @@ def run_baseline_causal(
     }
     if num_beams > 1:
         gen_config["num_beams"] = num_beams
-        gen_config["early_stopping"] = getattr(
-            config.generation, "early_stopping", False
-        )
+        gen_config["early_stopping"] = getattr(config.generation, "early_stopping", False)
         gen_config["do_sample"] = False
     # HF generate() does not accept generator kwarg; baseline runs under collector's lock when seed set.
     cast(Any, model_bundle.model).generate(**inputs, **gen_config)
@@ -166,19 +156,13 @@ def run_baseline_seq2seq(
         return_dict=True,
     )
 
-    _pad_or_eos = (
-        getattr(tokenizer, "pad_token_id", None)
-        or getattr(tokenizer, "eos_token_id", None)
-        or 0
-    )
+    _pad_or_eos = getattr(tokenizer, "pad_token_id", None) or getattr(tokenizer, "eos_token_id", None) or 0
     decoder_start_token_id = _resolve_special_token(
         tokenizer, model.config, "decoder_start_token_id", fallback=_pad_or_eos
     )
     eos_ids = _normalize_eos(tokenizer, model.config, fallback=2)
 
-    decoder_input_ids = torch.tensor(
-        [[decoder_start_token_id]], device=device
-    )
+    decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=device)
     max_new_tokens = config.generation.max_new_tokens
     do_sample = config.generation.do_sample
     logits_processor = _build_logits_processor(config.generation)
@@ -187,11 +171,7 @@ def run_baseline_seq2seq(
     for _ in range(max_new_tokens):
         decoder_outputs = model(
             encoder_outputs=encoder_outputs,
-            decoder_input_ids=(
-                decoder_input_ids[:, -1:]
-                if past_key_values is not None
-                else decoder_input_ids
-            ),
+            decoder_input_ids=(decoder_input_ids[:, -1:] if past_key_values is not None else decoder_input_ids),
             output_hidden_states=False,
             output_attentions=False,
             use_cache=True,
@@ -201,20 +181,12 @@ def run_baseline_seq2seq(
         past_key_values = getattr(decoder_outputs, "past_key_values", None)
         next_token_logits = decoder_outputs.logits[:, -1, :]
         if do_sample:
-            next_token_logits = logits_processor(
-                decoder_input_ids, next_token_logits
-            )
+            next_token_logits = logits_processor(decoder_input_ids, next_token_logits)
             probs = torch.softmax(next_token_logits, dim=-1)
-            next_token_id = torch.multinomial(
-                probs, num_samples=1, generator=generator
-            )
+            next_token_id = torch.multinomial(probs, num_samples=1, generator=generator)
         else:
-            next_token_id = torch.argmax(
-                next_token_logits, dim=-1, keepdim=True
-            )
-        decoder_input_ids = torch.cat(
-            [decoder_input_ids, next_token_id], dim=-1
-        )
+            next_token_id = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+        decoder_input_ids = torch.cat([decoder_input_ids, next_token_id], dim=-1)
         if next_token_id.item() in eos_ids:
             break
 
@@ -238,9 +210,7 @@ def run_prompt_forward(
     from CoreVital.instrumentation.collector import PromptForwardData
 
     model = cast(Any, model_bundle.model)
-    logger.debug(
-        f"Running prompt forward pass ({len(prompt_token_ids)} tokens)..."
-    )
+    logger.debug(f"Running prompt forward pass ({len(prompt_token_ids)} tokens)...")
     with torch.no_grad():
         outputs = model(
             **inputs,
@@ -257,14 +227,9 @@ def run_prompt_forward(
                 hidden_states = [h.cpu() for h in hs[1:]]
             elif isinstance(hs, (tuple, list)):
                 hidden_states = [h.cpu() for h in hs]
-            logger.debug(
-                f"Prompt forward: extracted "
-                f"{len(hidden_states) if hidden_states else 0} hidden state layers"
-            )
+            logger.debug(f"Prompt forward: extracted {len(hidden_states) if hidden_states else 0} hidden state layers")
         except (TypeError, AttributeError) as e:
-            logger.debug(
-                f"Prompt forward: could not extract hidden states: {e}"
-            )
+            logger.debug(f"Prompt forward: could not extract hidden states: {e}")
 
     attentions = None
     if hasattr(outputs, "attentions") and outputs.attentions is not None:
@@ -272,14 +237,9 @@ def run_prompt_forward(
             att = outputs.attentions
             if isinstance(att, (tuple, list)):
                 attentions = [a.cpu() for a in att]
-            logger.debug(
-                f"Prompt forward: extracted "
-                f"{len(attentions) if attentions else 0} attention layers"
-            )
+            logger.debug(f"Prompt forward: extracted {len(attentions) if attentions else 0} attention layers")
         except (TypeError, AttributeError) as e:
-            logger.debug(
-                f"Prompt forward: could not extract attentions: {e}"
-            )
+            logger.debug(f"Prompt forward: could not extract attentions: {e}")
 
     logits = None
     if hasattr(outputs, "logits") and outputs.logits is not None:

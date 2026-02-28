@@ -64,12 +64,10 @@ def _probe_attentions_available(
         dummy = tokenizer("test", return_tensors="pt").to(device)
         with torch.no_grad():
             out = model(**dummy, output_attentions=True, return_dict=True)
-        return (
-            getattr(out, "attentions", None) is not None
-            and len(out.attentions) > 0
-        )
+        return getattr(out, "attentions", None) is not None and len(out.attentions) > 0
     except Exception:
         return False
+
 
 logger = get_logger(__name__)
 
@@ -291,12 +289,8 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
 
         # Probe whether model actually returns attentions (Issue 52)
         with _op("_probe_attentions"):
-            attentions_available = _probe_attentions_available(
-                model, tokenizer, device
-            )
-            capabilities = dataclasses.replace(
-                capabilities, attentions_available=attentions_available
-            )
+            attentions_available = _probe_attentions_available(model, tokenizer, device)
+            capabilities = dataclasses.replace(capabilities, attentions_available=attentions_available)
             if not attentions_available:
                 logger.warning(
                     "Attention capture probe: model did not return attentions "

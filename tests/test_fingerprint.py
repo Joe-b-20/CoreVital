@@ -2,7 +2,6 @@
 # CoreVital - Fingerprint Tests (Phase-4.3)
 # ============================================================================
 
-import math
 
 from CoreVital.fingerprint import (
     FINGERPRINT_LENGTH,
@@ -49,6 +48,7 @@ def _summary(steps: int = 10) -> Summary:
 
 # ---- safe_stats ----
 
+
 class TestSafeStats:
     def test_empty_returns_zeros(self):
         assert _safe_stats([]) == (0.0, 0.0, 0.0, 0.0, 0.0)
@@ -85,12 +85,14 @@ class TestSafeStats:
 
     def test_std_correct(self):
         import statistics
+
         vals = [1.0, 2.0, 3.0, 4.0]
         _, std, _, _, _ = _safe_stats(vals)
         assert abs(std - statistics.stdev(vals)) < 1e-10
 
 
 # ---- _correlation ----
+
 
 class TestCorrelation:
     def test_perfect_positive(self):
@@ -120,6 +122,7 @@ class TestCorrelation:
 
 
 # ---- compute_fingerprint_vector ----
+
 
 class TestComputeFingerprintVector:
     def test_length_25(self):
@@ -190,6 +193,7 @@ class TestComputeFingerprintVector:
 
     def test_entropy_cv(self):
         import statistics
+
         entropies = [2.0, 2.0, 4.0, 4.0]
         expected_cv = statistics.stdev(entropies) / (sum(entropies) / len(entropies))
         timeline = [_step(entropy=e) for e in entropies]
@@ -239,7 +243,11 @@ class TestComputeFingerprintVector:
     def test_layers_by_step_accepted(self):
         timeline = [_step()]
         vec = compute_fingerprint_vector(
-            timeline, _summary(1), HealthFlags(), 0.0, layers_by_step=[[]],
+            timeline,
+            _summary(1),
+            HealthFlags(),
+            0.0,
+            layers_by_step=[[]],
         )
         assert len(vec) == 25
 
@@ -250,6 +258,7 @@ class TestComputeFingerprintVector:
 
 
 # ---- is_legacy_fingerprint ----
+
 
 class TestIsLegacyFingerprint:
     def test_nine_element_is_legacy(self):
@@ -265,6 +274,7 @@ class TestIsLegacyFingerprint:
 
 # ---- Version constant ----
 
+
 class TestFingerprintVersion:
     def test_version_is_2(self):
         assert FINGERPRINT_VERSION == 2
@@ -274,6 +284,7 @@ class TestFingerprintVersion:
 
 
 # ---- compute_prompt_hash ----
+
 
 class TestComputePromptHash:
     def test_deterministic(self):
@@ -303,6 +314,7 @@ class TestComputePromptHash:
 
 
 # ---- get_fingerprint ----
+
 
 class TestGetFingerprint:
     def test_from_report_object(self):
@@ -334,6 +346,7 @@ class TestGetFingerprint:
 
 # ---- Discriminative power ----
 
+
 class TestDiscriminativePower:
     """Verify that qualitatively different failure modes produce different vectors."""
 
@@ -356,10 +369,7 @@ class TestDiscriminativePower:
 
     def test_healthy_vs_degrading(self):
         healthy = [_step(entropy=2.0, margin=0.8, surprisal=1.0) for _ in range(8)]
-        degrading = [
-            _step(entropy=2.0 + i * 0.5, margin=0.8 - i * 0.1, surprisal=1.0 + i * 0.3)
-            for i in range(8)
-        ]
+        degrading = [_step(entropy=2.0 + i * 0.5, margin=0.8 - i * 0.1, surprisal=1.0 + i * 0.3) for i in range(8)]
 
         vec_h = compute_fingerprint_vector(healthy, _summary(8), HealthFlags(), 0.1)
         vec_d = compute_fingerprint_vector(degrading, _summary(8), HealthFlags(), 0.6)

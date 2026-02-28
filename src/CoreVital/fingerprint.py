@@ -34,7 +34,7 @@ def _correlation(xs: List[float], ys: List[float]) -> float:
     denom = (var_x * var_y) ** 0.5
     if denom == 0.0:
         return 0.0
-    return cov / denom
+    return float(cov / denom)
 
 
 def _safe_stats(vals: List[float]) -> Tuple[float, float, float, float, float]:
@@ -80,31 +80,27 @@ def compute_fingerprint_vector(
         24:    [reserved, currently 0.0]
     """
     entropies = [
-        s.logits_summary.entropy
-        for s in timeline
-        if s.logits_summary and s.logits_summary.entropy is not None
+        s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None
     ]
     margins = [
         s.logits_summary.top_k_margin
         for s in timeline
-        if s.logits_summary
-        and hasattr(s.logits_summary, "top_k_margin")
-        and s.logits_summary.top_k_margin is not None
+        if s.logits_summary and hasattr(s.logits_summary, "top_k_margin") and s.logits_summary.top_k_margin is not None
     ]
     surprisals = [
         s.logits_summary.surprisal
         for s in timeline
-        if s.logits_summary
-        and hasattr(s.logits_summary, "surprisal")
-        and s.logits_summary.surprisal is not None
+        if s.logits_summary and hasattr(s.logits_summary, "surprisal") and s.logits_summary.surprisal is not None
     ]
-    agreements = [
-        s.logits_summary.voter_agreement
-        for s in timeline
-        if s.logits_summary
-        and hasattr(s.logits_summary, "voter_agreement")
-        and s.logits_summary.voter_agreement is not None
-    ]
+    agreements = []
+    for s in timeline:
+        if not s.logits_summary:
+            continue
+        val = getattr(s.logits_summary, "topk_mass", None)
+        if val is None:
+            val = getattr(s.logits_summary, "voter_agreement", None)
+        if val is not None:
+            agreements.append(val)
 
     ent_stats = _safe_stats(entropies)
     margin_stats = _safe_stats(margins)

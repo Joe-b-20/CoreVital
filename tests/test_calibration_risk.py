@@ -1,7 +1,5 @@
 """Tests for CoreVital.calibration_risk (Issue 34)."""
 
-import math
-
 import pytest
 
 from CoreVital.calibration_risk import (
@@ -11,7 +9,6 @@ from CoreVital.calibration_risk import (
     evaluate_calibration,
     fit_platt_scaling,
 )
-
 
 # ---------------------------------------------------------------------------
 # compute_ece
@@ -190,8 +187,12 @@ class TestApplyPlattScaling:
 class TestRiskCalibrationResult:
     def test_to_dict(self):
         r = RiskCalibrationResult(
-            a=2.5, b=-1.0, ece_raw=0.15, ece_calibrated=0.05,
-            n_samples=100, label_rate=0.3,
+            a=2.5,
+            b=-1.0,
+            ece_raw=0.15,
+            ece_calibrated=0.05,
+            n_samples=100,
+            label_rate=0.3,
         )
         d = r.to_dict()
         assert d["platt_a"] == 2.5
@@ -201,8 +202,12 @@ class TestRiskCalibrationResult:
 
     def test_roundtrip(self):
         r = RiskCalibrationResult(
-            a=1.5, b=-0.5, ece_raw=0.12, ece_calibrated=0.04,
-            n_samples=200, label_rate=0.4,
+            a=1.5,
+            b=-0.5,
+            ece_raw=0.12,
+            ece_calibrated=0.04,
+            n_samples=200,
+            label_rate=0.4,
         )
         d = r.to_dict()
         restored = RiskCalibrationResult.from_dict(d)

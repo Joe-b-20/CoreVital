@@ -100,15 +100,20 @@ def detect_compound_signals(
     # Many collapsed heads + high entropy = model can't route information
     if layers_by_step and entropies:
         total_collapsed = 0
-        total_heads_checked = 0
+        total_heads_observed = 0
         for step_layers in layers_by_step:
             for layer in step_layers:
                 if layer.attention_summary:
-                    cc = getattr(layer.attention_summary, "collapsed_head_count", 0)
+                    cc = getattr(layer.attention_summary, "collapsed_head_count", 0) or 0
                     total_collapsed += cc
-                    total_heads_checked += 1
-        if total_heads_checked > 0:
-            collapse_rate = total_collapsed / total_heads_checked
+                    mw = getattr(layer.attention_summary, "max_weight_per_head", None)
+                    if mw is not None:
+                        total_heads_observed += len(mw)
+                    else:
+                        fc = getattr(layer.attention_summary, "focused_head_count", 0) or 0
+                        total_heads_observed += max(cc + fc, 1)
+        if total_heads_observed > 0:
+            collapse_rate = total_collapsed / total_heads_observed
             mean_ent = _mean(entropies)
             if collapse_rate > 0.2 and mean_ent > 3.5:
                 signals.append(
@@ -167,9 +172,9 @@ def _extract_agreement(timeline: List[TimelineStep]) -> List[float]:
     for s in timeline:
         if not s.logits_summary:
             continue
-        v = getattr(s.logits_summary, "topk_mass", None) or getattr(
-            s.logits_summary, "voter_agreement", None
-        )
+        v = getattr(s.logits_summary, "topk_mass", None)
+        if v is None:
+            v = getattr(s.logits_summary, "voter_agreement", None)
         if v is not None:
             vals.append(float(v))
     return vals

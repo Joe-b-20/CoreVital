@@ -229,7 +229,7 @@ def detect_repetition_loop(
 
     # Token-level n-gram confirmation
     if hidden_repetition and len(token_id_buffer) >= consecutive_required + 1:
-        recent = token_id_buffer[-(consecutive_required + 3):]
+        recent = token_id_buffer[-(consecutive_required + 3) :]
         for n in (3, 2):
             if len(recent) >= n * 2:
                 ngrams = [tuple(recent[i : i + n]) for i in range(len(recent) - n + 1)]
@@ -304,11 +304,7 @@ def detect_mid_layer_anomaly(
         if step_early_norms:
             sorted_norms = sorted(step_early_norms)
             n = len(sorted_norms)
-            baseline = (
-                sorted_norms[n // 2]
-                if n % 2 == 1
-                else (sorted_norms[n // 2 - 1] + sorted_norms[n // 2]) / 2
-            )
+            baseline = sorted_norms[n // 2] if n % 2 == 1 else (sorted_norms[n // 2 - 1] + sorted_norms[n // 2]) / 2
             explosion_threshold = baseline * multiplier
         else:
             explosion_threshold = 1000.0  # Conservative fallback

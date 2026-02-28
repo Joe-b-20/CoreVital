@@ -2,7 +2,6 @@
 # CoreVital - Compound Signal Detection Tests (Phase-2, Issue 6)
 # ============================================================================
 
-import pytest
 
 from CoreVital.compound_signals import CompoundSignal, detect_compound_signals
 from CoreVital.reporting.schema import (
@@ -12,7 +11,6 @@ from CoreVital.reporting.schema import (
     LayerSummary,
     LogitsSummary,
     Summary,
-    TensorAnomalies,
     TimelineStep,
     TokenInfo,
 )
@@ -58,22 +56,15 @@ class TestDetectCompoundSignals:
 
     def test_healthy_trace_no_signals(self):
         """No patterns should fire on a healthy trace (low entropy, good margin, no collapse)."""
-        timeline = [
-            _step(i, entropy=1.5, top_k_margin=0.6, voter_agreement=0.7, surprisal=0.5)
-            for i in range(12)
-        ]
+        timeline = [_step(i, entropy=1.5, top_k_margin=0.6, voter_agreement=0.7, surprisal=0.5) for i in range(12)]
         layers_by_step = [[_layer(j) for j in range(3)] for _ in range(12)]
         basin_scores = [[0.6, 0.5, 0.55]]  # one list per layer, decent basin
-        signals = detect_compound_signals(
-            timeline, layers_by_step=layers_by_step, basin_scores=basin_scores
-        )
+        signals = detect_compound_signals(timeline, layers_by_step=layers_by_step, basin_scores=basin_scores)
         assert len(signals) == 0
 
     def test_context_loss_fires(self):
         """Context loss: high entropy (last 5) + low mean basin score."""
-        timeline = [
-            _step(i, entropy=5.0, top_k_margin=0.2) for i in range(6)
-        ]  # last 5 steps mean entropy 5.0
+        timeline = [_step(i, entropy=5.0, top_k_margin=0.2) for i in range(6)]  # last 5 steps mean entropy 5.0
         basin_scores = [[0.1, 0.15, 0.2]]  # mean basin 0.15 < 0.3
         signals = detect_compound_signals(timeline, basin_scores=basin_scores)
         names = [s.name for s in signals]
@@ -85,9 +76,7 @@ class TestDetectCompoundSignals:
 
     def test_confident_confusion_fires(self):
         """Confident confusion: high entropy + high margin (last 5)."""
-        timeline = [
-            _step(i, entropy=4.5, top_k_margin=0.5) for i in range(6)
-        ]
+        timeline = [_step(i, entropy=4.5, top_k_margin=0.5) for i in range(6)]
         signals = detect_compound_signals(timeline)
         names = [s.name for s in signals]
         assert "confident_confusion" in names
@@ -116,14 +105,9 @@ class TestDetectCompoundSignals:
         """Attention bottleneck: high collapse rate across layer-steps + high mean entropy."""
         timeline = [_step(i, entropy=4.0) for i in range(5)]
         # Many layers with collapsed heads so collapse_rate > 0.2
-        layers_by_step = [
-            [_layer(j, collapsed_head_count=3 if j < 2 else 0) for j in range(4)]
-            for _ in range(5)
-        ]
+        layers_by_step = [[_layer(j, collapsed_head_count=3 if j < 2 else 0) for j in range(4)] for _ in range(5)]
         # total_collapsed = 5*2*3 = 30, total_heads_checked = 5*4 = 20, rate = 1.5 > 0.2
-        signals = detect_compound_signals(
-            timeline, layers_by_step=layers_by_step
-        )
+        signals = detect_compound_signals(timeline, layers_by_step=layers_by_step)
         names = [s.name for s in signals]
         assert "attention_bottleneck" in names
         ab = next(s for s in signals if s.name == "attention_bottleneck")
@@ -131,10 +115,7 @@ class TestDetectCompoundSignals:
 
     def test_confident_repetition_risk_fires(self):
         """Confident repetition risk: low entropy + low surprisal + very high voter agreement."""
-        timeline = [
-            _step(i, entropy=1.0, surprisal=0.5, voter_agreement=0.98)
-            for i in range(6)
-        ]
+        timeline = [_step(i, entropy=1.0, surprisal=0.5, voter_agreement=0.98) for i in range(6)]
         signals = detect_compound_signals(timeline)
         names = [s.name for s in signals]
         assert "confident_repetition_risk" in names
@@ -183,7 +164,5 @@ class TestCompoundSignalsInRiskScore:
         summary = Summary(prompt_tokens=0, generated_tokens=5, total_steps=5, elapsed_ms=100)
         flags = HealthFlags()
         timeline = [_step(i, entropy=1.0) for i in range(5)]
-        score, factors = compute_risk_score(
-            flags, summary, timeline=timeline, compound_signals=None
-        )
+        score, factors = compute_risk_score(flags, summary, timeline=timeline, compound_signals=None)
         assert not any(f.startswith("compound:") for f in factors)

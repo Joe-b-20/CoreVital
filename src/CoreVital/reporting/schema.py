@@ -165,7 +165,8 @@ class LogitsSummary(BaseModel):
     topk: List[TopKItem] = Field(default_factory=list)
     # Phase-1a additions
     top_k_margin: Optional[float] = None
-    voter_agreement: Optional[float] = None
+    voter_agreement: Optional[float] = None  # Deprecated — prefer topk_mass
+    topk_mass: Optional[float] = None  # Primary name (sum of top-K probs)
     perplexity: Optional[float] = None
     surprisal: Optional[float] = None
 

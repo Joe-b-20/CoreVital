@@ -86,9 +86,7 @@ class TestProfilesDiffer:
             )
         values = list(profiles.values())
         unique = set(values)
-        assert len(unique) == len(values), (
-            f"Some profiles are identical: {profiles}"
-        )
+        assert len(unique) == len(values), f"Some profiles are identical: {profiles}"
 
 
 class TestArchitectureMapping:

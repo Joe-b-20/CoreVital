@@ -30,8 +30,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-
+from typing import List, Tuple
 
 # ---------------------------------------------------------------------------
 # Expected Calibration Error
@@ -63,11 +62,8 @@ def compute_ece(
     if not predicted_probs or not actual_labels:
         raise ValueError("predicted_probs and actual_labels must be non-empty")
     if len(predicted_probs) != len(actual_labels):
-        raise ValueError(
-            f"Length mismatch: {len(predicted_probs)} predictions vs "
-            f"{len(actual_labels)} labels"
-        )
-    if any(l not in (0, 1) for l in actual_labels):
+        raise ValueError(f"Length mismatch: {len(predicted_probs)} predictions vs {len(actual_labels)} labels")
+    if any(v not in (0, 1) for v in actual_labels):
         raise ValueError("actual_labels must contain only 0 and 1")
 
     total = len(predicted_probs)
@@ -80,14 +76,14 @@ def compute_ece(
 
         bin_preds: List[float] = []
         bin_labels: List[int] = []
-        for p, l in zip(predicted_probs, actual_labels):
+        for p, label in zip(predicted_probs, actual_labels, strict=True):
             if i == n_bins - 1:
                 in_bin = lo <= p <= hi
             else:
                 in_bin = lo <= p < hi
             if in_bin:
                 bin_preds.append(p)
-                bin_labels.append(l)
+                bin_labels.append(label)
 
         if bin_preds:
             avg_pred = sum(bin_preds) / len(bin_preds)
@@ -149,10 +145,8 @@ def fit_platt_scaling(
     if not raw_scores or not labels:
         raise ValueError("raw_scores and labels must be non-empty")
     if len(raw_scores) != len(labels):
-        raise ValueError(
-            f"Length mismatch: {len(raw_scores)} scores vs {len(labels)} labels"
-        )
-    if any(l not in (0, 1) for l in labels):
+        raise ValueError(f"Length mismatch: {len(raw_scores)} scores vs {len(labels)} labels")
+    if any(v not in (0, 1) for v in labels):
         raise ValueError("labels must contain only 0 and 1")
 
     a = 0.0
@@ -164,7 +158,7 @@ def fit_platt_scaling(
         grad_b = 0.0
         nll = 0.0
 
-        for raw, label in zip(raw_scores, labels):
+        for raw, label in zip(raw_scores, labels, strict=True):
             p = _clip(_sigmoid(a * raw + b))
             nll -= label * math.log(p) + (1 - label) * math.log(1 - p)
             err = p - label
