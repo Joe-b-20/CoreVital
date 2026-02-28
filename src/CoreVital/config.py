@@ -254,6 +254,9 @@ class Config(BaseModel):
     prompt_telemetry: PromptTelemetryConfig = Field(default_factory=PromptTelemetryConfig)
     capture: CaptureConfig = Field(default_factory=CaptureConfig)
     otel: OtelConfig = Field(default_factory=OtelConfig)
+    # Path to a CalibrationProfile JSON (Issue 33). When set, report_builder
+    # computes divergence scores alongside the heuristic risk score.
+    calibration_profile: Optional[str] = Field(default=None)
 
     @classmethod
     def from_yaml(cls, path: str) -> "Config":

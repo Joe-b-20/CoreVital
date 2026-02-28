@@ -53,6 +53,7 @@
 # ============================================================================
 
 import uuid
+from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 import torch
@@ -324,6 +325,29 @@ class ReportBuilder:
                 if full_prompt_analysis is not None:
                     report.prompt_analysis = full_prompt_analysis
                 logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
+
+            # Phase-4: calibration divergence scoring (Issue 33)
+            if self.config.calibration_profile:
+                try:
+                    from CoreVital.calibration import CalibrationProfile, compute_divergence_score
+
+                    cal_path = Path(self.config.calibration_profile)
+                    if cal_path.exists():
+                        cal_profile = CalibrationProfile.load(cal_path)
+                        trace_dict = report.model_dump()
+                        div_score, div_anomalies = compute_divergence_score(trace_dict, cal_profile)
+                        report.extensions["calibration"] = {
+                            "divergence_score": div_score,
+                            "anomalies": div_anomalies,
+                            "baseline_model_id": cal_profile.model_id,
+                            "baseline_num_runs": cal_profile.num_runs,
+                        }
+                    else:
+                        logger.warning(
+                            f"Calibration profile not found at {cal_path}, skipping divergence scoring"
+                        )
+                except Exception as e:
+                    logger.warning(f"Calibration divergence scoring failed, skipping: {e}")
 
             # Phase-3: fingerprint (run-summary vector + prompt hash) for every report
             try:
