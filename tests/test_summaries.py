@@ -18,15 +18,18 @@ from CoreVital.config import (
 )
 from CoreVital.instrumentation.summaries import (
     NORMALIZED_COLLAPSED_THRESHOLD,
+    AttentionCollapseResult,
     compute_attention_summary,
     compute_basin_scores,
     compute_hidden_summary,
     compute_logits_summary,
     compute_prompt_surprisal,
+    detect_attention_collapse,
     detect_mid_layer_anomaly,
     detect_repetition_loop,
     extract_sparse_attention,
 )
+from CoreVital.reporting.schema import AttentionSummary, LayerSummary
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -671,3 +674,151 @@ class TestIssue28ClipDiagnostics:
         assert out["clipped"] is False
         assert "clip_fraction" not in out
         assert "clip_max_before" not in out
+
+
+# ---------------------------------------------------------------------------
+# detect_attention_collapse
+# ---------------------------------------------------------------------------
+
+
+def _make_layers_by_step(
+    num_steps: int,
+    num_layers: int,
+    num_heads: int,
+    collapsed_schedule=None,
+):
+    """Build layers_by_step test fixture.
+
+    Args:
+        collapsed_schedule: If callable, collapsed_schedule(step, layer) -> int (collapsed count).
+            If None, all collapsed counts are 0.
+    """
+    layers_by_step = []
+    for step in range(num_steps):
+        step_layers = []
+        for layer in range(num_layers):
+            cc = collapsed_schedule(step, layer) if collapsed_schedule else 0
+            step_layers.append(
+                LayerSummary(
+                    layer_index=layer,
+                    attention_summary=AttentionSummary(collapsed_head_count=cc),
+                )
+            )
+        layers_by_step.append(step_layers)
+    return layers_by_step
+
+
+class TestDetectAttentionCollapse:
+    """Unit tests for detect_attention_collapse three-component detector."""
+
+    def test_empty_data_returns_not_detected(self):
+        result = detect_attention_collapse([], num_attention_heads=12)
+        assert result.detected is False
+        assert result.severity == 0.0
+
+    def test_healthy_model_constant_structural_heads(self):
+        """Constant 1-2 collapsed heads across all steps: structural, not anomalous."""
+        layers = _make_layers_by_step(
+            num_steps=10, num_layers=4, num_heads=12,
+            collapsed_schedule=lambda step, layer: 1,
+        )
+        result = detect_attention_collapse(layers, num_attention_heads=12)
+        assert result.detected is False, (
+            f"Structural heads should not trigger collapse: {result.detail}"
+        )
+
+    def test_trend_detection_increasing_collapse(self):
+        """Collapse rate increases from 0 to high during generation -> trend fires."""
+        def schedule(step, layer):
+            if step < 3:
+                return 0
+            return min(10, step)
+
+        layers = _make_layers_by_step(
+            num_steps=12, num_layers=4, num_heads=12,
+            collapsed_schedule=schedule,
+        )
+        result = detect_attention_collapse(layers, num_attention_heads=12)
+        assert result.detected is True
+        assert result.detail["trend_detected"] is True
+        assert result.severity >= 0.2
+
+    def test_catastrophic_collapse(self):
+        """Nearly all heads collapsed across all layers -> catastrophic fires."""
+        layers = _make_layers_by_step(
+            num_steps=8, num_layers=4, num_heads=12,
+            collapsed_schedule=lambda step, layer: 10,
+        )
+        result = detect_attention_collapse(layers, num_attention_heads=12)
+        assert result.detected is True
+        assert result.detail["catastrophic"] is True
+        assert result.severity >= 0.8
+
+    def test_no_trend_too_few_steps(self):
+        """Fewer than COLLAPSE_MIN_STEPS_FOR_TREND steps: trend cannot fire."""
+        layers = _make_layers_by_step(
+            num_steps=2, num_layers=4, num_heads=12,
+            collapsed_schedule=lambda step, layer: 12 if step == 1 else 0,
+        )
+        result = detect_attention_collapse(layers, num_attention_heads=12)
+        assert result.detail.get("trend_detected", False) is False
+
+    def test_calibration_anomaly(self):
+        """Collapse count exceeds calibration baseline -> calibration anomaly fires."""
+        from CoreVital.calibration import CalibrationProfile, MetricDistribution
+
+        cal = CalibrationProfile(model_id="test", num_runs=20)
+        cal.collapsed_heads_per_layer[0] = MetricDistribution(values=[1.0] * 20)
+        cal.collapsed_heads_per_layer[1] = MetricDistribution(values=[1.0] * 20)
+
+        layers = _make_layers_by_step(
+            num_steps=6, num_layers=2, num_heads=12,
+            collapsed_schedule=lambda step, layer: 10,
+        )
+        result = detect_attention_collapse(layers, num_attention_heads=12, calibration_profile=cal)
+        assert result.detected is True
+        assert result.detail["calibration_anomaly"] is True
+        assert 0 in result.detail["calibration_anomaly_layers"] or 1 in result.detail["calibration_anomaly_layers"]
+
+    def test_severity_variable(self):
+        """Severity scales with which components fired."""
+        layers_catastrophic = _make_layers_by_step(
+            num_steps=6, num_layers=4, num_heads=12,
+            collapsed_schedule=lambda step, layer: 11,
+        )
+        layers_mild_trend = _make_layers_by_step(
+            num_steps=10, num_layers=4, num_heads=12,
+            collapsed_schedule=lambda step, layer: 0 if step < 3 else 4,
+        )
+        r1 = detect_attention_collapse(layers_catastrophic, num_attention_heads=12)
+        r2 = detect_attention_collapse(layers_mild_trend, num_attention_heads=12)
+        assert r1.severity > r2.severity, "Catastrophic should be more severe than mild trend"
+
+    def test_collapsed_head_rate_in_summary(self):
+        """compute_attention_summary now includes collapsed_head_rate."""
+        config = AttentionSummariesConfig(
+            enabled=True,
+            stats=["collapsed_head_count", "entropy_mean", "entropy_mean_normalized"],
+        )
+        attn = torch.zeros(4, 8, 8)
+        attn[0, :, :] = 1.0 / 8.0
+        attn[1, :, :] = 1.0 / 8.0
+        attn[2, 0, 0] = 1.0
+        attn[2, 1, 1] = 1.0
+        attn[2, 2, 2] = 1.0
+        attn[2, 3, 3] = 1.0
+        attn[2, 4, 4] = 1.0
+        attn[2, 5, 5] = 1.0
+        attn[2, 6, 6] = 1.0
+        attn[2, 7, 7] = 1.0
+        attn[3, 0, 0] = 1.0
+        attn[3, 1, 1] = 1.0
+        attn[3, 2, 2] = 1.0
+        attn[3, 3, 3] = 1.0
+        attn[3, 4, 4] = 1.0
+        attn[3, 5, 5] = 1.0
+        attn[3, 6, 6] = 1.0
+        attn[3, 7, 7] = 1.0
+        out = compute_attention_summary(attn, config)
+        assert "collapsed_head_rate" in out
+        assert 0.0 <= out["collapsed_head_rate"] <= 1.0

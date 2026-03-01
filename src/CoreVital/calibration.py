@@ -67,6 +67,7 @@ class CalibrationProfile:
     surprisal_per_step: MetricDistribution = field(default_factory=MetricDistribution)
     l2_norm_per_layer: Dict[int, MetricDistribution] = field(default_factory=dict)
     attention_entropy_per_layer: Dict[int, MetricDistribution] = field(default_factory=dict)
+    collapsed_heads_per_layer: Dict[int, MetricDistribution] = field(default_factory=dict)
 
     # ---- persistence --------------------------------------------------
 
@@ -102,6 +103,10 @@ class CalibrationProfile:
                 str(k): {"mean": v.mean, "std": v.std, "values": v.values}
                 for k, v in self.attention_entropy_per_layer.items()
             },
+            "collapsed_heads": {
+                str(k): {"mean": v.mean, "std": v.std, "values": v.values}
+                for k, v in self.collapsed_heads_per_layer.items()
+            },
         }
         Path(path).write_text(json.dumps(data, indent=2))
 
@@ -124,6 +129,7 @@ class CalibrationProfile:
         for section, attr in [
             ("l2_norms", "l2_norm_per_layer"),
             ("attention_entropy", "attention_entropy_per_layer"),
+            ("collapsed_heads", "collapsed_heads_per_layer"),
         ]:
             layer_dict: Dict[int, MetricDistribution] = {}
             for k, v in data.get(section, {}).items():
@@ -173,6 +179,11 @@ def calibrate_from_runs(
                     if idx not in profile.attention_entropy_per_layer:
                         profile.attention_entropy_per_layer[idx] = MetricDistribution()
                     profile.attention_entropy_per_layer[idx].values.append(float(attn["entropy_mean"]))
+
+                if attn.get("collapsed_head_count") is not None:
+                    if idx not in profile.collapsed_heads_per_layer:
+                        profile.collapsed_heads_per_layer[idx] = MetricDistribution()
+                    profile.collapsed_heads_per_layer[idx].values.append(float(attn["collapsed_head_count"]))
 
     return profile
 

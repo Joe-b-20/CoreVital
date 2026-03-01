@@ -6,10 +6,16 @@
 
 from .attention import (
     COLLAPSED_HEAD_ENTROPY_THRESHOLD,
+    COLLAPSE_CATASTROPHIC_RATE,
+    COLLAPSE_EARLY_WINDOW,
+    COLLAPSE_MIN_STEPS_FOR_TREND,
+    COLLAPSE_TREND_DELTA,
     FOCUSED_HEAD_CONCENTRATION_THRESHOLD,
     NORMALIZED_COLLAPSED_THRESHOLD,
+    AttentionCollapseResult,
     compute_attention_summary,
     compute_basin_scores,
+    detect_attention_collapse,
     extract_sparse_attention,
 )
 from .hidden_states import (
@@ -36,10 +42,16 @@ __all__ = [
     "compute_prompt_surprisal",
     # attention
     "COLLAPSED_HEAD_ENTROPY_THRESHOLD",
+    "COLLAPSE_CATASTROPHIC_RATE",
+    "COLLAPSE_EARLY_WINDOW",
+    "COLLAPSE_MIN_STEPS_FOR_TREND",
+    "COLLAPSE_TREND_DELTA",
     "FOCUSED_HEAD_CONCENTRATION_THRESHOLD",
     "NORMALIZED_COLLAPSED_THRESHOLD",
+    "AttentionCollapseResult",
     "compute_attention_summary",
     "compute_basin_scores",
+    "detect_attention_collapse",
     "extract_sparse_attention",
     # hidden_states
     "L2_EXPLOSION_MULTIPLIER",

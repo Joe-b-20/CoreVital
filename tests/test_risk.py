@@ -72,9 +72,35 @@ class TestComputeRiskScore:
 
     def test_attention_collapse_contribution(self):
         summary = Summary(prompt_tokens=1, generated_tokens=5, total_steps=6, elapsed_ms=100)
-        flags = HealthFlags(attention_collapse_detected=True)
+        flags = HealthFlags(attention_collapse_detected=True, attention_collapse_severity=0.3)
         score, factors = compute_risk_score(flags, summary)
         assert score >= 0.3
+        assert "attention_collapse" in factors
+
+    def test_attention_collapse_variable_severity(self):
+        """Variable severity from detect_attention_collapse flows through to risk score."""
+        summary = Summary(prompt_tokens=1, generated_tokens=5, total_steps=6, elapsed_ms=100)
+        for sev in [0.2, 0.4, 0.8]:
+            flags = HealthFlags(attention_collapse_detected=True, attention_collapse_severity=sev)
+            score, factors = compute_risk_score(flags, summary)
+            assert score >= sev, f"severity={sev} but score={score}"
+            assert "attention_collapse" in factors
+
+    def test_attention_collapse_none_severity_falls_back_new_path(self):
+        """New path: when severity is None with timeline, falls back to 0.15."""
+        summary = Summary(prompt_tokens=1, generated_tokens=5, total_steps=6, elapsed_ms=100)
+        flags = HealthFlags(attention_collapse_detected=True, attention_collapse_severity=None)
+        timeline = [_step(i, entropy=0.0) for i in range(5)]
+        score, factors = compute_risk_score(flags, summary, timeline=timeline)
+        assert abs(score - 0.15) < 0.01
+        assert "attention_collapse" in factors
+
+    def test_attention_collapse_none_severity_falls_back_legacy(self):
+        """Legacy path: when severity is None without timeline, falls back to 0.3."""
+        summary = Summary(prompt_tokens=1, generated_tokens=5, total_steps=6, elapsed_ms=100)
+        flags = HealthFlags(attention_collapse_detected=True, attention_collapse_severity=None)
+        score, factors = compute_risk_score(flags, summary)
+        assert abs(score - 0.3) < 0.01
         assert "attention_collapse" in factors
 
     def test_high_entropy_steps_contribution(self):

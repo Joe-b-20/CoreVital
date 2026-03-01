@@ -297,6 +297,8 @@ class ReportBuilder:
                         "blamed_layers": blamed_layers,
                         "blamed_layers_flat": blamed_layers_flat,
                     }
+                    if hasattr(self, "_last_collapse_detail") and self._last_collapse_detail:
+                        report.extensions["risk"]["attention_collapse_detail"] = self._last_collapse_detail
                 except Exception as e:
                     logger.warning(f"Risk computation failed, skipping: {e}")
 
@@ -941,32 +943,34 @@ class ReportBuilder:
 
         nan_detected = False
         inf_detected = False
-        attention_collapse_detected = False
         high_entropy_steps = 0
 
         high_entropy_threshold = 4.0
         if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
             high_entropy_threshold = float(profile.high_entropy_threshold_bits)
         for tl_step in timeline:
-            # High entropy check (per-step logits entropy)
-            # Threshold from profile or 4.0 bits (model-agnostic; 2^4 = 16 equally likely tokens).
             if tl_step.logits_summary and tl_step.logits_summary.entropy is not None:
                 if tl_step.logits_summary.entropy > high_entropy_threshold:
                     high_entropy_steps += 1
 
         for step_layers in layers_to_aggregate:
             for layer in step_layers:
-                # NaN/Inf from TensorAnomalies
                 if layer.anomalies is not None:
                     if layer.anomalies.has_nan:
                         nan_detected = True
                     if layer.anomalies.has_inf:
                         inf_detected = True
 
-                # Attention collapse
-                if layer.attention_summary is not None:
-                    if layer.attention_summary.collapsed_head_count > 0:
-                        attention_collapse_detected = True
+        # --- Attention collapse detection (three-component) ---
+        from CoreVital.instrumentation.summaries import detect_attention_collapse
+
+        num_heads = results.model_bundle.num_attention_heads
+        calibration_profile = getattr(results, "_calibration_profile", None)
+        collapse_result = detect_attention_collapse(
+            layers_to_aggregate, num_heads, calibration_profile=calibration_profile
+        )
+        attention_collapse_detected = collapse_result.detected
+        attention_collapse_severity = collapse_result.severity if collapse_result.detected else None
 
         # --- Mid-layer anomaly detection ---
         mid_layer_anomaly_detected = False
@@ -981,14 +985,20 @@ class ReportBuilder:
             nan_detected=nan_detected,
             inf_detected=inf_detected,
             attention_collapse_detected=attention_collapse_detected,
+            attention_collapse_severity=attention_collapse_severity,
             high_entropy_steps=high_entropy_steps,
             repetition_loop_detected=repetition_loop_detected,
             mid_layer_anomaly_detected=mid_layer_anomaly_detected,
         )
 
+        # Store collapse detail in report extensions (populated later by caller)
+        if collapse_result.detail:
+            self._last_collapse_detail = collapse_result.detail
+
         logger.debug(
             f"Health flags: nan={nan_detected}, inf={inf_detected}, "
-            f"collapse={attention_collapse_detected}, high_entropy={high_entropy_steps}, "
+            f"collapse={attention_collapse_detected} (severity={attention_collapse_severity}), "
+            f"high_entropy={high_entropy_steps}, "
             f"repetition={repetition_loop_detected}, mid_layer_anomaly={mid_layer_anomaly_detected}"
         )
         return flags

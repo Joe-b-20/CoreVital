@@ -42,7 +42,8 @@ def compute_risk_score_legacy(
         score = max(score, 0.7)
         factors.append("mid_layer_anomaly")
     if health_flags.attention_collapse_detected:
-        score = max(score, 0.3)
+        collapse_sev = health_flags.attention_collapse_severity
+        score = max(score, collapse_sev if collapse_sev is not None else 0.3)
         factors.append("attention_collapse")
 
     total_steps = max(1, summary.total_steps)
@@ -94,7 +95,8 @@ def compute_risk_score(
         bool_ceilings.append(0.7)
         factors.append("mid_layer_anomaly")
     if health_flags.attention_collapse_detected:
-        bool_ceilings.append(0.15)
+        collapse_sev = health_flags.attention_collapse_severity
+        bool_ceilings.append(collapse_sev if collapse_sev is not None else 0.15)
         factors.append("attention_collapse")
 
     # --- Continuous metric components (additive) ---
