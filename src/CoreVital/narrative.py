@@ -7,6 +7,7 @@
 #          actual step indices, entropy values, and metric trends.
 # ============================================================================
 
+import math
 from typing import Any, List, Optional
 
 from CoreVital.reporting.schema import HealthFlags, Summary, TimelineStep
@@ -39,14 +40,23 @@ def build_narrative(
         else:
             parts.append(f"Low risk (score: {risk_score:.2f}). No significant anomalies detected.")
 
-    # Entropy specifics
+    # Entropy specifics — filter non-finite values (NaN/Inf from anomalous steps)
+    entropy_steps = [
+        s
+        for s in timeline
+        if s.logits_summary and s.logits_summary.entropy is not None and math.isfinite(s.logits_summary.entropy)
+    ]
     entropies = [
-        s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None
+        s.logits_summary.entropy
+        for s in entropy_steps  # type: ignore[union-attr]
     ]
     if entropies:
         mean_ent = sum(entropies) / len(entropies)
-        max_ent = max(entropies)
-        max_step_obj = next(s for s in timeline if s.logits_summary and s.logits_summary.entropy == max_ent)
+        max_step_obj = max(
+            entropy_steps,
+            key=lambda s: s.logits_summary.entropy,  # type: ignore[union-attr]
+        )
+        max_ent = max_step_obj.logits_summary.entropy  # type: ignore[union-attr]
         max_step_idx = max_step_obj.step_index
         if max_ent > 4.0:
             token_text = max_step_obj.token.token_text if max_step_obj.token else "?"

@@ -50,6 +50,8 @@ from CoreVital.errors import ModelLoadError
 from CoreVital.logging_utils import get_logger
 from CoreVital.models.registry import ModelCapabilities
 
+logger = get_logger(__name__)
+
 
 def _probe_attentions_available(
     model: PreTrainedModel,
@@ -59,17 +61,28 @@ def _probe_attentions_available(
     """Run a 1-token forward with output_attentions=True and check if attentions are returned.
 
     Used at load time to set ModelCapabilities.attentions_available (Issue 52).
+    For encoder-decoder models, provides decoder_input_ids so the forward pass
+    doesn't fail due to missing decoder inputs.
     """
     try:
         dummy = tokenizer("test", return_tensors="pt").to(device)
+        fwd_kwargs: dict = {
+            **dummy,
+            "output_attentions": True,
+            "return_dict": True,
+        }
+        if getattr(model.config, "is_encoder_decoder", False):
+            dec_start = getattr(model.config, "decoder_start_token_id", None)
+            if dec_start is None:
+                dec_start = getattr(model.config, "pad_token_id", 0) or 0
+            fwd_kwargs["decoder_input_ids"] = torch.tensor([[dec_start]], device=device)
         with torch.no_grad():
-            out = model(**dummy, output_attentions=True, return_dict=True)
-        return getattr(out, "attentions", None) is not None and len(out.attentions) > 0
-    except Exception:
+            out = model(**fwd_kwargs)
+        attns = getattr(out, "attentions", None) or getattr(out, "decoder_attentions", None)
+        return attns is not None and len(attns) > 0
+    except Exception as exc:
+        logger.debug("Attention probe failed: %s", exc)
         return False
-
-
-logger = get_logger(__name__)
 
 
 @dataclass

@@ -16,7 +16,7 @@ flowchart TB
     subgraph NORMALIZE["normalize_step_tensors() → NormalizedStepPayload"]
         direction TB
         N1["Strip embedding layer<br/>hidden_states = hidden[1:num_layers+1]"]
-        N2["Slice attention to last query position<br/>attention = attn[:, :, :, -1:, :]"]
+        N2["Slice attention to last query position<br/>attention = attn[:, :, -1:, :]"]
         N3[".detach().cpu() all tensors<br/>→ no GPU reference survives"]
         N4["Shape assertions<br/>hidden: 3D (layers, seq, dim)<br/>attention: 4D (layers, heads, 1, seq)<br/>logits: 1D or 2D"]
         N1 --> N2 --> N3 --> N4

@@ -287,3 +287,38 @@ class TestHelpers:
             extensions={},
         )
         assert _token_at_step([step], 0) == "?"
+
+
+class TestNarrativeNaNEntropy:
+    """Ensure build_narrative handles NaN/Inf entropy values gracefully."""
+
+    def test_nan_entropy_skipped(self):
+        """NaN entropies should be filtered; narrative shouldn't crash."""
+        timeline = [
+            _step(0, "a", 2.0),
+            _step(1, "b", float("nan")),
+            _step(2, "c", 5.0),
+        ]
+        flags = HealthFlags()
+        text = build_narrative(flags, 0.5, ["elevated_entropy"], [], [], timeline)
+        assert "peak entropy" in text.lower()
+        assert "5.0" in text
+
+    def test_inf_entropy_skipped(self):
+        timeline = [
+            _step(0, "a", 2.0),
+            _step(1, "b", float("inf")),
+            _step(2, "c", 3.0),
+        ]
+        flags = HealthFlags()
+        text = build_narrative(flags, 0.3, [], [], [], timeline)
+        assert "inf" not in text.lower()
+
+    def test_all_nan_entropy_no_crash(self):
+        timeline = [
+            _step(0, "a", float("nan")),
+            _step(1, "b", float("nan")),
+        ]
+        flags = HealthFlags()
+        text = build_narrative(flags, 0.2, [], [], [], timeline)
+        assert "entropy" not in text.lower()
