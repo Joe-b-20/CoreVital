@@ -41,29 +41,32 @@ def build_narrative(
             parts.append(f"Low risk (score: {risk_score:.2f}). No significant anomalies detected.")
 
     # Entropy specifics — filter non-finite values (NaN/Inf from anomalous steps)
-    entropy_steps = [
-        s
+    entropies: List[float] = [
+        s.logits_summary.entropy
         for s in timeline
         if s.logits_summary and s.logits_summary.entropy is not None and math.isfinite(s.logits_summary.entropy)
     ]
-    entropies = [
-        s.logits_summary.entropy
-        for s in entropy_steps  # type: ignore[union-attr]
-    ]
     if entropies:
         mean_ent = sum(entropies) / len(entropies)
-        max_step_obj = max(
-            entropy_steps,
-            key=lambda s: s.logits_summary.entropy,  # type: ignore[union-attr]
+
+        max_ent = max(entropies)
+        max_step_obj = next(
+            (
+                s
+                for s in timeline
+                if s.logits_summary and s.logits_summary.entropy is not None and s.logits_summary.entropy == max_ent
+            ),
+            None,
         )
-        max_ent = max_step_obj.logits_summary.entropy  # type: ignore[union-attr]
-        max_step_idx = max_step_obj.step_index
+        max_step_idx = max_step_obj.step_index if max_step_obj else 0
         if max_ent > 4.0:
-            token_text = max_step_obj.token.token_text if max_step_obj.token else "?"
+            token_text = "?"
+            if max_step_obj and max_step_obj.token:
+                token_text = max_step_obj.token.token_text or "?"
             parts.append(
                 f"Peak entropy of {max_ent:.1f} bits at step {max_step_idx} "
                 f"(mean: {mean_ent:.1f}); the model was most uncertain "
-                f'when generating "{token_text or "?"}".'
+                f'when generating "{token_text}".'
             )
         # Accept both old and new signal names
         entropy_trend = "entropy_accelerating" in warning_signals or "entropy_rising" in warning_signals

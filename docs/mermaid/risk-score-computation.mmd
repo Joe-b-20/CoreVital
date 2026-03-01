@@ -24,11 +24,11 @@ flowchart TB
     %% Layer 2: Continuous metrics
     subgraph L2["LAYER 2: Continuous Timeline Metrics (additive components)"]
         direction TB
-        C1["Elevated entropy<br/>mean_entropy / 8.0<br/>capped at 0.3"]
-        C2["Entropy rising trend<br/>late-half > early-half<br/>up to 0.15"]
-        C3["Low confidence margin<br/>(0.3 - mean_margin) / 0.3 × 0.2<br/>capped at 0.2"]
-        C4["Low top-K mass<br/>(0.5 - mean_mass) / 0.5 × 0.15<br/>capped at 0.15"]
-        C5["Elevated surprisal<br/>(mean_surprisal - 3) / 7 × 0.1<br/>capped at 0.1"]
+        C1["Elevated entropy<br/>min(1, mean_ent / 8) × 0.3<br/>threshold > 0.05"]
+        C2["Entropy rising trend<br/>last⅓ > first⅓ × 1.3<br/>min(0.2, delta/first × 0.1)"]
+        C3["Low confidence margin<br/>max(0, 1 - mean_margin × 5) × 0.2<br/>threshold > 0.05"]
+        C4["Low top-K mass<br/>max(0, 1 - mean_mass) × 0.15<br/>threshold > 0.03"]
+        C5["Elevated surprisal<br/>min(0.1, mean_surprisal / 10)<br/>threshold > 0.02"]
         CSum["continuous_sum = Σ components"]
         C1 --> CSum
         C2 --> CSum
@@ -40,11 +40,11 @@ flowchart TB
     %% Layer 3: Compound signals
     subgraph L3["LAYER 3: Compound Signals (severity-based)"]
         direction TB
-        CS1["context_loss → severity 0.6"]
+        CS1["context_loss → severity 0.75"]
         CS2["confident_confusion → severity 0.5"]
-        CS3["degenerating_generation → severity 0.5"]
-        CS4["attention_bottleneck → severity 0.4"]
-        CS5["confident_repetition_risk → severity 0.3"]
+        CS3["degenerating_generation → severity 0.7"]
+        CS4["attention_bottleneck → severity 0.65"]
+        CS5["confident_repetition_risk → severity 0.4"]
         CSSum["compound_sum = Σ fired severities"]
         CS1 --> CSSum
         CS2 --> CSSum
@@ -56,7 +56,7 @@ flowchart TB
     %% Final computation
     subgraph FINAL["FINAL SCORE"]
         direction TB
-        Combine["score = max(boolean_floor,<br/>boolean_floor + continuous_sum + compound_sum)"]
+        Combine["score = boolean_floor + continuous_sum + compound_sum<br/>(boolean flags via max, rest additive)"]
         Cap["risk_score = min(1.0, score)"]
         Factors["risk_factors = list of all contributors<br/>(e.g. elevated_entropy, compound:context_loss)"]
         Combine --> Cap

@@ -25,9 +25,9 @@ def _random_projection_sketch(
     rng = np.random.default_rng(seed)
 
     if tensor.dim() == 2:
-        vector = tensor.mean(dim=0).numpy()
+        vector = tensor.detach().cpu().mean(dim=0).numpy()
     else:
-        vector = tensor.numpy().flatten()
+        vector = tensor.detach().cpu().numpy().flatten()
 
     hidden_dim = len(vector)
 
