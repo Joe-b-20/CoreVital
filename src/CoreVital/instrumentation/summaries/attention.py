@@ -3,7 +3,7 @@
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import torch
 
@@ -454,7 +454,9 @@ def detect_attention_collapse(
         "catastrophic": catastrophic,
         "calibration_anomaly": calibration_anomaly,
         "calibration_anomaly_layers": calibration_anomaly_layers,
-        "per_layer_mean_collapse_rate": [round(per_layer_mean_rates.get(i, 0.0), 4) for i in sorted(per_layer_mean_rates)],
+        "per_layer_mean_collapse_rate": [
+            round(per_layer_mean_rates.get(i, 0.0), 4) for i in sorted(per_layer_mean_rates)
+        ],
     }
 
     return AttentionCollapseResult(detected=detected, severity=round(severity, 2), detail=detail)

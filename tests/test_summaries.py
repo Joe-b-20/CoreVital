@@ -18,7 +18,6 @@ from CoreVital.config import (
 )
 from CoreVital.instrumentation.summaries import (
     NORMALIZED_COLLAPSED_THRESHOLD,
-    AttentionCollapseResult,
     compute_attention_summary,
     compute_basin_scores,
     compute_hidden_summary,
@@ -719,23 +718,26 @@ class TestDetectAttentionCollapse:
     def test_healthy_model_constant_structural_heads(self):
         """Constant 1-2 collapsed heads across all steps: structural, not anomalous."""
         layers = _make_layers_by_step(
-            num_steps=10, num_layers=4, num_heads=12,
+            num_steps=10,
+            num_layers=4,
+            num_heads=12,
             collapsed_schedule=lambda step, layer: 1,
         )
         result = detect_attention_collapse(layers, num_attention_heads=12)
-        assert result.detected is False, (
-            f"Structural heads should not trigger collapse: {result.detail}"
-        )
+        assert result.detected is False, f"Structural heads should not trigger collapse: {result.detail}"
 
     def test_trend_detection_increasing_collapse(self):
         """Collapse rate increases from 0 to high during generation -> trend fires."""
+
         def schedule(step, layer):
             if step < 3:
                 return 0
             return min(10, step)
 
         layers = _make_layers_by_step(
-            num_steps=12, num_layers=4, num_heads=12,
+            num_steps=12,
+            num_layers=4,
+            num_heads=12,
             collapsed_schedule=schedule,
         )
         result = detect_attention_collapse(layers, num_attention_heads=12)
@@ -746,7 +748,9 @@ class TestDetectAttentionCollapse:
     def test_catastrophic_collapse(self):
         """Nearly all heads collapsed across all layers -> catastrophic fires."""
         layers = _make_layers_by_step(
-            num_steps=8, num_layers=4, num_heads=12,
+            num_steps=8,
+            num_layers=4,
+            num_heads=12,
             collapsed_schedule=lambda step, layer: 10,
         )
         result = detect_attention_collapse(layers, num_attention_heads=12)
@@ -757,7 +761,9 @@ class TestDetectAttentionCollapse:
     def test_no_trend_too_few_steps(self):
         """Fewer than COLLAPSE_MIN_STEPS_FOR_TREND steps: trend cannot fire."""
         layers = _make_layers_by_step(
-            num_steps=2, num_layers=4, num_heads=12,
+            num_steps=2,
+            num_layers=4,
+            num_heads=12,
             collapsed_schedule=lambda step, layer: 12 if step == 1 else 0,
         )
         result = detect_attention_collapse(layers, num_attention_heads=12)
@@ -772,7 +778,9 @@ class TestDetectAttentionCollapse:
         cal.collapsed_heads_per_layer[1] = MetricDistribution(values=[1.0] * 20)
 
         layers = _make_layers_by_step(
-            num_steps=6, num_layers=2, num_heads=12,
+            num_steps=6,
+            num_layers=2,
+            num_heads=12,
             collapsed_schedule=lambda step, layer: 10,
         )
         result = detect_attention_collapse(layers, num_attention_heads=12, calibration_profile=cal)
@@ -783,11 +791,15 @@ class TestDetectAttentionCollapse:
     def test_severity_variable(self):
         """Severity scales with which components fired."""
         layers_catastrophic = _make_layers_by_step(
-            num_steps=6, num_layers=4, num_heads=12,
+            num_steps=6,
+            num_layers=4,
+            num_heads=12,
             collapsed_schedule=lambda step, layer: 11,
         )
         layers_mild_trend = _make_layers_by_step(
-            num_steps=10, num_layers=4, num_heads=12,
+            num_steps=10,
+            num_layers=4,
+            num_heads=12,
             collapsed_schedule=lambda step, layer: 0 if step < 3 else 4,
         )
         r1 = detect_attention_collapse(layers_catastrophic, num_attention_heads=12)
