@@ -111,9 +111,9 @@ def detect_compound_signals(
                         total_heads_observed += len(mw)
                     else:
                         fc = getattr(layer.attention_summary, "focused_head_count", 0) or 0
-                        total_heads_observed += max(cc + fc, 1)
+                        total_heads_observed += max(cc, fc, 1)
         if total_heads_observed > 0:
-            collapse_rate = total_collapsed / total_heads_observed
+            collapse_rate = min(1.0, total_collapsed / total_heads_observed)
             mean_ent = _mean(entropies)
             if collapse_rate > 0.2 and mean_ent > 3.5:
                 signals.append(
@@ -123,7 +123,7 @@ def detect_compound_signals(
                         "entropy suggests information flow is restricted.",
                         severity=0.65,
                         evidence=[
-                            f"Collapse rate: {collapse_rate:.1%} of layer-steps",
+                            f"Collapse rate: {collapse_rate:.1%} of observed heads",
                             f"Mean entropy: {mean_ent:.2f}",
                         ],
                     )

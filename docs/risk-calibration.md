@@ -29,11 +29,11 @@ When timeline data is available, continuous metrics add components on top of the
 
 | Signal | Max contribution | How it's computed |
 |--------|-----------------|-------------------|
-| Elevated entropy | 0.3 | `mean_entropy / 8.0`, capped at 0.3 |
-| Entropy rising trend | 0.15 | Late-half entropy mean > early-half mean |
-| Low confidence margin | 0.2 | `max(0, 0.3 - mean_margin) / 0.3 * 0.2` |
-| Low top-K mass | 0.15 | `max(0, 0.5 - mean_agreement) / 0.5 * 0.15` |
-| Elevated surprisal | 0.1 | `(mean_surprisal - 3) / 7 * 0.1`, only when mean > 3 |
+| Elevated entropy | 0.3 | `min(1, mean_ent / 8) * 0.3`, threshold > 0.05 |
+| Entropy rising trend | 0.2 | `min(0.2, (last⅓ - first⅓) / first⅓ * 0.1)`, requires last⅓ > first⅓ × 1.3 |
+| Low confidence margin | 0.2 | `max(0, 1 - mean_margin * 5) * 0.2`, threshold > 0.05 |
+| Low top-K mass | 0.15 | `max(0, 1 - mean_mass) * 0.15`, threshold > 0.03 |
+| Elevated surprisal | 0.1 | `min(0.1, mean_surprisal / 10)`, threshold > 0.02 |
 
 Each component contributes to `risk_factors` (e.g., `elevated_entropy`, `entropy_rising`, `low_confidence_margin`, `low_topk_mass`, `elevated_surprisal`).
 

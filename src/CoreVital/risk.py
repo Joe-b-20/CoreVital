@@ -59,7 +59,7 @@ def compute_risk_score(
     health_flags: HealthFlags,
     summary: Summary,
     timeline: Optional[List[TimelineStep]] = None,
-    layers_by_step: Optional[List[List[LayerSummary]]] = None,
+    layers_by_step: Optional[List[List[LayerSummary]]] = None,  # reserved for future per-layer risk
     compound_signals: Optional[List["CompoundSignal"]] = None,
 ) -> Tuple[float, List[str]]:
     """Composite risk score from health flags, continuous timeline metrics, and compound signals.
@@ -69,6 +69,15 @@ def compute_risk_score(
     Boolean flags (NaN/Inf, repetition, mid-layer anomaly) act as hard ceilings via max();
     continuous metrics (entropy, top_k_margin, topk_mass, surprisal) and compound signal
     severities are additive (capped at 1.0).
+
+    Args:
+        health_flags: Aggregated boolean health flags.
+        summary: Run-level summary (token counts, timing).
+        timeline: Per-step logits summaries for continuous metric extraction.
+        layers_by_step: Reserved for future per-layer risk contribution.
+            Currently accepted but unused; kept for API stability since
+            callers (report_builder, compound_signals) already pass it.
+        compound_signals: Detected compound signals whose severities are additive.
 
     Returns:
         (score, factors) so downstream knows why the score is what it is.
