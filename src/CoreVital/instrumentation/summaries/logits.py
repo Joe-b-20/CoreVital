@@ -62,34 +62,29 @@ def compute_logits_summary(
 
         entropy_mode = getattr(config, "entropy_mode", "full")
 
+        # Both modes need log_softmax for downstream stats (surprisal, margin).
+        # topk_approx avoids the full p*log(p) reduction and the full probs_full
+        # allocation by working only with the top-K slice for entropy.
+        log_probs_full = F.log_softmax(logits, dim=-1)
+        topk_log_probs = log_probs_full[topk_indices]
+        topk_probs = torch.exp(topk_log_probs)
+
         if entropy_mode == "topk_approx":
-            # Approximate entropy using top-K probabilities from the full distribution,
-            # with a proper tail correction: H ≈ -sum(p_i * log2(p_i)) for top-K
-            # plus tail_mass * log2(remaining) as an upper bound on tail entropy.
-            log_probs_full = F.log_softmax(logits, dim=-1)
-            probs_full = torch.exp(log_probs_full)
-            topk_probs = probs_full[topk_indices]
-            topk_log_probs_full = log_probs_full[topk_indices]
+            # Entropy from top-K tokens (exact for these tokens)
+            topk_h = -(topk_probs * topk_log_probs).sum().item() / math.log(2)
 
-            # Entropy contribution from top-K tokens (exact for these tokens)
-            topk_h = -(topk_probs * topk_log_probs_full).sum().item() / math.log(2)
-
-            # Tail correction: assume uniform distribution over remaining tokens
+            # Tail correction: assume uniform over remaining tokens
             tail_mass = max(0.0, 1.0 - topk_probs.sum().item())
             if tail_mass > 1e-9:
                 remaining = len(logits) - len(topk_indices)
-                # -tail_mass * log2(tail_mass) + tail_mass * log2(remaining)
                 tail_self = -tail_mass * math.log2(tail_mass) if tail_mass > 0 else 0.0
                 tail_spread = tail_mass * math.log2(remaining) if remaining > 0 else 0.0
                 entropy_bits = topk_h + tail_self + tail_spread
             else:
                 entropy_bits = topk_h
         else:
-            # Full computation (default)
-            log_probs_full = F.log_softmax(logits, dim=-1)
+            # Full entropy: requires materializing all probs
             probs_full = torch.exp(log_probs_full)
-            topk_probs = probs_full[topk_indices]
-
             p_log_p = probs_full * log_probs_full
             entropy_nats = -torch.nan_to_num(p_log_p, nan=0.0).sum()
             entropy_bits = float(entropy_nats.item()) / math.log(2)

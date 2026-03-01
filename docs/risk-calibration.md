@@ -62,10 +62,10 @@ Layer blame now returns structured evidence for each blamed layer:
 ```python
 from CoreVital.risk import compute_layer_blame, compute_layer_blame_flat
 
-blamed = compute_layer_blame(timeline_layers, health_flags)
+blamed = compute_layer_blame(layers_by_step)
 # [{"layer": 5, "reasons": ["l2_norm_outlier"], "severity": 0.5}, ...]
 
-blamed_flat = compute_layer_blame_flat(timeline_layers, health_flags)
+blamed_flat = compute_layer_blame_flat(layers_by_step)
 # [5, ...]  (backward-compatible)
 ```
 

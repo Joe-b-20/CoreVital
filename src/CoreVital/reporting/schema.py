@@ -162,7 +162,8 @@ class LogitsSummary(BaseModel):
 
     entropy: Optional[float] = None
     top1_top2_margin: Optional[float] = None
-    topk: List[TopKItem] = Field(default_factory=list)
+    topk: List[TopKItem] = Field(default_factory=list)  # Deprecated — prefer topk_probs
+    topk_probs: List[TopKItem] = Field(default_factory=list)  # Primary name
     # Phase-1a additions
     top_k_margin: Optional[float] = None
     voter_agreement: Optional[float] = None  # Deprecated — prefer topk_mass

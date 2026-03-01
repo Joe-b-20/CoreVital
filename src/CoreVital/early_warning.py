@@ -19,6 +19,7 @@
 #   attention_collapse     — carried from health_flags
 # ============================================================================
 
+import math
 import statistics
 from typing import List, Tuple
 
@@ -28,19 +29,29 @@ DEFAULT_HIGH_ENTROPY_THRESHOLD = 4.0
 
 
 def _extract_entropies(timeline: List[TimelineStep]) -> List[float]:
-    return [s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None]
+    return [
+        s.logits_summary.entropy
+        for s in timeline
+        if s.logits_summary and s.logits_summary.entropy is not None and math.isfinite(s.logits_summary.entropy)
+    ]
 
 
 def _extract_margins(timeline: List[TimelineStep]) -> List[float]:
     return [
         s.logits_summary.top_k_margin
         for s in timeline
-        if s.logits_summary and s.logits_summary.top_k_margin is not None
+        if s.logits_summary
+        and s.logits_summary.top_k_margin is not None
+        and math.isfinite(s.logits_summary.top_k_margin)
     ]
 
 
 def _extract_surprisals(timeline: List[TimelineStep]) -> List[float]:
-    return [s.logits_summary.surprisal for s in timeline if s.logits_summary and s.logits_summary.surprisal is not None]
+    return [
+        s.logits_summary.surprisal
+        for s in timeline
+        if s.logits_summary and s.logits_summary.surprisal is not None and math.isfinite(s.logits_summary.surprisal)
+    ]
 
 
 def _detect_entropy_acceleration(
