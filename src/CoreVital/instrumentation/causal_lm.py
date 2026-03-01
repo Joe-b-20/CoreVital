@@ -81,12 +81,14 @@ def run_causal_generation(
         gen_config["do_sample"] = False
 
     # HF generate() does not accept a generator kwarg. For reproducibility when
-    # seed is set, the collector holds _generation_lock and we set the global RNG
-    # seed here so do_sample draws are deterministic within the lock scope.
-    if seed is not None and gen_config.get("do_sample", False):
-        torch.manual_seed(seed)
+    # seed is set we use fork_rng to seed a *forked* copy of the global RNG so
+    # do_sample draws are deterministic without leaking state to the host process.
+    _use_fork = seed is not None and gen_config.get("do_sample", False)
+    _rng_ctx = torch.random.fork_rng(enabled=_use_fork)
 
-    with _op("model.generate"):
+    with _op("model.generate"), _rng_ctx:
+        if _use_fork:
+            torch.manual_seed(seed)  # type: ignore[arg-type]
         outputs = cast(Any, model_bundle.model).generate(**inputs, **gen_config)
 
     # --- Extract generated tokens ---
