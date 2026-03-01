@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional, Type, cast
 
@@ -50,6 +51,38 @@ from CoreVital.logging_utils import get_logger
 from CoreVital.models.registry import ModelCapabilities
 
 logger = get_logger(__name__)
+
+
+def _probe_attentions_available(
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
+    device: torch.device,
+) -> bool:
+    """Run a 1-token forward with output_attentions=True and check if attentions are returned.
+
+    Used at load time to set ModelCapabilities.attentions_available (Issue 52).
+    For encoder-decoder models, provides decoder_input_ids so the forward pass
+    doesn't fail due to missing decoder inputs.
+    """
+    try:
+        dummy = tokenizer("test", return_tensors="pt").to(device)
+        fwd_kwargs: dict = {
+            **dummy,
+            "output_attentions": True,
+            "return_dict": True,
+        }
+        if getattr(model.config, "is_encoder_decoder", False):
+            dec_start = getattr(model.config, "decoder_start_token_id", None)
+            if dec_start is None:
+                dec_start = getattr(model.config, "pad_token_id", 0) or 0
+            fwd_kwargs["decoder_input_ids"] = torch.tensor([[dec_start]], device=device)
+        with torch.no_grad():
+            out = model(**fwd_kwargs)
+        attns = getattr(out, "attentions", None) or getattr(out, "decoder_attentions", None)
+        return attns is not None and len(attns) > 0
+    except Exception as exc:
+        logger.debug("Attention probe failed: %s", exc)
+        return False
 
 
 @dataclass
@@ -266,6 +299,16 @@ def load_model(config: Config, monitor: Optional["PerformanceMonitor"] = None) -
             except Exception as e:
                 logger.warning(f"Could not set attention implementation to 'eager': {e}")
                 # Continue anyway - some models might not support this or might already work
+
+        # Probe whether model actually returns attentions (Issue 52)
+        with _op("_probe_attentions"):
+            attentions_available = _probe_attentions_available(model, tokenizer, device)
+            capabilities = dataclasses.replace(capabilities, attentions_available=attentions_available)
+            if not attentions_available:
+                logger.warning(
+                    "Attention capture probe: model did not return attentions "
+                    "from a 1-token forward. Attention metrics will be omitted."
+                )
 
         # Extract metadata (use model.config which is already loaded) - CoreVital logic
         with _op("_extract_metadata"):

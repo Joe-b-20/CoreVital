@@ -1,0 +1,9 @@
+# Phi-3 / Phi3ForCausalLM family
+# 32 layers, 3072 hidden, 32 heads, ~32k vocab
+# Thresholds: DEFAULTS — not yet calibrated from empirical runs.
+# Phi-3 is trained on high-quality data; tends toward lower entropy.
+l2_explosion_multiplier: 7.0
+high_entropy_threshold_bits: 3.8
+repetition_cosine_threshold: 0.9996
+collapsed_head_entropy_threshold: 0.06
+focused_head_concentration_threshold: 0.88

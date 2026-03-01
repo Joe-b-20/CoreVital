@@ -52,3 +52,12 @@ private-ip-strategy.md
 docs/demo/corevital.db
 docs/demo/*.bak
 docs/demo/trace_*_performance_detailed.json
+docs/implementation-plan.md
+docs/issues-and-fixes.md
+
+# --- Database Cursors ---
+.cursor/
+
+# --- Refactor Tracker ---
+REFACTOR_TRACKER.md
+CHANGELOG.md

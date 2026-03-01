@@ -1,0 +1,128 @@
+%% Step Processor Lifecycle — Raw GPU tensors → StepSummary (scalars only)
+%% This is the core of CoreVital's memory efficiency: tensors never survive past process_step().
+%% Ref: src/CoreVital/instrumentation/step_processor.py
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    subgraph RAW["RAW MODEL OUTPUT (GPU tensors, per step)"]
+        direction LR
+        R1["logits<br/>[1, vocab_size]"]
+        R2["hidden_states<br/>[num_layers+1, 1, seq, dim]<br/>(includes embedding layer)"]
+        R3["attentions<br/>[num_layers, 1, heads, seq, seq]"]
+        R4["cross_attentions<br/>(Seq2Seq only)"]
+    end
+
+    subgraph NORMALIZE["normalize_step_tensors() → NormalizedStepPayload"]
+        direction TB
+        N1["Strip embedding layer<br/>hidden_states = hidden[1:num_layers+1]"]
+        N2["Slice attention to last query position<br/>attention = attn[:, :, -1:, :]"]
+        N3[".detach().cpu() all tensors<br/>→ no GPU reference survives"]
+        N4["Shape assertions<br/>hidden: 3D (layers, seq, dim)<br/>attention: 4D (layers, heads, 1, seq)<br/>logits: 1D or 2D"]
+        N1 --> N2 --> N3 --> N4
+    end
+
+    subgraph PROCESS["process_step() → compute summaries per layer"]
+        direction TB
+
+        subgraph PER_LAYER["For each layer (0..N-1)"]
+            direction TB
+
+            subgraph LOGITS_SUM["Logits Summary (layer 0 only — logits are global)"]
+                LS1["entropy (full or topk_approx)"]
+                LS2["top_k_margin"]
+                LS3["topk_mass (formerly voter_agreement)"]
+                LS4["topk_probs (formerly topk)"]
+                LS5["perplexity = 2^entropy"]
+                LS6["surprisal = -log₂(p_actual)"]
+            end
+
+            subgraph ATTN_SUM["Attention Summary"]
+                AS1["entropy_mean (raw nats)"]
+                AS2["entropy_mean_normalized (÷ log K, [0,1])"]
+                AS3["entropy_min, entropy_max"]
+                AS4["concentration_max, concentration_min"]
+                AS5["collapsed_head_count (normalized < 0.03)"]
+                AS6["focused_head_count (concentration > 0.9)"]
+            end
+
+            subgraph HIDDEN_SUM["Hidden Summary"]
+                HS1["mean, std, l2_norm_mean, max_abs"]
+                HS2["clipped: bool"]
+                HS3["clip_fraction (when clipped)"]
+                HS4["clip_max_before (when clipped)"]
+                HS5["sketch (optional random projection)"]
+            end
+
+            subgraph ANOMALY["Anomaly Detection"]
+                AN1["detect_tensor_anomalies()<br/>has_nan, has_inf per layer"]
+            end
+        end
+
+        REP["Extract _last_layer_hidden_vec<br/>Small 1-D CPU vector for repetition detection<br/>(NOT a raw model tensor)"]
+    end
+
+    subgraph OUTPUT["StepSummary (scalars only — tensors discarded)"]
+        direction LR
+        O1["logits_summary<br/>{entropy, perplexity, surprisal,<br/>top_k_margin, topk_mass, topk_probs}"]
+        O2["layer_summaries<br/>List of {hidden_summary,<br/>attention_summary, anomalies}"]
+        O3["_last_layer_hidden_vec<br/>(small derived 1-D vector)"]
+    end
+
+    DISCARD["⚠️ All raw tensors discarded here.<br/>No GPU memory leak.<br/>No raw tensors stored beyond process_step()."]
+
+    RAW --> NORMALIZE
+    NORMALIZE --> PROCESS
+    PER_LAYER --> REP
+    PROCESS --> OUTPUT
+    PROCESS --> DISCARD
+
+    %% Styling
+    style RAW fill:#7f1d1d15,stroke:#f87171
+    style R1 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style R2 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style R3 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style R4 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style NORMALIZE fill:#1e3a5f15,stroke:#60a5fa
+    style N1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style N2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style N3 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style N4 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    style PROCESS fill:#14532d15,stroke:#4ade80
+    style PER_LAYER fill:#14532d15,stroke:#4ade80
+    style REP fill:#831843,stroke:#f472b6,color:#fbcfe8
+
+    style LOGITS_SUM fill:#312e8115,stroke:#818cf8
+    style LS1 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style LS2 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style LS3 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style LS4 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style LS5 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style LS6 fill:#312e81,stroke:#818cf8,color:#c7d2fe
+
+    style ATTN_SUM fill:#7c2d1215,stroke:#fb923c
+    style AS1 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style AS2 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style AS3 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style AS4 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style AS5 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style AS6 fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+
+    style HIDDEN_SUM fill:#14532d15,stroke:#4ade80
+    style HS1 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style HS2 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style HS3 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style HS4 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style HS5 fill:#14532d,stroke:#4ade80,color:#bbf7d0
+
+    style ANOMALY fill:#7f1d1d15,stroke:#f87171
+    style AN1 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style OUTPUT fill:#065f4615,stroke:#10b981
+    style O1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style O2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style O3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style DISCARD fill:#92400e,stroke:#f59e0b,color:#fde68a

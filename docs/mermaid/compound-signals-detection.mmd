@@ -1,0 +1,112 @@
+%% Compound Signal Detection — The 5 multi-metric failure patterns
+%% Each pattern combines 2+ metrics that individually might not be alarming,
+%% but together indicate a specific failure mode.
+%% Ref: src/CoreVital/compound_signals.py → detect_compound_signals()
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    Input(["Inputs: timeline, layers_by_step, basin_scores"])
+
+    %% Signal 1: Context Loss
+    subgraph S1["1. CONTEXT LOSS (severity: 0.75)"]
+        direction TB
+        S1A["High entropy<br/>(model confused)"]
+        S1B["Low basin scores < 0.3<br/>(model ignoring middle tokens)"]
+        S1C["Combined: model lost track of context<br/>it literally can't 'see' middle tokens"]
+        S1A --> S1C
+        S1B --> S1C
+    end
+
+    %% Signal 2: Confident Confusion
+    subgraph S2["2. CONFIDENT CONFUSION (severity: 0.5)"]
+        direction TB
+        S2A["High entropy<br/>(model uncertain)"]
+        S2B["High top-K margin<br/>(but still picks one token confidently)"]
+        S2C["Combined: model is 'confidently wrong'<br/>high uncertainty but strong preference"]
+        S2A --> S2C
+        S2B --> S2C
+    end
+
+    %% Signal 3: Degenerating Generation
+    subgraph S3["3. DEGENERATING GENERATION (severity: 0.7)"]
+        direction TB
+        S3A["Positive entropy slope<br/>(uncertainty growing over time)"]
+        S3B["Declining margin<br/>(confidence dropping over time)"]
+        S3C["Combined: generation quality<br/>is getting worse with each token"]
+        S3A --> S3C
+        S3B --> S3C
+    end
+
+    %% Signal 4: Attention Bottleneck
+    subgraph S4["4. ATTENTION BOTTLENECK (severity: 0.65)"]
+        direction TB
+        S4A["High collapsed head counts<br/>(attention heads shutting down)"]
+        S4B["Elevated entropy<br/>(model confused despite having heads)"]
+        S4C["Combined: too few active heads<br/>to process information properly"]
+        S4A --> S4C
+        S4B --> S4C
+    end
+
+    %% Signal 5: Confident Repetition Risk
+    subgraph S5["5. CONFIDENT REPETITION RISK (severity: 0.4)"]
+        direction TB
+        S5A["Low entropy<br/>(very confident)"]
+        S5B["Very high top-K mass<br/>(probability concentrated)"]
+        S5C["Combined: model is locked onto<br/>a narrow token pattern — may loop"]
+        S5A --> S5C
+        S5B --> S5C
+    end
+
+    %% Output
+    subgraph OUT["OUTPUT"]
+        direction TB
+        O1["List of CompoundSignal:<br/>{name, description, severity, evidence}"]
+        O2["Fed into risk_score<br/>(severity added to score,<br/>'compound:name' in risk_factors)"]
+        O3["Displayed in narrative<br/>(up to 2 signals cited)"]
+    end
+
+    Input --> S1
+    Input --> S2
+    Input --> S3
+    Input --> S4
+    Input --> S5
+
+    S1C --> OUT
+    S2C --> OUT
+    S3C --> OUT
+    S4C --> OUT
+    S5C --> OUT
+
+    %% Styling
+    style Input fill:#059669,stroke:#10b981,color:#d1fae5
+
+    style S1 fill:#7f1d1d15,stroke:#f87171
+    style S1A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S1B fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style S1C fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style S2 fill:#7f1d1d15,stroke:#f87171
+    style S2A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S2B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S2C fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style S3 fill:#713f1215,stroke:#f59e0b
+    style S3A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S3B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S3C fill:#713f12,stroke:#f59e0b,color:#fde68a
+
+    style S4 fill:#713f1215,stroke:#f59e0b
+    style S4A fill:#7c2d12,stroke:#fb923c,color:#fed7aa
+    style S4B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S4C fill:#713f12,stroke:#f59e0b,color:#fde68a
+
+    style S5 fill:#14532d15,stroke:#4ade80
+    style S5A fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S5B fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style S5C fill:#14532d,stroke:#4ade80,color:#bbf7d0
+
+    style OUT fill:#4c1d9515,stroke:#a78bfa
+    style O1 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style O2 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style O3 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe

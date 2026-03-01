@@ -162,10 +162,12 @@ class LogitsSummary(BaseModel):
 
     entropy: Optional[float] = None
     top1_top2_margin: Optional[float] = None
-    topk: List[TopKItem] = Field(default_factory=list)
+    topk: List[TopKItem] = Field(default_factory=list)  # Deprecated — prefer topk_probs
+    topk_probs: List[TopKItem] = Field(default_factory=list)  # Primary name
     # Phase-1a additions
     top_k_margin: Optional[float] = None
-    voter_agreement: Optional[float] = None
+    voter_agreement: Optional[float] = None  # Deprecated — prefer topk_mass
+    topk_mass: Optional[float] = None  # Primary name (sum of top-K probs)
     perplexity: Optional[float] = None
     surprisal: Optional[float] = None
 
@@ -185,12 +187,14 @@ class AttentionSummary(BaseModel):
     """Attention summary for a layer."""
 
     entropy_mean: Optional[float] = None
+    entropy_mean_normalized: Optional[float] = None  # Entropy / log(K), in [0, 1]
     entropy_min: Optional[float] = None
     concentration_max: Optional[float] = None
     # Phase-1a additions
     entropy_max: Optional[float] = None
     concentration_min: Optional[float] = None
     collapsed_head_count: int = 0
+    collapsed_head_rate: Optional[float] = None  # collapsed_head_count / num_heads, in [0,1]
     focused_head_count: int = 0
     # Per-head max attention weight (Voita et al. 2019: specialist heads ~80% max weight)
     max_weight_per_head: Optional[List[float]] = None
@@ -327,6 +331,7 @@ class HealthFlags(BaseModel):
     nan_detected: bool = False
     inf_detected: bool = False
     attention_collapse_detected: bool = False
+    attention_collapse_severity: Optional[float] = None  # Variable severity from detect_attention_collapse [0,1]
     high_entropy_steps: int = 0
     repetition_loop_detected: bool = False
     mid_layer_anomaly_detected: bool = False

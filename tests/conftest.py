@@ -230,14 +230,14 @@ def mock_model_bundle(request):
             # Create scores (logits) for each generation step
             scores = tuple([torch.randn(batch_size, vocab_size) for _ in range(max_new_tokens)])
 
-            # Create hidden states for each generation step
-            # Each step has a tuple of layer hidden states
+            # Create hidden states for each generation step (match real HF: embedding + layer_1..layer_N)
+            # Each step has a tuple of (embedding_output, layer_1, ..., layer_N) = num_layers + 1 elements
             hidden_states = tuple(
                 [
                     tuple(
                         [
                             torch.randn(batch_size, 1, hidden_size)  # seq_len=1 for each generation step
-                            for _ in range(num_layers)
+                            for _ in range(num_layers + 1)
                         ]
                     )
                     for _ in range(max_new_tokens)

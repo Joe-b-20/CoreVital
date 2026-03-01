@@ -1,7 +1,9 @@
-%% Phase-1 Metrics: Signal Interpretation Reference
-%% Maps each metric to its output ranges, what those ranges mean,
-%% and what action to take. Read as: Metric → Threshold → Meaning → Action.
-%% Ref: docs/Phase1 metrics analysis.md
+%% CoreVital Metrics: Signal Interpretation Reference
+%% Maps each metric to its output ranges, what those ranges mean, and what action to take.
+%% Updated: 2026-02-28 — audit-57 refactor. Renames: voter_agreement → topk_mass.
+%% New: normalized entropy, compound signals, early warning signals.
+%% Collapse threshold: normalized < 0.03 (not raw < 0.1).
+%% Ref: docs/metrics-interpretation.md
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
 
 flowchart LR
@@ -13,10 +15,10 @@ flowchart LR
     subgraph SIG_LOGIT["LOGIT SIGNAL INTERPRETATION"]
         direction TB
 
-        E["M1: Shannon Entropy<br/>float: 0 → ~17"]
+        E["M1: Shannon Entropy<br/>float: 0 → ~17<br/>(entropy_mode: full or topk_approx)"]
         E --> E_LOW["< 2.0<br/>Confident ✅"]
         E --> E_MED["2.0 - 4.0<br/>Normal uncertainty"]
-        E --> E_HIGH["> 4.0<br/>HIGH CONFUSION ⚠️"]
+        E --> E_HIGH["> threshold<br/>(model-dependent: 3.5–5.0)<br/>HIGH CONFUSION ⚠️"]
         E --> E_SPIKE["Sudden spike<br/>Lost context 🔴"]
 
         M["M2: Top-K Margin<br/>float: 0 → 1.0"]
@@ -24,7 +26,7 @@ flowchart LR
         M --> M_MED["0.2 - 0.5<br/>Clear but competitive"]
         M --> M_LOW["< 0.2<br/>Model torn ⚠️"]
 
-        V["M3: Voter Agreement<br/>float: 0 → 1.0"]
+        V["M3: Top-K Mass<br/>(topk_mass; formerly voter_agreement)<br/>float: 0 → 1.0"]
         V --> V_HIGH["> 0.95<br/>Peaked distribution ✅"]
         V --> V_MED["0.7 - 0.95<br/>Normal concentration"]
         V --> V_LOW["< 0.7<br/>Probability spread wide ⚠️"]
@@ -36,21 +38,23 @@ flowchart LR
     end
 
     %% ═══════════════════════════════════════════════════════════════════
-    %% COMBINED LOGIT PATTERNS
+    %% COMBINED LOGIT PATTERNS (feeds into compound signals)
     %% ═══════════════════════════════════════════════════════════════════
 
-    subgraph SIG_COMBO["COMBINED LOGIT PATTERNS"]
+    subgraph SIG_COMBO["COMBINED LOGIT PATTERNS → Compound Signals"]
         direction TB
         P1["Low entropy + High margin<br/>= Confident, peaked ✅"]
-        P2["High entropy + Low margin<br/>= Completely uncertain 🔴"]
-        P3["Low entropy + Low margin<br/>= Few options, evenly matched ⚠️"]
-        P4["High agreement + Low margin<br/>= Competitive top-K set"]
+        P2["High entropy + Low margin<br/>= Completely uncertain 🔴<br/>→ degenerating_generation"]
+        P3["High entropy + High margin<br/>= Confident but confused ⚠️<br/>→ confident_confusion"]
+        P4["Low entropy + Very high mass<br/>= Locked onto pattern<br/>→ confident_repetition_risk"]
     end
 
     E_LOW --> P1
     M_HIGH --> P1
     E_HIGH --> P2
     M_LOW --> P2
+    E_HIGH --> P3
+    M_HIGH --> P3
 
     %% ═══════════════════════════════════════════════════════════════════
     %% ATTENTION SIGNALS
@@ -59,18 +63,18 @@ flowchart LR
     subgraph SIG_ATTN["ATTENTION SIGNAL INTERPRETATION"]
         direction TB
 
-        AE["M5: Attention Entropy<br/>mean/min/max per layer"]
-        AE --> AE_NORMAL["1.5 - 3.0<br/>Healthy distribution ✅"]
-        AE --> AE_COLLAPSE["min < 0.1<br/>HEAD COLLAPSE 🔴<br/>Information bottleneck"]
-        AE --> AE_OVERLOAD["> 4.0<br/>OVERLOAD ⚠️<br/>Inattentive heads"]
-        AE --> AE_COUNT["collapsed_count > 0<br/>IMMEDIATE ALERT 🔴"]
+        AE["M5: Attention Entropy<br/>entropy_mean (raw nats)<br/>entropy_mean_normalized (0–1)"]
+        AE --> AE_NORMAL["normalized 0.3 - 0.7<br/>Healthy distribution ✅"]
+        AE --> AE_COLLAPSE["normalized < 0.03<br/>HEAD COLLAPSE 🔴<br/>Information bottleneck"]
+        AE --> AE_OVERLOAD["normalized > 0.9<br/>Nearly uniform ⚠️<br/>Inattentive heads"]
+        AE --> AE_COUNT["collapsed_count > 0<br/>ALERT 🔴"]
 
         C["M6: Concentration Max<br/>float per layer"]
         C --> C_NORMAL["0.3 - 0.7<br/>Healthy ✅"]
         C --> C_HIGH["> 0.95<br/>COLLAPSE 🔴<br/>All attention on 1 token"]
 
-        BS["M7b: Basin Score<br/>float per head per layer"]
-        BS --> BS_LOW["< 0.3<br/>Lost in the Middle ⚠️<br/>Head ignores middle tokens"]
+        BS["M7b: Basin Score<br/>float per head per layer<br/>(vectorized computation)"]
+        BS --> BS_LOW["< 0.3<br/>Lost in the Middle ⚠️<br/>→ context_loss compound signal"]
         BS --> BS_NORMAL["≈ 1.0<br/>Equal attention ✅"]
         BS --> BS_HIGH["> 1.5<br/>Middle-focused (investigate)"]
     end
@@ -82,19 +86,23 @@ flowchart LR
     subgraph SIG_HIDDEN["HIDDEN STATE SIGNAL INTERPRETATION"]
         direction TB
 
-        L2["M8: L2 Norm<br/>float per layer"]
+        L2["M8: L2 Norm<br/>float per layer<br/>(median early-layer baseline)"]
         L2 --> L2_NORMAL["1 - 10<br/>Healthy range ✅"]
-        L2 --> L2_HIGH["> 50<br/>EXPLOSION ⚠️<br/>Activations growing unbounded"]
-        L2 --> L2_LOW["< 0.1<br/>VANISHING 🔴<br/>Activations dying out"]
+        L2 --> L2_HIGH["> multiplier × median<br/>EXPLOSION ⚠️"]
+        L2 --> L2_LOW["< 0.1<br/>VANISHING 🔴"]
 
         SD["M9: Std Dev<br/>float per layer"]
         SD --> SD_NORMAL["0.5 - 2.0<br/>Healthy diversity ✅"]
-        SD --> SD_LOW["< 0.1<br/>DEAD LAYER 🔴<br/>Uniform activations"]
+        SD --> SD_LOW["< 0.1<br/>DEAD LAYER 🔴"]
 
         LT["M10: Layer Transform<br/>float per transition"]
-        LT --> LT_LOW["< 0.1<br/>Dead layer ⚠️<br/>Identity function"]
+        LT --> LT_LOW["< 0.1<br/>Dead layer ⚠️"]
         LT --> LT_NORMAL["0.2 - 0.5<br/>Healthy refinement ✅"]
-        LT --> LT_HIGH["> 0.8<br/>Radical change ⚠️<br/>Possible corruption"]
+        LT --> LT_HIGH["> 0.8<br/>Radical change ⚠️"]
+
+        HD["Hidden Diagnostics<br/>(when clipping fires)"]
+        HD --> HD_FRAC["clip_fraction: fraction clipped<br/>Small = benign, Large = severe"]
+        HD --> HD_MAX["clip_max_before: original max abs<br/>Extreme values = instability"]
     end
 
     %% ═══════════════════════════════════════════════════════════════════
@@ -105,7 +113,7 @@ flowchart LR
         direction TB
 
         NI["M12: NaN/Inf<br/>bool flags per layer"]
-        NI --> NI_TRUE["ANY true = 🔴<br/>IMMEDIATE FAILURE<br/>Stop serving, investigate"]
+        NI --> NI_TRUE["ANY true = 🔴<br/>Risk = 1.0<br/>Stop serving, investigate"]
 
         S["M13.5: Surprisal<br/>float per token"]
         S --> S_LOW["< 2.0<br/>Expected token ✅"]
@@ -119,17 +127,30 @@ flowchart LR
     end
 
     %% ═══════════════════════════════════════════════════════════════════
+    %% EARLY WARNING SIGNALS
+    %% ═══════════════════════════════════════════════════════════════════
+
+    subgraph SIG_EARLY["EARLY WARNING SIGNALS"]
+        direction TB
+
+        EW1["entropy_accelerating<br/>Rate of change increasing"]
+        EW2["margin_collapsed<br/>Margin near zero"]
+        EW3["margin_declining<br/>< 30% of early level"]
+        EW4["surprisal_volatile<br/>CV > 1.5 in recent window"]
+        EW5["entropy_margin_divergence<br/>High entropy + high margin"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════════════
     %% STYLING
     %% ═══════════════════════════════════════════════════════════════════
 
-    %% Section backgrounds
     style SIG_LOGIT fill:#312e8115,stroke:#818cf8,color:#c7d2fe
     style SIG_COMBO fill:#312e8110,stroke:#818cf8,color:#c7d2fe
     style SIG_ATTN fill:#7c2d1215,stroke:#fb923c,color:#fed7aa
     style SIG_HIDDEN fill:#14532d15,stroke:#4ade80,color:#bbf7d0
     style SIG_HEALTH fill:#83184315,stroke:#f472b6,color:#fbcfe8
+    style SIG_EARLY fill:#4c1d9515,stroke:#a78bfa,color:#ddd6fe
 
-    %% Metric source nodes
     style E fill:#312e81,stroke:#818cf8,color:#c7d2fe
     style M fill:#312e81,stroke:#818cf8,color:#c7d2fe
     style V fill:#312e81,stroke:#818cf8,color:#c7d2fe
@@ -140,11 +161,16 @@ flowchart LR
     style L2 fill:#14532d,stroke:#4ade80,color:#bbf7d0
     style SD fill:#14532d,stroke:#4ade80,color:#bbf7d0
     style LT fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style HD fill:#14532d,stroke:#4ade80,color:#bbf7d0
     style NI fill:#7f1d1d,stroke:#f87171,color:#fecaca
     style S fill:#713f12,stroke:#facc15,color:#fef9c3
     style HF fill:#831843,stroke:#f472b6,color:#fbcfe8
+    style EW1 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style EW2 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style EW3 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style EW4 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style EW5 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
 
-    %% Green signals
     style E_LOW fill:#065f46,stroke:#10b981,color:#6ee7b7
     style M_HIGH fill:#065f46,stroke:#10b981,color:#6ee7b7
     style V_HIGH fill:#065f46,stroke:#10b981,color:#6ee7b7
@@ -159,7 +185,6 @@ flowchart LR
     style HF_GREEN fill:#065f46,stroke:#10b981,color:#6ee7b7
     style P1 fill:#065f46,stroke:#10b981,color:#6ee7b7
 
-    %% Yellow signals
     style E_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
     style E_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
     style M_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
@@ -177,10 +202,10 @@ flowchart LR
     style S_MED fill:#713f12,stroke:#f59e0b,color:#fde68a
     style S_HIGH fill:#713f12,stroke:#f59e0b,color:#fde68a
     style HF_YELLOW fill:#713f12,stroke:#f59e0b,color:#fde68a
-    style P3 fill:#713f12,stroke:#f59e0b,color:#fde68a
     style P4 fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style HD_FRAC fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style HD_MAX fill:#713f12,stroke:#f59e0b,color:#fde68a
 
-    %% Red signals
     style E_SPIKE fill:#7f1d1d,stroke:#f87171,color:#fecaca
     style AE_COLLAPSE fill:#7f1d1d,stroke:#f87171,color:#fecaca
     style AE_COUNT fill:#7f1d1d,stroke:#f87171,color:#fecaca
@@ -190,3 +215,4 @@ flowchart LR
     style NI_TRUE fill:#7f1d1d,stroke:#f87171,color:#fecaca
     style HF_RED fill:#7f1d1d,stroke:#f87171,color:#fecaca
     style P2 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style P3 fill:#713f12,stroke:#f59e0b,color:#fde68a

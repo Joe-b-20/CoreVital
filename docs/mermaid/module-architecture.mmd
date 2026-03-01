@@ -1,0 +1,178 @@
+%% CoreVital Module Architecture — How the codebase is organized
+%% Shows module boundaries, dependencies, and data flow between them.
+%% Ref: src/CoreVital/ directory structure after audit-57 refactor
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    %% Entry points
+    subgraph ENTRY["ENTRY POINTS"]
+        direction LR
+        CLI["cli.py<br/>run, calibrate, serve,<br/>migrate, compare"]
+        MON["monitor.py<br/>CoreVitalMonitor<br/>run(), wrap_generation(),<br/>stream()"]
+        API["api.py<br/>FastAPI (corevital serve)<br/>GET /api/traces"]
+    end
+
+    %% Configuration
+    subgraph CONFIG["CONFIGURATION"]
+        direction LR
+        CFG["config.py<br/>Config, ModelProfile,<br/>load_model_profile(),<br/>_architecture_to_profile_key"]
+        YAML["configs/<br/>default.yaml<br/>model_profiles/*.yaml<br/>(gpt2, llama, mistral,<br/>mixtral, qwen2, phi3)"]
+    end
+
+    %% Model loading
+    subgraph MODELS["MODELS"]
+        direction LR
+        REG["models/registry.py<br/>ModelCapabilities<br/>(attentions_available)"]
+        HFL["models/hf_loader.py<br/>load model + tokenizer<br/>_probe_attentions_available()"]
+    end
+
+    %% Instrumentation (the core)
+    subgraph INSTR["INSTRUMENTATION PIPELINE"]
+        direction TB
+
+        COL["collector.py<br/>~250-line orchestrator<br/>InstrumentationCollector.run()"]
+
+        subgraph GEN["Generation Paths"]
+            direction LR
+            CLM["causal_lm.py<br/>run_causal_generation()<br/>wraps model.generate()"]
+            S2S["seq2seq.py<br/>run_seq2seq_generation()<br/>manual decoder loop + KV cache"]
+        end
+
+        BSL["baselines.py<br/>run_warmup(), run_baseline(),<br/>run_prompt_forward()<br/>_resolve_special_token(),<br/>_normalize_eos(),<br/>_build_logits_processor()"]
+
+        SP["step_processor.py<br/>normalize_step_tensors()<br/>process_step()<br/>→ StepSummary (scalars only)"]
+
+        subgraph SUMS["summaries/ subpackage"]
+            direction LR
+            SL["logits.py<br/>entropy, margin,<br/>topk_mass, perplexity,<br/>surprisal"]
+            SA["attention.py<br/>entropy (raw + normalized),<br/>concentration, collapse,<br/>basin scores (vectorized)"]
+            SH["hidden_states.py<br/>L2 norm, anomaly detection,<br/>repetition loop, mid-layer,<br/>clip diagnostics"]
+            SU["utils.py<br/>random_projection_sketch<br/>(default_rng, no global seed)"]
+        end
+
+        COL --> CLM
+        COL --> S2S
+        COL --> BSL
+        CLM --> SP
+        S2S --> SP
+        SP --> SUMS
+    end
+
+    %% Interpretation layer
+    subgraph INTERP["INTERPRETATION LAYER"]
+        direction TB
+        RISK["risk.py<br/>compute_risk_score() (composite)<br/>compute_layer_blame() (enriched)<br/>compute_layer_blame_flat()"]
+        COMP["compound_signals.py<br/>detect_compound_signals()<br/>5 multi-metric patterns"]
+        EW["early_warning.py<br/>compute_early_warning()<br/>5 trend detectors"]
+        NAR["narrative.py<br/>build_narrative()<br/>data-specific text"]
+        FP["fingerprint.py<br/>25-element v2 vector<br/>compute_prompt_hash()"]
+        CAL["calibration.py<br/>CalibrationProfile<br/>calibrate_from_runs()<br/>compute_divergence_score()"]
+        CR["calibration_risk.py<br/>compute_ece()<br/>fit_platt_scaling()"]
+    end
+
+    %% Reporting
+    subgraph REPORT["REPORTING"]
+        direction LR
+        SCH["reporting/schema.py<br/>Report, TimelineStep,<br/>AttentionSummary, HiddenSummary<br/>(Pydantic, v0.4.0)"]
+        RB["reporting/report_builder.py<br/>ReportBuilder.build()<br/>→ Report"]
+        VAL["reporting/validation.py<br/>validate_report()<br/>validate_metric_consistency()"]
+        AQ["reporting/attention_queries.py<br/>get_attention_to/from_token"]
+    end
+
+    %% Sinks
+    subgraph SINKS["PERSISTENCE (SINKS)"]
+        direction LR
+        SQLite["sinks/sqlite_sink.py"]
+        LF["sinks/local_file.py"]
+        DD["sinks/datadog_sink.py"]
+        PR["sinks/prometheus_sink.py"]
+        WB["sinks/wandb_sink.py"]
+        HT["sinks/http_sink.py"]
+    end
+
+    %% Integrations
+    subgraph INTEG["INTEGRATIONS"]
+        OTEL["integrations/opentelemetry.py<br/>export_run_to_otel"]
+    end
+
+    %% Data flow arrows
+    CLI --> CFG
+    CLI --> COL
+    CLI --> RB
+    CLI --> SINKS
+    MON --> COL
+    MON --> RB
+    API --> SQLite
+
+    CFG --> YAML
+    CFG --> MODELS
+
+    COL --> MODELS
+    INSTR --> REPORT
+    SP --> RB
+
+    RB --> INTERP
+    RB --> SCH
+    RB --> VAL
+
+    RISK --> NAR
+    EW --> NAR
+    COMP --> NAR
+    COMP --> RISK
+
+    RB --> SINKS
+    SINKS --> INTEG
+
+    %% Styling
+    style ENTRY fill:#059669,stroke:#10b981,color:#d1fae5
+    style CLI fill:#059669,stroke:#10b981,color:#d1fae5
+    style MON fill:#059669,stroke:#10b981,color:#d1fae5
+    style API fill:#059669,stroke:#10b981,color:#d1fae5
+
+    style CONFIG fill:#1e3a5f15,stroke:#60a5fa
+    style CFG fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style YAML fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    style MODELS fill:#065f4615,stroke:#10b981
+    style REG fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style HFL fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style INSTR fill:#14532d15,stroke:#4ade80
+    style COL fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style GEN fill:#14532d15,stroke:#4ade80
+    style CLM fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style S2S fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style BSL fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style SP fill:#14532d,stroke:#4ade80,color:#bbf7d0
+    style SUMS fill:#312e8115,stroke:#818cf8
+    style SL fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style SA fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style SH fill:#312e81,stroke:#818cf8,color:#c7d2fe
+    style SU fill:#312e81,stroke:#818cf8,color:#c7d2fe
+
+    style INTERP fill:#4c1d9515,stroke:#a78bfa
+    style RISK fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style COMP fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style EW fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style NAR fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style FP fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style CAL fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style CR fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+
+    style REPORT fill:#92400e15,stroke:#f59e0b
+    style SCH fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style RB fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style VAL fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style AQ fill:#92400e,stroke:#f59e0b,color:#fde68a
+
+    style SINKS fill:#0e749015,stroke:#22d3ee
+    style SQLite fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style LF fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style DD fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style PR fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style WB fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+    style HT fill:#0e7490,stroke:#22d3ee,color:#a5f3fc
+
+    style INTEG fill:#0e749015,stroke:#22d3ee
+    style OTEL fill:#0e7490,stroke:#22d3ee,color:#a5f3fc

@@ -1,7 +1,12 @@
 # ============================================================================
-# CoreVital - Hook System
+# CoreVital - Hook System (currently unused by design)
 #
-# Purpose: Register hooks to capture hidden states and attention during forward pass
+# This module is currently unused by design. Capture uses Hugging Face output
+# flags (output_hidden_states=True, output_attentions=True), not PyTorch
+# forward hooks. See collector.py for the active instrumentation path.
+#
+# Purpose: Optional fallback to register forward hooks for models that do not
+#          support HF output flags.
 # Inputs: Model layers
 # Outputs: Hook handles and captured data storage
 # Dependencies: torch

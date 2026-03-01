@@ -78,6 +78,8 @@ class ModelCapabilities:
     detection_method: DetectionMethod
     has_encoder: bool
     has_decoder: bool
+    # Set after load by attention probe (Issue 52). None = not probed.
+    attentions_available: Optional[bool] = None
 
     @property
     def is_seq2seq(self) -> bool:

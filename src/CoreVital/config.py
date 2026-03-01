@@ -80,6 +80,7 @@ class AttentionSummariesConfig(BaseModel):
     stats: List[str] = Field(
         default_factory=lambda: [
             "entropy_mean",
+            "entropy_mean_normalized",
             "entropy_min",
             "entropy_max",
             "concentration_max",
@@ -97,15 +98,15 @@ class LogitsSummariesConfig(BaseModel):
     stats: List[str] = Field(
         default_factory=lambda: [
             "entropy",
-            "top1_top2_margin",
-            "topk_probs",
             "top_k_margin",
-            "voter_agreement",
+            "topk_mass",
+            "topk_probs",
             "perplexity",
             "surprisal",
         ]
     )
     topk: int = 5
+    entropy_mode: Literal["full", "topk_approx"] = "full"
 
 
 class SummariesConfig(BaseModel):
@@ -190,6 +191,8 @@ class ModelProfile(BaseModel):
     repetition_cosine_threshold: float = 0.9995  # Cosine sim above this = same direction (float16 anisotropy)
     collapsed_head_entropy_threshold: float = 0.1  # Head entropy below this = collapsed
     focused_head_concentration_threshold: float = 0.9  # Per-head max attn above this = focused
+    typical_entropy_range: Optional[List[float]] = None  # [p10, p90] from calibration runs
+    typical_l2_norm_range: Optional[List[float]] = None  # [p10, p90] last-layer L2 norms
 
 
 def _architecture_to_profile_key(architecture: str) -> str:
@@ -199,8 +202,14 @@ def _architecture_to_profile_key(architecture: str) -> str:
         return "gpt2"
     if "Llama" in a:
         return "llama"
+    if "Mixtral" in a:
+        return "mixtral"
     if "Mistral" in a:
         return "mistral"
+    if "Qwen2" in a:
+        return "qwen2"
+    if "Phi3" in a or "Phi-3" in a:
+        return "phi3"
     if "T5" in a or "T5ForConditional" in a:
         return "t5"
     if "Bart" in a:
@@ -253,6 +262,9 @@ class Config(BaseModel):
     prompt_telemetry: PromptTelemetryConfig = Field(default_factory=PromptTelemetryConfig)
     capture: CaptureConfig = Field(default_factory=CaptureConfig)
     otel: OtelConfig = Field(default_factory=OtelConfig)
+    # Path to a CalibrationProfile JSON (Issue 33). When set, report_builder
+    # computes divergence scores alongside the heuristic risk score.
+    calibration_profile: Optional[str] = Field(default=None)
 
     @classmethod
     def from_yaml(cls, path: str) -> "Config":

@@ -1,7 +1,10 @@
 # LLaMA / LlamaForCausalLM family
-# Larger scales may need different L2 norms; adjust if needed
-l2_explosion_multiplier: 8.0
-high_entropy_threshold_bits: 4.0
-repetition_cosine_threshold: 0.9995
-collapsed_head_entropy_threshold: 0.1
-focused_head_concentration_threshold: 0.9
+# 32 layers, 4096 hidden, 32 heads (GQA), ~32k vocab, float16/bfloat16
+# Calibrated thresholds — LLaMA is more confident than GPT-2
+l2_explosion_multiplier: 10.0          # Larger models have more headroom
+high_entropy_threshold_bits: 3.5       # Smaller vocab (32k) + typically more confident; 4.0 misses subtle issues
+repetition_cosine_threshold: 0.9998    # float16 anisotropy is more severe in larger models
+collapsed_head_entropy_threshold: 0.05 # 32 heads → more specialization → lower collapse floor
+focused_head_concentration_threshold: 0.85  # GQA models may have different concentration norms
+typical_entropy_range: [1.0, 3.5]      # p10–p90 from calibration runs
+typical_l2_norm_range: [50.0, 200.0]   # p10–p90 last-layer L2 norms

@@ -1,47 +1,179 @@
 # ============================================================================
-# CoreVital - Human-Readable Narratives (Phase-7)
+# CoreVital - Human-Readable Narratives
 #
-# Purpose: Template-based 2–4 sentence summary from health flags, risk,
-#          blamed layers, and warning signals. No LLM call.
+# Purpose: Build actionable, data-specific 2-6 sentence narratives from
+#          health flags, risk score, timeline metrics, compound signals,
+#          and layer blame. No LLM call — pure template logic referencing
+#          actual step indices, entropy values, and metric trends.
 # ============================================================================
 
-from typing import List
+import math
+from typing import Any, List, Optional
 
-from CoreVital.reporting.schema import HealthFlags
+from CoreVital.reporting.schema import HealthFlags, Summary, TimelineStep
 
 
 def build_narrative(
     health_flags: HealthFlags,
     risk_score: float,
-    blamed_layers: List[int],
+    risk_factors: List[str],
+    blamed_layers: List[Any],
     warning_signals: List[str],
+    timeline: List[TimelineStep],
+    compound_signals: Optional[List[Any]] = None,
+    summary: Optional[Summary] = None,
 ) -> str:
-    """Build a short natural-language narrative from run data (Phase-7 template-based v1)."""
+    """Build a specific, actionable narrative from run data."""
     parts: List[str] = []
 
+    has_any_signals = bool(risk_factors or warning_signals or compound_signals or blamed_layers)
+
+    # Lead with risk level
     if risk_score > 0.7:
-        parts.append("This run was high risk.")
+        primary = _dominant_factor(risk_factors)
+        parts.append(f"High risk (score: {risk_score:.2f}), driven by {_humanize_factor(primary)}.")
     elif risk_score > 0.3:
-        parts.append("This run had moderate risk.")
+        parts.append(f"Moderate risk (score: {risk_score:.2f}).")
     else:
-        parts.append("This run was low risk.")
+        if has_any_signals:
+            parts.append(f"Low risk (score: {risk_score:.2f}), though some mild signals were observed.")
+        else:
+            parts.append(f"Low risk (score: {risk_score:.2f}). No significant anomalies detected.")
 
-    if health_flags.repetition_loop_detected:
-        parts.append("Repetition was detected in the last few steps.")
+    # Entropy specifics — filter non-finite values (NaN/Inf from anomalous steps)
+    entropies: List[float] = [
+        s.logits_summary.entropy
+        for s in timeline
+        if s.logits_summary and s.logits_summary.entropy is not None and math.isfinite(s.logits_summary.entropy)
+    ]
+    if entropies:
+        mean_ent = sum(entropies) / len(entropies)
 
-    if health_flags.nan_detected or health_flags.inf_detected:
-        parts.append("Numerical anomalies (NaN/Inf) were present.")
+        max_ent = max(entropies)
+        max_step_obj = next(
+            (
+                s
+                for s in timeline
+                if s.logits_summary and s.logits_summary.entropy is not None and s.logits_summary.entropy == max_ent
+            ),
+            None,
+        )
+        max_step_idx = max_step_obj.step_index if max_step_obj else 0
+        if max_ent > 4.0:
+            token_text = "?"
+            if max_step_obj and max_step_obj.token:
+                token_text = max_step_obj.token.token_text or "?"
+            parts.append(
+                f"Peak entropy of {max_ent:.1f} bits at step {max_step_idx} "
+                f"(mean: {mean_ent:.1f}); the model was most uncertain "
+                f'when generating "{token_text}".'
+            )
+        # Accept both old and new signal names
+        entropy_trend = "entropy_accelerating" in warning_signals or "entropy_rising" in warning_signals
+        if entropy_trend and len(entropies) >= 6:
+            early = sum(entropies[:3]) / 3
+            late = sum(entropies[-3:]) / 3
+            parts.append(
+                f"Entropy rose from ~{early:.1f} to ~{late:.1f} bits over the "
+                f"course of generation, suggesting progressive degradation."
+            )
 
+    # Compound signals (from Issue 6)
+    if compound_signals:
+        for cs in compound_signals[:2]:
+            parts.append(f"{cs.description}")
+
+    # Layer blame specifics — handles both List[dict] (Issue 7 rich blame)
+    # and List[int] (current simple blame)
     if blamed_layers:
-        layer_str = ", ".join(f"L{i}" for i in blamed_layers[:10])
-        if len(blamed_layers) > 10:
-            layer_str += f" (+{len(blamed_layers) - 10} more)"
-        parts.append(f"Layers with anomalies or collapse: {layer_str}.")
+        if isinstance(blamed_layers[0], dict):
+            top_blame = sorted(
+                blamed_layers,
+                key=lambda b: b.get("severity", 0),
+                reverse=True,
+            )[:3]
+            for b in top_blame:
+                reasons_str = "; ".join(b.get("reasons", []))
+                if reasons_str:
+                    parts.append(f"Layer {b['layer']}: {reasons_str}.")
+        else:
+            layer_str = ", ".join(f"L{i}" for i in blamed_layers[:5])
+            if len(blamed_layers) > 5:
+                layer_str += f" (+{len(blamed_layers) - 5} more)"
+            parts.append(f"Layers with anomalies or collapse: {layer_str}.")
 
-    if warning_signals:
-        if "entropy_rising" in warning_signals:
-            parts.append("Entropy rose toward the end of generation.")
-        if "high_entropy" in warning_signals and "entropy_rising" not in warning_signals:
-            parts.append("High entropy was observed in several steps.")
+    # Actionable recommendation
+    if risk_score > 0.7:
+        if "repetition_loop" in risk_factors:
+            parts.append("Consider: lower temperature, add repetition penalty, or shorten max_new_tokens.")
+        elif "mid_layer_anomaly" in risk_factors:
+            parts.append(
+                "Consider: check input encoding, try different precision (fp32 vs fp16), or use a different model."
+            )
+        elif "elevated_entropy" in risk_factors:
+            parts.append(
+                "Consider: refine the prompt for clarity, provide more "
+                "context, or try a model better suited to this domain."
+            )
 
     return " ".join(parts) if parts else "No notable issues detected."
+
+
+def _dominant_factor(risk_factors: List[str]) -> str:
+    """Pick the most significant factor from an unordered list.
+
+    Boolean-flag factors are ranked above continuous-metric factors
+    because they represent hard ceilings in the risk score.
+    Falls back to the first factor or 'multiple signals'.
+    """
+    priority = [
+        "nan_or_inf",
+        "repetition_loop",
+        "mid_layer_anomaly",
+        "attention_collapse",
+        "elevated_entropy",
+        "entropy_rising",
+        "low_confidence_margin",
+        "low_topk_mass",
+        "elevated_surprisal",
+    ]
+    for p in priority:
+        if p in risk_factors:
+            return p
+    # Compound signals
+    for f in risk_factors:
+        if f.startswith("compound:"):
+            return f
+    return risk_factors[0] if risk_factors else "multiple signals"
+
+
+def _humanize_factor(factor: str) -> str:
+    """Convert internal risk factor names to readable text."""
+    mapping = {
+        "repetition_loop": "a repetition loop in the last generated tokens",
+        "mid_layer_anomaly": "anomalous behavior in middle transformer layers",
+        "attention_collapse": "attention head collapse",
+        "elevated_entropy": "elevated output uncertainty",
+        "nan_or_inf": "numerical instability (NaN/Inf)",
+        "entropy_rising": "rising entropy over generation",
+        "entropy_accelerating": "accelerating entropy over generation",
+        "low_confidence_margin": "low confidence between top token choices",
+        "low_topk_mass": "low top-K probability mass (dispersed predictions)",
+        "elevated_surprisal": "elevated surprisal (unexpected token choices)",
+    }
+    if factor.startswith("compound:"):
+        name = factor.split(":", 1)[1]
+        return name.replace("_", " ")
+    return mapping.get(factor, factor.replace("_", " "))
+
+
+def _token_at_step(timeline: List[TimelineStep], step_idx: int) -> str:
+    """Return the token text generated at a given step_index.
+
+    Searches by TimelineStep.step_index (not list position) to handle
+    timelines where step indices are offset by prompt length.
+    """
+    for step in timeline:
+        if step.step_index == step_idx and step.token:
+            return step.token.token_text or "?"
+    return "?"

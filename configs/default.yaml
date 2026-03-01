@@ -11,6 +11,8 @@
 #   2026-01-13: Initial configuration for Phase-0
 #   2026-02-07: Phase-1a — added new metric names to attention.stats and logits.stats
 #   2026-02-10: Phase-1b — added prompt_telemetry section (enabled, sparse_threshold)
+#   2026-02-28: Refactor — added entropy_mean_normalized to attention.stats,
+#               entropy_mode to logits, calibration_profile at root level
 # ============================================================================
 
 model:
@@ -52,6 +54,7 @@ summaries:
     enabled: true
     stats:
       - entropy_mean
+      - entropy_mean_normalized  # entropy / log(K), in [0,1]; consistent across sequence lengths
       - entropy_min
       - entropy_max
       - concentration_max
@@ -63,13 +66,13 @@ summaries:
     enabled: true
     stats:
       - entropy
-      - top1_top2_margin
-      - topk_probs
       - top_k_margin
-      - voter_agreement
+      - topk_mass
+      - topk_probs
       - perplexity
       - surprisal
     topk: 5
+    entropy_mode: "full"  # "full" (exact over entire vocab) or "topk_approx" (approximate from top-K)
 
 sink:
   type: "sqlite"  # sqlite (default), local_file (JSON), datadog, prometheus
@@ -87,6 +90,11 @@ prompt_telemetry:
 capture:
   capture_mode: "full"   # summary | full | on_risk
   risk_threshold: 0.7    # For on_risk: store full when risk >= this (Phase-2)
+
+# Path to a CalibrationProfile JSON for divergence scoring (optional).
+# Build one with: corevital calibrate --model <id> --prompts <file> --out <path>
+# When set, report includes extensions.calibration with divergence_score and anomalies.
+calibration_profile: null
 
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

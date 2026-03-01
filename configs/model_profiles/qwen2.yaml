@@ -1,0 +1,9 @@
+# Qwen2 / Qwen2ForCausalLM family
+# Various sizes; 32 layers, 4096 hidden, 32 heads typical for 7B variant
+# Thresholds: DEFAULTS — not yet calibrated from empirical runs.
+# Large vocab (~152k) raises theoretical entropy ceiling.
+l2_explosion_multiplier: 8.0
+high_entropy_threshold_bits: 4.5
+repetition_cosine_threshold: 0.9997
+collapsed_head_entropy_threshold: 0.06
+focused_head_concentration_threshold: 0.88

@@ -1,0 +1,115 @@
+%% Calibration Workflow — Building and using calibration profiles
+%% Two paths: (1) build a baseline profile from known-healthy runs,
+%% (2) score production traces against that baseline.
+%% Ref: src/CoreVital/calibration.py, calibration_risk.py, cli.py (calibrate command)
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    %% Path 1: Build profile
+    subgraph BUILD["PATH 1: Build Calibration Profile (offline)"]
+        direction TB
+
+        subgraph CLI_CAL["CLI: corevital calibrate"]
+            CC1["--model gpt2<br/>--prompts prompts.txt<br/>--out calibration/gpt2.json"]
+        end
+
+        CC1 --> RunTraces["Run instrumentation<br/>on each prompt"]
+        RunTraces --> Collect["Collect per-step metrics:<br/>entropy, margin, surprisal<br/>per-layer: L2 norm, attn entropy"]
+        Collect --> Build["calibrate_from_runs()<br/>→ MetricDistribution per metric:<br/>mean, std, median, percentiles"]
+        Build --> Save["CalibrationProfile.save()<br/>→ JSON file with raw values<br/>(roundtrip-safe)"]
+    end
+
+    %% Profile contents
+    subgraph PROFILE["CalibrationProfile Contents"]
+        direction LR
+        P1["Per-step distributions:<br/>entropy, margin, surprisal"]
+        P2["Per-layer distributions:<br/>L2 norm, attention entropy"]
+        P3["Metadata:<br/>model_id, num_runs"]
+    end
+
+    Save --> PROFILE
+
+    %% Path 2: Score production traces
+    subgraph SCORE["PATH 2: Score Production Traces (runtime)"]
+        direction TB
+
+        subgraph CLI_RUN["CLI: corevital run --calibration <path>"]
+            CR1["Config: calibration_profile = path"]
+        end
+
+        CR1 --> LoadProfile["CalibrationProfile.load()"]
+        LoadProfile --> DivScore["compute_divergence_score()<br/>For each metric in trace:<br/>z = (value - baseline_mean) / baseline_std"]
+        DivScore --> Aggregate["divergence = mean(|z-scores|) / 6<br/>capped at 1.0"]
+        Aggregate --> Anomalies["anomalies = list of<br/>'Step N metric z=X.Y'<br/>for |z| > threshold"]
+    end
+
+    PROFILE --> LoadProfile
+
+    %% Output
+    subgraph OUTPUT["Report Extension"]
+        direction LR
+        O1["extensions.calibration =<br/>{divergence_score: 0-1,<br/>anomalies: [...],<br/>baseline_model_id,<br/>baseline_num_runs}"]
+    end
+
+    Anomalies --> OUTPUT
+
+    %% Optional: ECE validation
+    subgraph ECE["OPTIONAL: Validate with ECE (calibration_risk.py)"]
+        direction TB
+        E1["Collect labeled pairs:<br/>(risk_score or divergence_score, quality_label)"]
+        E2["evaluate_calibration()<br/>→ fit_platt_scaling()<br/>→ compute_ece()"]
+        E3["RiskCalibrationResult:<br/>ece_raw, ece_calibrated,<br/>Platt params (a, b)"]
+        E4["Deploy: apply_platt_scaling()<br/>in production for calibrated probabilities"]
+        E1 --> E2 --> E3 --> E4
+    end
+
+    OUTPUT --> ECE
+
+    %% Interpretation
+    subgraph INTERP["Interpretation"]
+        direction LR
+        I1["divergence < 0.2<br/>Similar to baseline ✅"]
+        I2["divergence 0.2 – 0.5<br/>Some deviation ⚠️"]
+        I3["divergence > 0.5<br/>Anomalous 🔴"]
+        I4["ECE < 0.10<br/>Well calibrated ✅"]
+        I5["ECE > 0.20<br/>Needs tuning ⚠️"]
+    end
+
+    %% Styling
+    style BUILD fill:#065f4615,stroke:#10b981
+    style CLI_CAL fill:#065f4615,stroke:#10b981
+    style CC1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style RunTraces fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style Collect fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style Build fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style Save fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style PROFILE fill:#1e3a5f15,stroke:#60a5fa
+    style P1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style P2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style P3 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    style SCORE fill:#4c1d9515,stroke:#a78bfa
+    style CLI_RUN fill:#4c1d9515,stroke:#a78bfa
+    style CR1 fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style LoadProfile fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style DivScore fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style Aggregate fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+    style Anomalies fill:#4c1d95,stroke:#a78bfa,color:#ddd6fe
+
+    style OUTPUT fill:#92400e15,stroke:#f59e0b
+    style O1 fill:#92400e,stroke:#f59e0b,color:#fde68a
+
+    style ECE fill:#713f1215,stroke:#facc15
+    style E1 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style E2 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style E3 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style E4 fill:#713f12,stroke:#facc15,color:#fef9c3
+
+    style INTERP fill:#0f172a,stroke:#334155
+    style I1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style I2 fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style I3 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style I4 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style I5 fill:#713f12,stroke:#f59e0b,color:#fde68a

@@ -1,14 +1,14 @@
-%% Phase-1 Schema v0.3.0 — Pydantic Model Hierarchy
-%% Shows all models, their fields, and relationships after Phase-1 additions.
-%% NEW models/fields marked with ✚. EXISTING models marked with ●.
-%% Ref: docs/Phase1 metrics analysis.md (Schema Changes section)
+%% CoreVital Report Schema v0.4.0 — Pydantic Model Hierarchy
+%% Shows all models, their fields, and relationships after the audit-57 refactor.
+%% NEW fields (v0.4.0) marked with ✚. Renamed/deprecated fields marked with ⟳. Existing marked with ●.
+%% Ref: src/CoreVital/reporting/schema.py, CHANGELOG.md (v0.5.0-rc)
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
 
 classDiagram
     direction TB
 
     class Report {
-        ● schema_version: str = 0.3.0
+        ● schema_version: str = 0.4.0
         ● trace_id: str
         ● created_at_utc: str
         ● model: ModelInfo
@@ -16,15 +16,15 @@ classDiagram
         ● prompt: PromptInfo
         ● generated: GeneratedInfo
         ● timeline: List~TimelineStep~
-        ● encoder_layers: Optional~List~LayerSummary~
+        ● encoder_layers: Optional~List~LayerSummary~~
         ● summary: Summary
         ● warnings: List~Warning~
         ● extensions: Dict~str, Any~
-        ✚ prompt_analysis: Optional~PromptAnalysis~
-        ✚ health_flags: Optional~HealthFlags~
+        ● prompt_analysis: Optional~PromptAnalysis~
+        ● health_flags: Optional~HealthFlags~
     }
-    
-    note for Report "extensions dict contains:<br/>- risk (Phase-2): risk_score, risk_factors, blamed_layers<br/>- fingerprint (Phase-3): vector, prompt_hash<br/>- early_warning (Phase-4): failure_risk, warning_signals<br/>- narrative (Phase-7): summary text<br/>- rag (optional): RAGContext if --rag-context provided<br/>- performance (optional): if --perf flag used"
+
+    note for Report "extensions dict contains:<br/>- risk: risk_score, risk_factors, blamed_layers (enriched), blamed_layers_flat<br/>- compound_signals: List of CompoundSignal<br/>- early_warning: failure_risk, warning_signals<br/>- fingerprint: vector (25-elem v2), version, prompt_hash<br/>- narrative: summary text<br/>- calibration: divergence_score, anomalies (when profile set)<br/>- metric_consistency: warnings, count (DEBUG only)<br/>- rag (optional): RAGContext<br/>- performance (optional): if --perf flag"
 
     class TimelineStep {
         ● step_index: int
@@ -33,7 +33,7 @@ classDiagram
         ● layers: List~LayerSummary~
         ● extensions: Dict~str, Any~
     }
-    
+
     class TokenInfo {
         ● token_id: int
         ● token_text: str
@@ -42,14 +42,16 @@ classDiagram
 
     class LogitsSummary {
         ● entropy: Optional~float~
-        ● top1_top2_margin: Optional~float~
-        ● topk: List~TopKItem~
-        ✚ top_k_margin: Optional~float~
-        ✚ voter_agreement: Optional~float~
-        ✚ perplexity: Optional~float~
-        ✚ surprisal: Optional~float~
+        ⟳ top1_top2_margin: Optional~float~ DEPRECATED
+        ● top_k_margin: Optional~float~
+        ✚ topk_mass: Optional~float~ PRIMARY
+        ⟳ voter_agreement: Optional~float~ DEPRECATED alias
+        ✚ topk_probs: List~TopKItem~ PRIMARY
+        ⟳ topk: List~TopKItem~ DEPRECATED alias
+        ● perplexity: Optional~float~
+        ● surprisal: Optional~float~
     }
-    
+
     class TopKItem {
         token_id: int
         token_text: str
@@ -61,10 +63,10 @@ classDiagram
         ● hidden_summary: HiddenSummary
         ● attention_summary: AttentionSummary
         ● cross_attention: Optional~AttentionSummary~
-        ✚ anomalies: Optional~TensorAnomalies~
+        ● anomalies: Optional~TensorAnomalies~
         ● extensions: Dict~str, Any~
     }
-    
+
     note for LayerSummary "cross_attention: Only for decoder layers in Seq2Seq models.<br/>attention_summary: Always self-attention (decoder or encoder)."
 
     class HiddenSummary {
@@ -73,46 +75,47 @@ classDiagram
         ● l2_norm_mean: Optional~float~
         ● max_abs: Optional~float~
         ● sketch: List~float~
+        ● clipped: bool
+        ✚ clip_fraction: Optional~float~
+        ✚ clip_max_before: Optional~float~
     }
 
     class AttentionSummary {
         ● entropy_mean: Optional~float~
+        ✚ entropy_mean_normalized: Optional~float~
         ● entropy_min: Optional~float~
+        ● entropy_max: Optional~float~
         ● concentration_max: Optional~float~
-        ✚ entropy_max: Optional~float~
-        ✚ concentration_min: Optional~float~
-        ✚ collapsed_head_count: int = 0
-        ✚ focused_head_count: int = 0
+        ● concentration_min: Optional~float~
+        ● collapsed_head_count: int = 0
+        ● focused_head_count: int = 0
     }
 
+    note for AttentionSummary "entropy_mean_normalized = entropy_mean / log(K)<br/>Range [0,1]; 1.0 = uniform, 0.0 = peaked.<br/>Collapse: normalized < 0.03 (not raw 0.1 nats)."
+
     class TensorAnomalies {
-        <<NEW>>
         has_nan: bool = false
         has_inf: bool = false
     }
 
     class PromptAnalysis {
-        <<NEW>>
         layers: List~PromptAttentionLayer~
         layer_transformations: List~float~
         prompt_surprisals: List~float~
     }
 
     class PromptAttentionLayer {
-        <<NEW>>
         heads: List~SparseAttentionHead~
         basin_scores: List~float~
     }
 
     class SparseAttentionHead {
-        <<NEW — Structure of Arrays>>
         query_indices: List~int~
         key_indices: List~int~
         weights: List~float~
     }
 
     class HealthFlags {
-        <<NEW>>
         nan_detected: bool = false
         inf_detected: bool = false
         attention_collapse_detected: bool = false
@@ -133,7 +136,7 @@ classDiagram
         ● device: str
         ● quantization: QuantizationInfo
     }
-    
+
     class QuantizationInfo {
         enabled: bool
         method: Optional~str~
@@ -145,14 +148,13 @@ classDiagram
         ● total_steps: int
         ● elapsed_ms: int
     }
-    
+
     class Warning {
         code: str
         message: str
     }
 
     class RAGContext {
-        <<NEW Phase-2>>
         context_token_count: Optional~int~
         retrieved_doc_ids: Optional~List~str~~
         retrieved_doc_titles: Optional~List~str~~
@@ -160,31 +162,76 @@ classDiagram
     }
 
     class RiskExtension {
-        <<Phase-2>>
         risk_score: float
         risk_factors: List~str~
-        blamed_layers: List~int~
+        ✚ blamed_layers: List~BlamedLayer~
+        ✚ blamed_layers_flat: List~int~
     }
 
+    class BlamedLayer {
+        <<NEW v0.5.0-rc>>
+        layer: int
+        reasons: List~str~
+        severity: float
+    }
+
+    note for BlamedLayer "Reasons: nan_or_inf, attention_collapse_rate,<br/>l2_norm_outlier, l2_norm_instability.<br/>Severity 0.0-1.0. blamed_layers_flat for backward compat."
+
+    class CompoundSignalExtension {
+        <<NEW v0.5.0-rc>>
+        signals: List~CompoundSignal~
+    }
+
+    class CompoundSignal {
+        <<NEW v0.5.0-rc>>
+        name: str
+        description: str
+        severity: float
+        evidence: List~str~
+    }
+
+    note for CompoundSignal "5 patterns: context_loss, confident_confusion,<br/>degenerating_generation, attention_bottleneck,<br/>confident_repetition_risk."
+
+    class EarlyWarningExtension {
+        failure_risk: float
+        ✚ warning_signals: List~str~
+    }
+
+    note for EarlyWarningExtension "Signals: entropy_accelerating, margin_collapsed,<br/>margin_declining, surprisal_volatile,<br/>entropy_margin_divergence.<br/>Old: entropy_rising, high_entropy REMOVED."
+
     class FingerprintExtension {
-        <<Phase-3>>
-        vector: List~float~
+        ✚ vector: List~float~ 25 elements v2
+        ✚ version: int = 2
         prompt_hash: str
     }
 
-    class EarlyWarningExtension {
-        <<Phase-4>>
-        failure_risk: float
-        warning_signals: List~str~
-    }
+    note for FingerprintExtension "25-element v2 vector: entropy/margin/surprisal/<br/>agreement profiles with slopes, correlations,<br/>temporal features. is_legacy_fingerprint() for 9-elem."
 
     class NarrativeExtension {
-        <<Phase-7>>
         summary: str
     }
 
+    note for NarrativeExtension "Data-specific text: actual entropy values,<br/>step indices, token text, compound signals,<br/>blamed layers, actionable recommendations."
+
+    class CalibrationExtension {
+        <<NEW v0.5.0-rc>>
+        divergence_score: float
+        anomalies: List~str~
+        baseline_model_id: str
+        baseline_num_runs: int
+    }
+
+    note for CalibrationExtension "Only present when calibration_profile configured.<br/>divergence_score: 0-1 (mean |z-score| / 6, capped)."
+
+    class MetricConsistencyExtension {
+        <<NEW v0.5.0-rc>>
+        warnings: List~str~
+        count: int
+    }
+
+    note for MetricConsistencyExtension "Only present when DEBUG logging enabled.<br/>Checks: perplexity=2^entropy, margin≤mass, etc."
+
     class PerformanceExtension {
-        <<Phase-0.75>>
         total_wall_time_ms: float
         parent_operations: List~ParentOperation~
         unaccounted_time: Dict~str, float~
@@ -196,22 +243,27 @@ classDiagram
     ModelInfo "1" *-- "1" QuantizationInfo
     Report "1" *-- "N" TimelineStep
     Report "1" *-- "1" Summary
-    Report "1" *-- "0..1" PromptAnalysis : NEW
-    Report "1" *-- "0..1" HealthFlags : NEW
+    Report "1" *-- "0..1" PromptAnalysis
+    Report "1" *-- "0..1" HealthFlags
     Report "1" *-- "1" Extensions
     Extensions "0..1" *-- "0..1" RiskExtension
-    Extensions "0..1" *-- "0..1" FingerprintExtension
+    Extensions "0..1" *-- "0..1" CompoundSignalExtension : NEW
     Extensions "0..1" *-- "0..1" EarlyWarningExtension
+    Extensions "0..1" *-- "0..1" FingerprintExtension
     Extensions "0..1" *-- "0..1" NarrativeExtension
+    Extensions "0..1" *-- "0..1" CalibrationExtension : NEW
+    Extensions "0..1" *-- "0..1" MetricConsistencyExtension : NEW
     Extensions "0..1" *-- "0..1" RAGContext
     Extensions "0..1" *-- "0..1" PerformanceExtension
+    RiskExtension "0..*" *-- "0..*" BlamedLayer : NEW
+    CompoundSignalExtension "0..*" *-- "0..*" CompoundSignal : NEW
     TimelineStep "1" *-- "1" TokenInfo
     TimelineStep "1" *-- "1" LogitsSummary
     TimelineStep "1" *-- "N" LayerSummary
     LogitsSummary "0..*" *-- "0..*" TopKItem
     LayerSummary "1" *-- "0..1" HiddenSummary
     LayerSummary "1" *-- "0..1" AttentionSummary
-    LayerSummary "1" *-- "0..1" TensorAnomalies : NEW
-    PromptAnalysis "1" *-- "N" PromptAttentionLayer : NEW
-    PromptAttentionLayer "1" *-- "N" SparseAttentionHead : NEW
+    LayerSummary "1" *-- "0..1" TensorAnomalies
+    PromptAnalysis "1" *-- "N" PromptAttentionLayer
+    PromptAttentionLayer "1" *-- "N" SparseAttentionHead
     Report "1" *-- "N" Warning

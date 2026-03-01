@@ -1,0 +1,9 @@
+# Mistral 7B / MistralForCausalLM family
+# 32 layers, 4096 hidden, 32 heads (GQA), ~32k vocab
+# Thresholds: DEFAULTS — not yet calibrated from empirical runs.
+# Sliding-window attention may affect concentration/collapse norms.
+l2_explosion_multiplier: 8.0
+high_entropy_threshold_bits: 4.0
+repetition_cosine_threshold: 0.9997
+collapsed_head_entropy_threshold: 0.05
+focused_head_concentration_threshold: 0.85

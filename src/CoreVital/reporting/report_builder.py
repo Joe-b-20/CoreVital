@@ -53,13 +53,15 @@
 # ============================================================================
 
 import uuid
+from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 import torch
 
+from CoreVital.compound_signals import CompoundSignal, detect_compound_signals
 from CoreVital.config import Config, load_model_profile
 from CoreVital.early_warning import compute_early_warning
-from CoreVital.fingerprint import compute_fingerprint_vector, compute_prompt_hash
+from CoreVital.fingerprint import FINGERPRINT_VERSION, compute_fingerprint_vector, compute_prompt_hash
 from CoreVital.instrumentation.collector import InstrumentationResults
 from CoreVital.instrumentation.summaries import (
     compute_attention_summary,
@@ -104,7 +106,8 @@ from CoreVital.reporting.schema import (
     TokenInfo,
     Warning,
 )
-from CoreVital.risk import compute_layer_blame, compute_risk_score
+from CoreVital.reporting.validation import validate_metric_consistency_and_log
+from CoreVital.risk import compute_layer_blame, compute_layer_blame_flat, compute_risk_score
 from CoreVital.utils.time import get_utc_timestamp
 
 logger = get_logger(__name__)
@@ -251,17 +254,51 @@ class ReportBuilder:
                 except Exception as e:
                     logger.warning(f"Invalid RAG context, skipping: {e}")
 
+            # Phase-2: compound signals (Issue 6) — after timeline, before risk
+            compound_signals: List[CompoundSignal] = []
+            try:
+                basin_scores: Optional[List[List[float]]] = None
+                if prompt_analysis and prompt_analysis.layers:
+                    basin_scores = [lyr.basin_scores for lyr in prompt_analysis.layers]
+                compound_signals = detect_compound_signals(
+                    timeline,
+                    layers_by_step=timeline_layers_for_flags,
+                    basin_scores=basin_scores,
+                )
+                report.extensions["compound_signals"] = [
+                    {
+                        "name": s.name,
+                        "description": s.description,
+                        "severity": s.severity,
+                        "evidence": s.evidence,
+                    }
+                    for s in compound_signals
+                ]
+            except Exception as e:
+                logger.warning(f"Compound signal detection failed, skipping: {e}")
+
             # Phase-2: risk score and layer blame (always computed when health_flags exist)
             risk_score = 0.0
             if health_flags is not None:
                 try:
-                    risk_score, risk_factors = compute_risk_score(health_flags, summary)
+                    # New composite score from timeline + compound signals; fallback to legacy if timeline is None
+                    risk_score, risk_factors = compute_risk_score(
+                        health_flags,
+                        summary,
+                        timeline=timeline,
+                        layers_by_step=timeline_layers_for_flags,
+                        compound_signals=compound_signals if compound_signals else None,
+                    )
                     blamed_layers = compute_layer_blame(timeline_layers_for_flags)
+                    blamed_layers_flat = compute_layer_blame_flat(timeline_layers_for_flags)
                     report.extensions["risk"] = {
                         "risk_score": risk_score,
                         "risk_factors": risk_factors,
                         "blamed_layers": blamed_layers,
+                        "blamed_layers_flat": blamed_layers_flat,
                     }
+                    if hasattr(self, "_last_collapse_detail") and self._last_collapse_detail:
+                        report.extensions["risk"]["attention_collapse_detail"] = self._last_collapse_detail
                 except Exception as e:
                     logger.warning(f"Risk computation failed, skipping: {e}")
 
@@ -292,19 +329,57 @@ class ReportBuilder:
                     report.prompt_analysis = full_prompt_analysis
                 logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
 
-            # Phase-3: fingerprint (run-summary vector + prompt hash) for every report
+            # Phase-4: calibration divergence scoring (Issue 33)
+            if self.config.calibration_profile:
+                try:
+                    from CoreVital.calibration import CalibrationProfile, compute_divergence_score
+
+                    cal_path = Path(self.config.calibration_profile)
+                    if cal_path.exists():
+                        cal_profile = CalibrationProfile.load(cal_path)
+                        trace_dict = report.model_dump()
+                        div_score, div_anomalies = compute_divergence_score(trace_dict, cal_profile)
+                        report.extensions["calibration"] = {
+                            "divergence_score": div_score,
+                            "anomalies": div_anomalies,
+                            "baseline_model_id": cal_profile.model_id,
+                            "baseline_num_runs": cal_profile.num_runs,
+                        }
+                    else:
+                        logger.warning(f"Calibration profile not found at {cal_path}, skipping divergence scoring")
+                except Exception as e:
+                    logger.warning(f"Calibration divergence scoring failed, skipping: {e}")
+
+            # Phase-4.3: fingerprint v2 (25-element vector + prompt hash) for every report
             try:
                 hf = health_flags if health_flags is not None else HealthFlags()
-                vec = compute_fingerprint_vector(timeline, summary, hf, risk_score)
+                vec = compute_fingerprint_vector(
+                    timeline,
+                    summary,
+                    hf,
+                    risk_score,
+                    layers_by_step=timeline_layers_for_flags,
+                )
                 prompt_hash = compute_prompt_hash(prompt, model_info.hf_id)
-                report.extensions["fingerprint"] = {"vector": vec, "prompt_hash": prompt_hash}
+                report.extensions["fingerprint"] = {
+                    "vector": vec,
+                    "prompt_hash": prompt_hash,
+                    "version": FINGERPRINT_VERSION,
+                }
             except Exception as e:
                 logger.warning(f"Fingerprint computation failed, skipping: {e}")
 
-            # Phase-4: early warning (failure_risk, warning_signals) from timeline + health_flags
+            # Phase-2.5: early warning (failure_risk, warning_signals) from timeline + health_flags
             try:
                 hf_ew = health_flags if health_flags is not None else HealthFlags()
-                failure_risk, warning_signals = compute_early_warning(timeline, hf_ew)
+                ew_entropy_threshold = 4.0
+                if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
+                    ew_entropy_threshold = float(profile.high_entropy_threshold_bits)
+                failure_risk, warning_signals = compute_early_warning(
+                    timeline,
+                    hf_ew,
+                    high_entropy_threshold=ew_entropy_threshold,
+                )
                 report.extensions["early_warning"] = {
                     "failure_risk": failure_risk,
                     "warning_signals": warning_signals,
@@ -312,7 +387,7 @@ class ReportBuilder:
             except Exception as e:
                 logger.warning(f"Early warning computation failed, skipping: {e}")
 
-            # Phase-7: template-based narrative (2–4 sentences)
+            # Phase-2.3: data-specific narrative (Issue 8)
             try:
                 hf_n = health_flags if health_flags is not None else HealthFlags()
                 risk_ext = report.extensions.get("risk") or {}
@@ -320,12 +395,28 @@ class ReportBuilder:
                 summary_text = build_narrative(
                     hf_n,
                     risk_ext.get("risk_score", 0.0),
+                    risk_ext.get("risk_factors", []),
                     risk_ext.get("blamed_layers", []),
                     ew_ext.get("warning_signals", []),
+                    timeline,
+                    compound_signals=compound_signals if compound_signals else None,
+                    summary=summary,
                 )
                 report.extensions["narrative"] = {"summary": summary_text}
             except Exception as e:
                 logger.warning(f"Narrative build failed, skipping: {e}")
+
+            # Phase-5: metric consistency validation (Issue 15) — debug mode only
+            if logger.isEnabledFor(10):  # logging.DEBUG == 10
+                try:
+                    consistency_warnings = validate_metric_consistency_and_log(report)
+                    if consistency_warnings:
+                        report.extensions["metric_consistency"] = {
+                            "warnings": consistency_warnings,
+                            "count": len(consistency_warnings),
+                        }
+                except Exception as e:
+                    logger.debug(f"Metric consistency validation failed: {e}")
 
         # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
 
@@ -420,8 +511,12 @@ class ReportBuilder:
         When capture_mode is summary or on_risk, layer summaries are computed for health
         flags but not stored in the report (layers=[]); the second return value holds
         them for _build_health_flags.
+
+        Supports both pre-computed StepSummary objects (Phase 1.3+) and legacy StepData.
         """
         import time
+
+        from CoreVital.instrumentation.step_processor import StepSummary
 
         capture_mode = getattr(self.config.capture, "capture_mode", "full")
         store_layers = capture_mode == "full"
@@ -433,37 +528,47 @@ class ReportBuilder:
         for step_data in results.timeline:
             step_start = time.perf_counter()
 
-            # Token info
             token_info = TokenInfo(
                 token_id=step_data.token_id,
                 token_text=step_data.token_text,
                 is_prompt_token=step_data.is_prompt_token,
             )
 
-            # Logits summary (always computed for time series and high_entropy_steps)
-            logits_summary = LogitsSummary()
-            if step_data.logits is not None:
-                try:
-                    logits_dict = compute_logits_summary(
-                        step_data.logits,
-                        results.model_bundle.tokenizer,
-                        self.config.summaries.logits,
-                        actual_token_id=step_data.token_id,
-                    )
-                    logits_summary = LogitsSummary(**logits_dict)
-                except Exception as e:
-                    logger.warning(f"Failed to compute logits summary for step {step_data.step_index}: {e}")
+            if isinstance(step_data, StepSummary):
+                # Pre-computed summaries from step_processor
+                logits_summary = LogitsSummary()
+                if step_data.logits_summary:
+                    try:
+                        logits_summary = LogitsSummary(**step_data.logits_summary)
+                    except Exception as e:
+                        logger.warning(f"Failed to build logits summary for step {step_data.step_index}: {e}")
 
-            # Layer summaries: always compute (needed for health flags); store only when full
-            layers = []
-            if step_data.hidden_states is not None:
-                layers = self._build_layer_summaries(
-                    step_data.hidden_states,
-                    step_data.attentions,
-                    results.model_bundle.num_layers,
-                    cross_attentions=step_data.cross_attentions,
-                    profile=profile,
-                )
+                layers = self._build_layers_from_step_summary(step_data)
+            else:
+                # Legacy path: raw tensors (StepData)
+                logits_summary = LogitsSummary()
+                if step_data.logits is not None:
+                    try:
+                        logits_dict = compute_logits_summary(
+                            step_data.logits,
+                            results.model_bundle.tokenizer,
+                            self.config.summaries.logits,
+                            actual_token_id=step_data.token_id,
+                        )
+                        logits_summary = LogitsSummary(**logits_dict)
+                    except Exception as e:
+                        logger.warning(f"Failed to compute logits summary for step {step_data.step_index}: {e}")
+
+                layers = []
+                if step_data.hidden_states is not None:
+                    layers = self._build_layer_summaries(
+                        step_data.hidden_states,
+                        step_data.attentions,
+                        results.model_bundle.num_layers,
+                        cross_attentions=step_data.cross_attentions,
+                        profile=profile,
+                    )
+
             layers_by_step.append(layers)
 
             timeline_step = TimelineStep(
@@ -477,10 +582,8 @@ class ReportBuilder:
             timeline.append(timeline_step)
             step_times_ms.append((time.perf_counter() - step_start) * 1000)
 
-        # Store per_step stats in the monitor's current operation (_build_timeline itself)
         monitor = results.monitor
         if monitor and monitor.stack and step_times_ms:
-            # The current operation on stack IS _build_timeline
             current_op = monitor.stack[-1]
             if current_op.operation_name == "_build_timeline":
                 current_op.metadata["per_step"] = {
@@ -491,6 +594,28 @@ class ReportBuilder:
                 }
 
         return timeline, layers_by_step
+
+    def _build_layers_from_step_summary(self, step_data: Any) -> List[LayerSummary]:
+        """Build LayerSummary objects from pre-computed StepSummary.layer_summaries."""
+        layers: List[LayerSummary] = []
+        for layer_idx, ls in enumerate(step_data.layer_summaries):
+            hidden_summary = HiddenSummary(**ls.hidden_summary) if ls.hidden_summary else HiddenSummary()
+            attention_summary = AttentionSummary(**ls.attention_summary) if ls.attention_summary else AttentionSummary()
+            cross_attention = None
+            if ls.cross_attention_summary:
+                cross_attention = AttentionSummary(**ls.cross_attention_summary)
+            anomalies = TensorAnomalies(**ls.anomalies) if ls.anomalies else None
+            layers.append(
+                LayerSummary(
+                    layer_index=layer_idx,
+                    hidden_summary=hidden_summary,
+                    attention_summary=attention_summary,
+                    cross_attention=cross_attention,
+                    anomalies=anomalies,
+                    extensions={},
+                )
+            )
+        return layers
 
     def _build_layer_summaries(
         self,
@@ -772,18 +897,24 @@ class ReportBuilder:
         timeline[].layers is empty; pass timeline_layers_override (computed but not stored).
         """
         # --- Transient buffer: allocate ---
-        # Extract last-layer hidden state vector (last token) from generated steps
+        # Extract last-layer hidden state vector (last token) from generated steps.
+        # StepSummary carries a pre-extracted _last_layer_hidden_vec;
+        # legacy StepData falls back to extracting from raw hidden_states.
+        from CoreVital.instrumentation.step_processor import StepSummary as _StepSummary
+
         generated_steps = [s for s in results.timeline if not s.is_prompt_token]
         buffer_steps = generated_steps[-5:]  # FIFO capacity 5
 
         hidden_state_buffer: list[torch.Tensor] = []
         for step in buffer_steps:
-            if step.hidden_states is not None and len(step.hidden_states) > 0:
+            if isinstance(step, _StepSummary):
+                if step._last_layer_hidden_vec is not None:
+                    hidden_state_buffer.append(step._last_layer_hidden_vec)
+            elif hasattr(step, "hidden_states") and step.hidden_states is not None and len(step.hidden_states) > 0:
                 try:
-                    last_layer = step.hidden_states[-1]  # (batch, seq_len, hidden_dim)
+                    last_layer = step.hidden_states[-1]
                     if isinstance(last_layer, torch.Tensor) and last_layer.dim() >= 2:
-                        # Last token of batch 0
-                        vec = last_layer[0, -1, :].detach().cpu()  # (hidden_dim,)
+                        vec = last_layer[0, -1, :].detach().cpu()
                         hidden_state_buffer.append(vec)
                     elif isinstance(last_layer, torch.Tensor):
                         hidden_state_buffer.append(last_layer.detach().cpu().flatten())
@@ -812,32 +943,34 @@ class ReportBuilder:
 
         nan_detected = False
         inf_detected = False
-        attention_collapse_detected = False
         high_entropy_steps = 0
 
         high_entropy_threshold = 4.0
         if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
             high_entropy_threshold = float(profile.high_entropy_threshold_bits)
         for tl_step in timeline:
-            # High entropy check (per-step logits entropy)
-            # Threshold from profile or 4.0 bits (model-agnostic; 2^4 = 16 equally likely tokens).
             if tl_step.logits_summary and tl_step.logits_summary.entropy is not None:
                 if tl_step.logits_summary.entropy > high_entropy_threshold:
                     high_entropy_steps += 1
 
         for step_layers in layers_to_aggregate:
             for layer in step_layers:
-                # NaN/Inf from TensorAnomalies
                 if layer.anomalies is not None:
                     if layer.anomalies.has_nan:
                         nan_detected = True
                     if layer.anomalies.has_inf:
                         inf_detected = True
 
-                # Attention collapse
-                if layer.attention_summary is not None:
-                    if layer.attention_summary.collapsed_head_count > 0:
-                        attention_collapse_detected = True
+        # --- Attention collapse detection (three-component) ---
+        from CoreVital.instrumentation.summaries import detect_attention_collapse
+
+        num_heads = results.model_bundle.num_attention_heads
+        calibration_profile = getattr(results, "_calibration_profile", None)
+        collapse_result = detect_attention_collapse(
+            layers_to_aggregate, num_heads, calibration_profile=calibration_profile
+        )
+        attention_collapse_detected = collapse_result.detected
+        attention_collapse_severity = collapse_result.severity if collapse_result.detected else None
 
         # --- Mid-layer anomaly detection ---
         mid_layer_anomaly_detected = False
@@ -852,14 +985,20 @@ class ReportBuilder:
             nan_detected=nan_detected,
             inf_detected=inf_detected,
             attention_collapse_detected=attention_collapse_detected,
+            attention_collapse_severity=attention_collapse_severity,
             high_entropy_steps=high_entropy_steps,
             repetition_loop_detected=repetition_loop_detected,
             mid_layer_anomaly_detected=mid_layer_anomaly_detected,
         )
 
+        # Store collapse detail in report extensions (populated later by caller)
+        if collapse_result.detail:
+            self._last_collapse_detail = collapse_result.detail
+
         logger.debug(
             f"Health flags: nan={nan_detected}, inf={inf_detected}, "
-            f"collapse={attention_collapse_detected}, high_entropy={high_entropy_steps}, "
+            f"collapse={attention_collapse_detected} (severity={attention_collapse_severity}), "
+            f"high_entropy={high_entropy_steps}, "
             f"repetition={repetition_loop_detected}, mid_layer_anomaly={mid_layer_anomaly_detected}"
         )
         return flags

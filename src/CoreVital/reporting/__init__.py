@@ -13,6 +13,6 @@
 
 from CoreVital.reporting.report_builder import ReportBuilder
 from CoreVital.reporting.schema import Report
-from CoreVital.reporting.validation import validate_report
+from CoreVital.reporting.validation import validate_metric_consistency, validate_report
 
-__all__ = ["Report", "ReportBuilder", "validate_report"]
+__all__ = ["Report", "ReportBuilder", "validate_metric_consistency", "validate_report"]

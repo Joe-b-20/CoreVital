@@ -236,6 +236,14 @@ def create_parser() -> argparse.ArgumentParser:
         "retrieved_doc_ids, retrieved_doc_titles, retrieval_metadata). Stored in report.extensions['rag'].",
     )
     run_parser.add_argument(
+        "--calibration",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to a calibration profile JSON (from 'corevital calibrate'). "
+        "When set, divergence scores are computed alongside heuristic risk.",
+    )
+    run_parser.add_argument(
         "--export-otel",
         action="store_true",
         help="Export run to OpenTelemetry (OTLP). Use --otel-endpoint or env. Requires CoreVital[otel].",
@@ -293,6 +301,51 @@ def create_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Optional prompt_hash filter to compare models on the same prompt group.",
+    )
+
+    # Calibrate command: build a baseline profile from known-good prompts
+    calibrate_parser = subparsers.add_parser(
+        "calibrate",
+        help="Build a calibration profile from known-good prompts",
+    )
+    calibrate_parser.add_argument(
+        "--model",
+        type=str,
+        required=True,
+        help="Hugging Face model ID (e.g., gpt2)",
+    )
+    calibrate_parser.add_argument(
+        "--prompts",
+        type=str,
+        required=True,
+        metavar="FILE",
+        help="Path to a text file with one prompt per line",
+    )
+    calibrate_parser.add_argument(
+        "--out",
+        type=str,
+        required=True,
+        metavar="PATH",
+        help="Output path for the calibration profile JSON",
+    )
+    calibrate_parser.add_argument(
+        "--device",
+        type=str,
+        choices=["auto", "cpu", "cuda"],
+        default="auto",
+        help="Device for inference (default: auto)",
+    )
+    calibrate_parser.add_argument(
+        "--max_new_tokens",
+        type=int,
+        default=20,
+        help="Max tokens to generate per prompt (default: 20)",
+    )
+    calibrate_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to custom config YAML file",
     )
 
     # Serve command: run local FastAPI server for dashboard connections
@@ -406,6 +459,13 @@ def run_command(args: argparse.Namespace) -> int:
                     raise FileNotFoundError(f"RAG context file not found: {rag_path}")
                 with open(rag_path, "r") as f:
                     config.rag_context = json.load(f)
+
+            # Calibration profile (Issue 33)
+            cal_path = getattr(args, "calibration", None)
+            if cal_path:
+                if not Path(cal_path).exists():
+                    raise FileNotFoundError(f"Calibration profile not found: {cal_path}")
+                config.calibration_profile = cal_path
 
             # OpenTelemetry export (optional)
             if getattr(args, "export_otel", False):
@@ -656,6 +716,61 @@ def compare_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def calibrate_command(args: argparse.Namespace) -> int:
+    """
+    Build a calibration profile from known-good prompts.
+
+    Runs instrumentation on each prompt, serializes traces, and feeds them
+    to ``calibrate_from_runs`` to produce a ``CalibrationProfile`` JSON.
+    """
+    from CoreVital.calibration import calibrate_from_runs
+
+    prompts_path = Path(args.prompts)
+    if not prompts_path.exists():
+        print(f"\n✗ Prompts file not found: {prompts_path}\n", file=sys.stderr)
+        return 1
+
+    prompts = [line.strip() for line in prompts_path.read_text().splitlines() if line.strip()]
+    if not prompts:
+        print(f"\n✗ No prompts found in {prompts_path}\n", file=sys.stderr)
+        return 1
+
+    try:
+        config = Config.from_yaml(args.config) if args.config else Config.from_default()
+        config.model.hf_id = args.model
+        config.device.requested = args.device
+        config.generation.max_new_tokens = args.max_new_tokens
+        setup_logging("INFO")
+
+        collector = InstrumentationCollector(config)
+        builder = ReportBuilder(config)
+
+        traces: list[dict] = []
+        for i, prompt in enumerate(prompts, 1):
+            print(f"[{i}/{len(prompts)}] Running: {prompt[:60]}...")
+            results = collector.run(prompt)
+            report = builder.build(results, prompt)
+            traces.append(report.model_dump())
+
+        profile = calibrate_from_runs(args.model, traces)
+
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        profile.save(out_path)
+
+        print(f"\n✓ Calibration profile saved to {out_path}")
+        print(f"  Model:   {args.model}")
+        print(f"  Runs:    {len(traces)}")
+        print(f"  Entropy: mean={profile.entropy_per_step.mean:.3f}, std={profile.entropy_per_step.std:.3f}")
+        print(f"  Margin:  mean={profile.margin_per_step.mean:.3f}, std={profile.margin_per_step.std:.3f}\n")
+        return 0
+
+    except Exception as e:
+        logger.exception("Calibration failed")
+        print(f"\n✗ Calibration error: {e}\n", file=sys.stderr)
+        return 2
+
+
 def serve_command(args: argparse.Namespace) -> int:
     """
     Run the FastAPI local API server with uvicorn (for dashboard connections).
@@ -699,6 +814,8 @@ def main() -> int:
 
     if args.command == "run":
         return run_command(args)
+    if args.command == "calibrate":
+        return calibrate_command(args)
     if args.command == "migrate":
         return migrate_command(args)
     if args.command == "compare":

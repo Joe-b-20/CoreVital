@@ -1,7 +1,10 @@
 # GPT-2 family (GPT2LMHeadModel)
-# Tuned for 12-layer, 768 hidden, float32/float16 anisotropy
-l2_explosion_multiplier: 8.0
-high_entropy_threshold_bits: 4.0
-repetition_cosine_threshold: 0.9995
-collapsed_head_entropy_threshold: 0.1
+# 12 layers, 768 hidden, 12 heads, ~50k vocab, float32/float16
+# Calibrated thresholds — GPT-2 runs hotter than larger models
+l2_explosion_multiplier: 5.0           # Mid/early L2 ratio peaks at ~3.1x; 5x is safe
+high_entropy_threshold_bits: 5.0       # Vocab ~50k → higher theoretical max; 4.0 false-positives on creative prompts
+repetition_cosine_threshold: 0.9995    # Non-repetitive GPT-2 gives 0.992–0.999
+collapsed_head_entropy_threshold: 0.1  # 12 heads, moderate specialization
 focused_head_concentration_threshold: 0.9
+typical_entropy_range: [1.5, 4.5]      # p10–p90 from calibration runs
+typical_l2_norm_range: [15.0, 45.0]    # p10–p90 last-layer L2 norms
