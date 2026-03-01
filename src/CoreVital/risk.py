@@ -7,6 +7,7 @@
 # Outputs: risk_score in [0, 1], risk_factors list, blamed_layers list
 # ============================================================================
 
+import math
 import statistics
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -97,8 +98,12 @@ def compute_risk_score(
         factors.append("attention_collapse")
 
     # --- Continuous metric components (additive) ---
+    # Filter non-finite values: NaN/Inf can reach logits_summary when
+    # detect_tensor_anomalies doesn't inspect logits tensors directly.
     entropies = [
-        s.logits_summary.entropy for s in timeline if s.logits_summary and s.logits_summary.entropy is not None
+        s.logits_summary.entropy
+        for s in timeline
+        if s.logits_summary and s.logits_summary.entropy is not None and math.isfinite(s.logits_summary.entropy)
     ]
     if entropies:
         mean_ent = sum(entropies) / len(entropies)
@@ -118,7 +123,9 @@ def compute_risk_score(
     margins: List[float] = [
         s.logits_summary.top_k_margin  # type: ignore[misc]
         for s in timeline
-        if s.logits_summary and s.logits_summary.top_k_margin is not None
+        if s.logits_summary
+        and s.logits_summary.top_k_margin is not None
+        and math.isfinite(s.logits_summary.top_k_margin)
     ]
     if margins:
         mean_margin = sum(margins) / len(margins)
@@ -127,14 +134,14 @@ def compute_risk_score(
             components.append(margin_component)
             factors.append("low_confidence_margin")
 
-    agreements = []
+    agreements: List[float] = []
     for s in timeline:
         if not s.logits_summary:
             continue
         val = getattr(s.logits_summary, "topk_mass", None)
         if val is None:
             val = getattr(s.logits_summary, "voter_agreement", None)
-        if val is not None:
+        if val is not None and math.isfinite(val):
             agreements.append(val)
     if agreements:
         mean_agreement = sum(agreements) / len(agreements)
@@ -146,7 +153,7 @@ def compute_risk_score(
     surprisals: List[float] = [
         s.logits_summary.surprisal  # type: ignore[misc]
         for s in timeline
-        if s.logits_summary and s.logits_summary.surprisal is not None
+        if s.logits_summary and s.logits_summary.surprisal is not None and math.isfinite(s.logits_summary.surprisal)
     ]
     if surprisals:
         mean_surprisal = sum(surprisals) / len(surprisals)

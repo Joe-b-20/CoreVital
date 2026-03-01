@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import torch
 
+from CoreVital.errors import InstrumentationError
 from CoreVital.logging_utils import get_logger
 
 from .summaries import (
@@ -85,15 +86,21 @@ def normalize_step_tensors(
     # Shape contract: hidden (1, 1, hidden_dim), attention (1, heads, 1, key_len), logits 1D or 2D
     if hidden is not None:
         for i, t in enumerate(hidden):
-            assert t.dim() == 3, f"hidden_states[{i}] must be 3D (batch, seq, hidden), got dim={t.dim()}"
+            if t.dim() != 3:
+                raise InstrumentationError(f"hidden_states[{i}] must be 3D (batch, seq, hidden), got dim={t.dim()}")
     if attn is not None:
         for i, t in enumerate(attn):
-            assert t.dim() == 4, f"attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
+            if t.dim() != 4:
+                raise InstrumentationError(f"attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}")
     if cross is not None:
         for i, t in enumerate(cross):
-            assert t.dim() == 4, f"cross_attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
+            if t.dim() != 4:
+                raise InstrumentationError(
+                    f"cross_attentions[{i}] must be 4D (batch, heads, 1, key_len), got dim={t.dim()}"
+                )
     if logits is not None:
-        assert logits.dim() in (1, 2), f"logits must be 1D or 2D, got dim={logits.dim()}"
+        if logits.dim() not in (1, 2):
+            raise InstrumentationError(f"logits must be 1D or 2D, got dim={logits.dim()}")
 
     return NormalizedStepPayload(
         hidden_states=hidden,
