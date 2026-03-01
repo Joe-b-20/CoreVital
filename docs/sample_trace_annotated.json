@@ -1,0 +1,777 @@
+{
+  "_comment": "Annotated CoreVital trace excerpts from two real runs (2026-02-28). Each trace is trimmed to ONE generation step with _comment fields explaining every section. Source traces: runs/trace_7aaa4ac3.json (CausalLM) and runs/trace_0c9ed9cc.json (Seq2Seq).",
+
+  "causal_lm_example": {
+    "_comment": "CausalLM trace from meta-llama/Llama-3.2-3B-Instruct. Decoder-only architecture: no encoder_layers, no cross_attention. Timeline trimmed to 1 of 128 generation steps; layer arrays trimmed to 3 of 28 layers.",
+
+    "schema_version": "0.4.0",
+    "_comment_schema_version": "Semantic version of the CoreVital report schema. Current version is 0.4.0 (Phase-2).",
+
+    "trace_id": "7aaa4ac3-b549-4cac-8618-87e206d8e23a",
+    "_comment_trace_id": "UUID v4 unique to this run, generated at report creation time.",
+
+    "created_at_utc": "2026-03-01T04:47:33Z",
+    "_comment_created_at_utc": "ISO-8601 UTC timestamp when the report was finalized.",
+
+    "model": {
+      "_comment": "Metadata about the model under test. Captured automatically from the HuggingFace model config.",
+      "hf_id": "meta-llama/Llama-3.2-3B-Instruct",
+      "_comment_hf_id": "HuggingFace model identifier used to load the model.",
+      "revision": "0cb88a4f764b7a12671c53f0838cd831a0843b95",
+      "_comment_revision": "Git commit SHA of the model weights on HuggingFace Hub.",
+      "architecture": "LlamaForCausalLM",
+      "_comment_architecture": "Model class name. CausalLM = decoder-only autoregressive. Other types: T5ForConditionalGeneration (Seq2Seq).",
+      "num_layers": 28,
+      "_comment_num_layers": "Number of transformer decoder layers. Each layer has self-attention + FFN. Determines the size of layers[] in each timeline step.",
+      "hidden_size": 3072,
+      "_comment_hidden_size": "Dimensionality of hidden state vectors. Affects magnitude of L2 norms and max_abs values.",
+      "num_attention_heads": 24,
+      "_comment_num_attention_heads": "Number of self-attention heads per layer. Collapse/focus counts are out of this total.",
+      "tokenizer_hf_id": "meta-llama/Llama-3.2-3B-Instruct",
+      "dtype": "quantized_unknown",
+      "_comment_dtype": "Tensor data type. 'quantized_unknown' means 4-bit quantization was used but the exact internal dtype could not be detected.",
+      "device": "cuda",
+      "quantization": {
+        "enabled": true,
+        "method": "4-bit"
+      },
+      "_comment_quantization": "Quantization reduces memory usage but can affect numerical precision, potentially increasing anomalies."
+    },
+
+    "run_config": {
+      "_comment": "Snapshot of the configuration used for this run. Fully reproducible with same seed + config.",
+      "seed": 42,
+      "device_requested": "cuda",
+      "max_new_tokens": 128,
+      "_comment_max_new_tokens": "Maximum number of tokens to generate. The model may stop earlier if it produces an EOS token.",
+      "generation": {
+        "do_sample": true,
+        "temperature": 0.8,
+        "top_k": 50,
+        "top_p": 0.95,
+        "_comment": "Sampling parameters. temperature < 1.0 sharpens the distribution; top_k and top_p are nucleus-sampling cutoffs."
+      },
+      "summaries": {
+        "hidden": {
+          "enabled": true,
+          "stats": ["mean", "std", "l2_norm_mean", "max_abs"],
+          "_comment": "Which hidden-state summary statistics to compute per layer per step.",
+          "sketch": {
+            "method": "randproj",
+            "dim": 32,
+            "seed": 0,
+            "_comment": "Random-projection sketch for optional dimensionality-reduced hidden state fingerprints. Not used in current analysis but reserved for future clustering."
+          }
+        },
+        "attention": {
+          "enabled": true,
+          "stats": ["entropy_mean", "entropy_mean_normalized", "entropy_min", "entropy_max", "concentration_max", "concentration_min", "collapsed_head_count", "focused_head_count"],
+          "_comment": "Which attention summary statistics to compute per layer per step."
+        },
+        "logits": {
+          "enabled": true,
+          "stats": ["entropy", "top_k_margin", "topk_mass", "topk_probs", "perplexity", "surprisal"],
+          "topk": 5,
+          "_comment": "Which logits metrics to compute per step. topk=5 means the top 5 candidate tokens are stored."
+        }
+      },
+      "sink": {
+        "type": "local_file",
+        "target": "/home/joebachir20/CoreVital/demo/trace_7aaa4ac3.json",
+        "_comment": "Where the trace JSON is written. Alternatives: 'sqlite', 'wandb', etc."
+      }
+    },
+
+    "prompt": {
+      "_comment": "The input prompt fed to the model. token_ids are the tokenizer output; num_tokens = len(token_ids).",
+      "text": "List five speculative but plausible advances in quantum error correction by 2030. For each, one sentence only.",
+      "token_ids": [128000, 861, 4330, 66836, 719, 50434, 31003, 304, "... 15 more IDs omitted for brevity"],
+      "_comment_token_ids": "Actual array has 23 integer token IDs. First 8 shown above; see full trace for exact values.",
+      "num_tokens": 23
+    },
+
+    "generated": {
+      "_comment": "The model's output. token_ids are decoder outputs (including any special tokens); num_tokens = len(token_ids).",
+      "output_text": " \n1. **Fault-tolerant quantum processors**: A new class of quantum processors capable of correcting errors in the quantum computation process, using a combination of quantum error correction codes and",
+      "token_ids": [720, 16, 13, 3146, 59880, 2442, 22847, 519, "... 120 more IDs omitted for brevity"],
+      "_comment_token_ids": "Actual array has 128 integer token IDs. First 8 shown above.",
+      "num_tokens": 128
+    },
+
+    "timeline": [
+      {
+        "_comment": "ONE generation step shown (of 128 total). step_index = prompt_tokens + generation_position. For this CausalLM, prompt has 23 tokens, so the first generated token is step_index 23.",
+        "step_index": 23,
+        "token": {
+          "token_id": 720,
+          "token_text": " \n",
+          "is_prompt_token": false,
+          "_comment": "The token produced at this step. is_prompt_token is always false in the generation timeline."
+        },
+        "logits_summary": {
+          "_comment": "Metrics computed from the full logit distribution at this step, BEFORE sampling.",
+          "entropy": 0.8371,
+          "_comment_entropy": "Shannon entropy in bits. Low (0.84) = very confident. Range: 0 to ~log2(vocab_size). < 2 confident, 2-4 normal, > 4 uncertain.",
+          "topk": [
+            {"token_id": 720, "token_text": " \n", "prob": 0.816},
+            {"token_id": 4815, "token_text": " \n\n", "prob": 0.138},
+            {"token_id": 220, "token_text": " ", "prob": 0.046},
+            {"token_id": 38, "token_text": "G", "prob": 0.0},
+            {"token_id": 34, "token_text": "C", "prob": 0.0}
+          ],
+          "_comment_topk": "Deprecated alias for topk_probs. Both contain the top-K most probable tokens with their probabilities.",
+          "topk_probs": [
+            {"token_id": 720, "token_text": " \n", "prob": 0.816},
+            {"token_id": 4815, "token_text": " \n\n", "prob": 0.138},
+            {"token_id": 220, "token_text": " ", "prob": 0.046},
+            {"token_id": 38, "token_text": "G", "prob": 0.0},
+            {"token_id": 34, "token_text": "C", "prob": 0.0}
+          ],
+          "_comment_topk_probs": "Top-K candidate tokens sorted by probability. prob values sum to topk_mass. Here the top token dominates at 81.6%.",
+          "top_k_margin": 0.6782,
+          "_comment_top_k_margin": "Probability gap between rank-1 and rank-2 token. High (0.68) = clear winner. Range: [0, 1]. Close to 0 = model nearly tied between two choices.",
+          "voter_agreement": 1.0,
+          "_comment_voter_agreement": "Deprecated alias for topk_mass. Kept for backward compatibility.",
+          "topk_mass": 1.0,
+          "_comment_topk_mass": "Sum of top-K probabilities. 1.0 = all probability mass is in the top-5 tokens. Range: [0, 1]. Low values indicate probability spread across many tokens.",
+          "perplexity": 1.7865,
+          "_comment_perplexity": "2^entropy. Effective number of equiprobable tokens. 1.79 means the model is choosing among ~2 plausible options. Range: [1, vocab_size].",
+          "surprisal": 0.293,
+          "_comment_surprisal": "-log2(prob of chosen token). Low (0.29) = the chosen token was highly expected. Range: [0, ∞). Spikes indicate unexpected token choices."
+        },
+        "layers": [
+          {
+            "_comment": "Layer 0 of 28 decoder layers. First layer processes raw token embeddings.",
+            "layer_index": 0,
+            "hidden_summary": {
+              "_comment": "Summary statistics of the hidden-state tensor after this layer's forward pass.",
+              "mean": 0.000715,
+              "_comment_mean": "Mean of all hidden-state values. Near zero is typical for well-behaved layers due to LayerNorm.",
+              "std": 0.0794,
+              "_comment_std": "Standard deviation. Low for early layers; grows deeper in the network.",
+              "l2_norm_mean": 2.6425,
+              "_comment_l2_norm_mean": "Mean L2 norm of hidden vectors across sequence positions. Grows with depth. Used for explosion detection.",
+              "max_abs": 5.6328,
+              "_comment_max_abs": "Largest absolute value in the hidden tensor. Extreme values may indicate numerical instability.",
+              "sketch": [],
+              "_comment_sketch": "Random-projection sketch vector (empty when dim=32 but not populated for this run).",
+              "clipped": false,
+              "_comment_clipped": "True if values were clamped to ±1e6 for numerical stability before computing stats."
+            },
+            "attention_summary": {
+              "_comment": "Self-attention statistics aggregated across all 24 heads at this layer for the current query position.",
+              "entropy_mean": 1.5487,
+              "_comment_entropy_mean": "Mean Shannon entropy (nats) of attention distributions across heads. Higher = more diffuse attention.",
+              "entropy_mean_normalized": 0.4939,
+              "_comment_entropy_mean_normalized": "entropy_mean / log(seq_length), normalized to [0, 1]. 1.0 = uniform attention; 0.0 = perfectly peaked. Used for collapse detection (< 0.03 = collapsed).",
+              "entropy_min": 0.0291,
+              "_comment_entropy_min": "Lowest entropy across all heads. Very low = at least one head is almost entirely focused on one key.",
+              "concentration_max": 0.9956,
+              "_comment_concentration_max": "Highest max-attention-weight across all heads. Near 1.0 = one head has almost all weight on a single token.",
+              "entropy_max": 2.7352,
+              "_comment_entropy_max": "Highest entropy across all heads. Shows the most diffuse head.",
+              "concentration_min": 0.1295,
+              "_comment_concentration_min": "Lowest max-attention-weight. Low value = that head's attention is very spread out.",
+              "collapsed_head_count": 2,
+              "_comment_collapsed_head_count": "Heads with normalized entropy < 0.03. Out of 24 total heads. Some collapse is normal, especially in early/late layers.",
+              "collapsed_head_rate": 0.0833,
+              "_comment_collapsed_head_rate": "collapsed_head_count / num_heads. [0, 1]. This layer: 2/24 = 8.3% collapsed.",
+              "focused_head_count": 4,
+              "_comment_focused_head_count": "Heads with concentration > 0.9. These are 'specialist' heads attending strongly to specific tokens."
+            },
+            "anomalies": {
+              "has_nan": false,
+              "has_inf": false,
+              "_comment": "NaN/Inf detection per layer. If true, something is critically wrong with this layer's computation."
+            },
+            "extensions": {}
+          },
+          {
+            "_comment": "Layer 14 of 28 (middle layer). Layers 1-13 omitted for brevity — same structure as layer 0.",
+            "layer_index": 14,
+            "hidden_summary": {
+              "mean": -0.00846,
+              "std": 2.8342,
+              "l2_norm_mean": 44.8501,
+              "max_abs": 412.25,
+              "sketch": [],
+              "clipped": false,
+              "_comment": "Note L2 norm grew from 2.6 (layer 0) to 44.9 (layer 14). This growth is normal — hidden states accumulate information with depth."
+            },
+            "attention_summary": {
+              "entropy_mean": 1.3327,
+              "entropy_mean_normalized": 0.425,
+              "entropy_min": 0.1393,
+              "concentration_max": 0.9805,
+              "entropy_max": 2.6326,
+              "concentration_min": 0.2283,
+              "collapsed_head_count": 0,
+              "collapsed_head_rate": 0.0,
+              "focused_head_count": 5,
+              "_comment": "No collapsed heads in this middle layer, but 5 focused heads — healthy mid-network attention pattern."
+            },
+            "anomalies": {"has_nan": false, "has_inf": false},
+            "extensions": {}
+          },
+          {
+            "_comment": "Layer 27 of 28 (final decoder layer). Layers 15-26 omitted for brevity.",
+            "layer_index": 27,
+            "hidden_summary": {
+              "mean": -0.00193,
+              "std": 1.5179,
+              "l2_norm_mean": 83.481,
+              "max_abs": 30.1094,
+              "sketch": [],
+              "clipped": false,
+              "_comment": "L2 norm peaked at 83.5. The final layer feeds into the language model head for next-token prediction."
+            },
+            "attention_summary": {
+              "entropy_mean": 1.3532,
+              "entropy_mean_normalized": 0.4316,
+              "entropy_min": 0.4938,
+              "concentration_max": 0.9028,
+              "entropy_max": 2.8035,
+              "concentration_min": 0.1466,
+              "collapsed_head_count": 0,
+              "collapsed_head_rate": 0.0,
+              "focused_head_count": 1
+            },
+            "anomalies": {"has_nan": false, "has_inf": false},
+            "extensions": {}
+          }
+        ],
+        "_comment_layers": "28 decoder layers total; only layers 0, 14, 27 shown. Every layer has the same structure: hidden_summary, attention_summary, anomalies, extensions. CausalLM layers have NO cross_attention field (that is Seq2Seq only).",
+        "extensions": {}
+      }
+    ],
+    "_comment_timeline": "Full trace has 128 steps (one per generated token). step_index runs from 23 (first generated token) to 150. Only step 23 shown.",
+
+    "summary": {
+      "_comment": "Aggregate run statistics.",
+      "prompt_tokens": 23,
+      "generated_tokens": 128,
+      "total_steps": 151,
+      "_comment_total_steps": "prompt_tokens + generated_tokens = 23 + 128 = 151. This counts all positions processed.",
+      "elapsed_ms": 7477,
+      "_comment_elapsed_ms": "Wall-clock time for the instrumented generation (excluding model load)."
+    },
+
+    "warnings": [],
+    "_comment_warnings": "List of Warning objects {code, message}. Empty = no issues detected during capture.",
+
+    "encoder_layers": null,
+    "_comment_encoder_layers": "Always null for CausalLM (decoder-only) models. Only populated for Seq2Seq models like T5.",
+
+    "prompt_analysis": {
+      "_comment": "Telemetry from an extra forward pass over the prompt (Phase-1b). Captures how the model 'reads' the prompt before generation begins.",
+      "layers": ["... (28 PromptAttentionLayer objects, one per decoder layer)"],
+      "_comment_layers": "Each layer contains: 'heads' (sparse attention in SoA format: query_indices, key_indices, weights for significant connections) and 'basin_scores' (per-head ratio of middle-third vs boundary attention). Example basin_scores from layer 0: [0.1521, 0.4307, 0.0214, ...]. Scores < 0.3 suggest 'lost in the middle' for that head.",
+      "layer_transformations": [0.2692, 0.1929, 0.1977, 0.2042, 0.1984, "... (27 values total)"],
+      "_comment_layer_transformations": "Cosine distance between input and output hidden states for each layer transition. High values = layer transforms its input significantly. 27 values for 28 layers (layer-to-layer transitions).",
+      "prompt_surprisals": [14.6911, 10.2541, 15.9651, 10.2716, 0.9424, "... (22 values total)"],
+      "_comment_prompt_surprisals": "-log2(prob) for each prompt token given its prefix. High values at the start are normal (model has less context). One value per prompt token excluding the first (22 = 23 - 1)."
+    },
+
+    "health_flags": {
+      "_comment": "Aggregated boolean health indicators from post-processing (Phase-1c). Quick pass/fail checks.",
+      "nan_detected": false,
+      "_comment_nan_detected": "True if ANY layer at ANY step had NaN values. Catastrophic — risk goes to 1.0.",
+      "inf_detected": false,
+      "_comment_inf_detected": "True if ANY layer at ANY step had Inf values. Catastrophic — risk goes to 1.0.",
+      "attention_collapse_detected": false,
+      "_comment_attention_collapse_detected": "True if any layer has collapsed_head_count > 0 in any step. Mild concern (risk floor 0.15).",
+      "high_entropy_steps": 2,
+      "_comment_high_entropy_steps": "Count of generation steps where entropy exceeded the model-specific threshold (default 4.0 bits). 2 out of 128 steps = low concern.",
+      "repetition_loop_detected": false,
+      "_comment_repetition_loop_detected": "True if last-layer hidden states showed cosine similarity > 0.9995 for 3+ consecutive steps. Strong risk signal (floor 0.9).",
+      "mid_layer_anomaly_detected": false,
+      "_comment_mid_layer_anomaly_detected": "True if NaN/Inf or L2 norm explosion detected in the middle third of layers. Risk floor 0.7."
+    },
+
+    "extensions": {
+      "_comment": "Extensible key-value store for Phase-2+ analytics computed from the raw timeline data.",
+
+      "compound_signals": [
+        {
+          "name": "confident_repetition_risk",
+          "description": "Model is extremely confident with near-unanimous token selection — may be locked into a repetitive pattern.",
+          "severity": 0.4,
+          "evidence": ["Mean entropy: 0.00", "Mean surprisal: 0.00", "Mean voter agreement: 1.00"],
+          "_comment": "Compound signals detect multi-metric patterns. Each has: name (machine ID), description (human-readable), severity (0-1, added to risk score), evidence (supporting data)."
+        }
+      ],
+      "_comment_compound_signals": "Possible signals: context_loss (0.6), confident_confusion (0.5), degenerating_generation (0.5), attention_bottleneck (0.4), confident_repetition_risk (0.3).",
+
+      "risk": {
+        "_comment": "Composite risk assessment combining health flags, continuous metrics, and compound signals into a single 0-1 score.",
+        "risk_score": 0.484,
+        "_comment_risk_score": "0-1. < 0.3 low risk, 0.3-0.7 moderate, > 0.7 high. This run is moderate risk (0.48).",
+        "risk_factors": ["elevated_surprisal", "compound:confident_repetition_risk"],
+        "_comment_risk_factors": "Human-readable list of what contributed to the score. 'compound:' prefix = from compound signals.",
+        "blamed_layers": [
+          {"layer": 2, "reasons": ["Attention collapse in 67% of steps", "Unstable L2 norms (CV=0.72)"], "severity": 0.4},
+          {"layer": 27, "reasons": ["L2 norm outlier (z=4.0)"], "severity": 0.5}
+        ],
+        "_comment_blamed_layers": "Layers identified as problematic. Each has: layer index, human-readable reasons, severity (0-1). Shown 2 of 10 blamed layers for brevity.",
+        "blamed_layers_flat": [1, 2, 3, 4, 5, 21, 22, 24, 25, 27],
+        "_comment_blamed_layers_flat": "Backward-compatible flat list of blamed layer indices.",
+        "attention_collapse_detail": {
+          "mean_collapse_rate": 0.0258,
+          "_comment_mean_collapse_rate": "Average fraction of collapsed heads across all layers and steps. [0, 1]. Low = healthy.",
+          "trend_detected": false,
+          "_comment_trend_detected": "True if collapse rate is increasing over generation steps (degenerating behavior).",
+          "trend_peak_deviation": 0.0,
+          "trend_layers": [],
+          "catastrophic": false,
+          "_comment_catastrophic": "True if collapse is severe enough to warrant stopping generation.",
+          "calibration_anomaly": false,
+          "calibration_anomaly_layers": [],
+          "per_layer_mean_collapse_rate": [0.0192, 0.0003, 0.0521, "... (28 values, one per layer)"],
+          "_comment_per_layer_mean_collapse_rate": "Collapse rate averaged across all generation steps, per layer. Useful for identifying which layers are most prone to collapse."
+        }
+      },
+
+      "fingerprint": {
+        "_comment": "25-element numeric vector summarizing this run's behavior for clustering and anomaly detection (v2).",
+        "vector": [0.9943, 1.1046, 0.0, 3.7067, -0.0099, 0.6587, 0.3586, 0.0021, 0.8396, 1.2342, -0.0082, 0.9862, 0.0356, 0.484, 0.0132, 0.0, 0.0, 0.0, 0.0, 0.0, -0.9055, 1.1109, 1.7421, 0.6217, 0.0],
+        "_comment_vector": "Slots 0-4: entropy (mean,std,min,max,slope). 5-7: margin (mean,std,slope). 8-10: surprisal. 11-12: topk_mass. 13: risk_score. 14: high_entropy_fraction. 15-19: boolean flags (nan,inf,repetition,mid_layer,collapse). 20: entropy-margin correlation. 21: entropy CV. 22-23: first/last quarter entropy. 24: reserved.",
+        "prompt_hash": "2ccfe1783af26b07197e49cf8131d6fa0eea33c5f26ae9619ca0c32abc13e325",
+        "_comment_prompt_hash": "SHA-256 of the prompt text. Used for deduplication and baseline lookup.",
+        "version": 2
+      },
+
+      "early_warning": {
+        "_comment": "Predictive signals that detect degradation patterns BEFORE they trip health-flag thresholds.",
+        "failure_risk": 0.0,
+        "_comment_failure_risk": "Estimated probability (0-1) that the next N tokens will exhibit failure. 0.0 = no warning signs.",
+        "warning_signals": [],
+        "_comment_warning_signals": "Possible signals: entropy_accelerating, margin_collapsed, margin_declining, surprisal_volatile, entropy_margin_divergence."
+      },
+
+      "narrative": {
+        "summary": "Moderate risk (score: 0.48). Model is extremely confident with near-unanimous token selection — may be locked into a repetitive pattern. Layer 27: L2 norm outlier (z=4.0). Layer 2: Attention collapse in 67% of steps; Unstable L2 norms (CV=0.72). Layer 5: Attention collapse in 85% of steps.",
+        "_comment": "Human-readable 2-6 sentence summary referencing actual metric values, step indices, and tokens. Generated by narrative.py."
+      },
+
+      "performance": {
+        "_comment": "Timing breakdown of the CoreVital instrumentation pipeline. Used to measure overhead vs baseline inference.",
+        "total_wall_time_ms": 42406.33,
+        "parent_operations": [
+          {"name": "config_load", "ms": 3.42, "pct": 0.01},
+          {"name": "model_load", "ms": 10403.27, "pct": 24.53},
+          {"name": "prompt_forward_pass", "ms": 299.47, "pct": 0.71},
+          {"name": "model_inference", "ms": 9098.37, "pct": 21.46},
+          {"name": "report_build", "ms": 107.52, "pct": 0.25}
+        ],
+        "_comment_parent_operations": "Top-level timing phases. model_inference includes generation + timeline processing. report_build includes health flags, risk, narrative, etc.",
+        "baseline_ms": 7375.13,
+        "_comment_baseline_ms": "Time for un-instrumented generation (no hooks). Used to compute overhead.",
+        "instrumented_inference_ms": 9098.37,
+        "inference_overhead_ms": 1723.24,
+        "inference_overhead_pct": 23.37,
+        "_comment_overhead": "CoreVital instrumentation added 23.4% overhead to inference time for this run."
+      }
+    }
+  },
+
+  "seq2seq_example": {
+    "_comment": "Seq2Seq trace from google/flan-t5-large (T5ForConditionalGeneration). Encoder-decoder architecture: has encoder_layers AND cross_attention in decoder layers. Timeline trimmed to 1 of 21 steps; layer arrays trimmed for brevity.",
+
+    "schema_version": "0.4.0",
+    "trace_id": "0c9ed9cc-c124-4069-8395-fa8050132ffa",
+    "created_at_utc": "2026-03-01T04:47:50Z",
+
+    "model": {
+      "_comment": "T5 encoder-decoder model. 24 encoder + 24 decoder layers. Smaller hidden_size (1024) than the CausalLM example (3072).",
+      "hf_id": "google/flan-t5-large",
+      "revision": "0613663d0d48ea86ba8cb3d7a44f0f65dc596a2a",
+      "architecture": "T5ForConditionalGeneration",
+      "_comment_architecture": "Seq2Seq = encoder processes input, decoder generates output attending to encoder states via cross-attention.",
+      "num_layers": 24,
+      "hidden_size": 1024,
+      "num_attention_heads": 16,
+      "tokenizer_hf_id": "google/flan-t5-large",
+      "dtype": "quantized_unknown",
+      "device": "cuda",
+      "quantization": {"enabled": true, "method": "4-bit"}
+    },
+
+    "run_config": {
+      "_comment": "Same config structure as CausalLM. Omitted for brevity — see causal_lm_example above.",
+      "seed": 42,
+      "device_requested": "cuda",
+      "max_new_tokens": 128,
+      "generation": {"do_sample": true, "temperature": 0.8, "top_k": 50, "top_p": 0.95},
+      "summaries": {
+        "hidden": {"enabled": true, "stats": ["mean", "std", "l2_norm_mean", "max_abs"], "sketch": {"method": "randproj", "dim": 32, "seed": 0}},
+        "attention": {"enabled": true, "stats": ["entropy_mean", "entropy_mean_normalized", "entropy_min", "entropy_max", "concentration_max", "concentration_min", "collapsed_head_count", "focused_head_count"]},
+        "logits": {"enabled": true, "stats": ["entropy", "top_k_margin", "topk_mass", "topk_probs", "perplexity", "surprisal"], "topk": 5}
+      },
+      "sink": {"type": "local_file", "target": "/home/joebachir20/CoreVital/demo/trace_0c9ed9cc.json"}
+    },
+
+    "prompt": {
+      "text": "Summarize: The Mediterranean diet has been linked to lower cardiovascular risk and better cognitive function in studies, but confounding factors make causal claims hard. Recent randomized trials have had mixed results.",
+      "token_ids": [12198, 1635, 1737, 10, 37, 15481, 3178, 65, 118, 5229, 12, 1364, 16712, 1020, 11, 394, 12368, 1681, 16, 2116, 6, 68, 975, 19732, 53, 2580, 143, 31161, 3213, 614, 5, 17716, 3, 30027, 10570, 43, 141, 4838, 772, 5, 1],
+      "num_tokens": 41,
+      "_comment": "For Seq2Seq, prompt tokens are processed by the encoder. The decoder starts with a start-of-sequence token."
+    },
+
+    "generated": {
+      "output_text": "A Mediterranean diet is healthier than a low-fat diet, but it can still be harmful.",
+      "token_ids": [71, 15481, 3178, 19, 11960, 145, 3, 9, 731, 18, 6589, 3178, 6, 68, 34, 54, 341, 36, 10947, 5, 1],
+      "num_tokens": 21,
+      "_comment": "T5 generated 21 tokens (including EOS token_id=1 at the end). Shorter than the 128-token max."
+    },
+
+    "timeline": [
+      {
+        "_comment": "First generation step. For Seq2Seq, step_index starts at prompt_tokens (41) because the encoder has already processed positions 0-40. Showing 3 of 24 decoder layers.",
+        "step_index": 41,
+        "token": {
+          "token_id": 71,
+          "token_text": "A",
+          "is_prompt_token": false
+        },
+        "logits_summary": {
+          "_comment": "High entropy (7.61 bits) on the first generated token — the model is very uncertain about how to begin the summary.",
+          "entropy": 7.6129,
+          "_comment_entropy": "7.6 bits is very high (> 4.0 threshold). The model is choosing among ~196 equiprobable tokens (see perplexity).",
+          "topk": [
+            {"token_id": 37, "token_text": "The", "prob": 0.107},
+            {"token_id": 2200, "token_text": "Research", "prob": 0.085},
+            {"token_id": 71, "token_text": "A", "prob": 0.052},
+            {"token_id": 6536, "token_text": "Studies", "prob": 0.039},
+            {"token_id": 23066, "token_text": "Researchers", "prob": 0.022}
+          ],
+          "topk_probs": [
+            {"token_id": 37, "token_text": "The", "prob": 0.107},
+            {"token_id": 2200, "token_text": "Research", "prob": 0.085},
+            {"token_id": 71, "token_text": "A", "prob": 0.052},
+            {"token_id": 6536, "token_text": "Studies", "prob": 0.039},
+            {"token_id": 23066, "token_text": "Researchers", "prob": 0.022}
+          ],
+          "_comment_topk_probs": "Top token ('The') has only 10.7% probability — no clear winner. The actually sampled token ('A') was rank 3 at 5.2%.",
+          "top_k_margin": 0.0221,
+          "_comment_top_k_margin": "Only 2.2% gap between top-1 and top-2 tokens — extremely close decision. Compare to 67.8% in the CausalLM example.",
+          "voter_agreement": 0.394,
+          "topk_mass": 0.394,
+          "_comment_topk_mass": "Top-5 tokens account for only 39.4% of probability — most mass is spread across the vocabulary. Very uncertain.",
+          "perplexity": 195.75,
+          "_comment_perplexity": "2^7.61 ≈ 196. The model is effectively choosing among ~196 equiprobable tokens. Very high uncertainty.",
+          "surprisal": 4.2564,
+          "_comment_surprisal": "The sampled token 'A' had only 5.2% probability, costing 4.26 bits of surprisal. High surprisal because a lower-ranked token was selected."
+        },
+        "layers": [
+          {
+            "_comment": "Decoder layer 0 of 24. KEY DIFFERENCE from CausalLM: this layer has BOTH attention_summary (decoder self-attention) AND cross_attention (decoder-to-encoder attention).",
+            "layer_index": 0,
+            "hidden_summary": {
+              "mean": -0.4583,
+              "std": 10.9656,
+              "l2_norm_mean": 351.0342,
+              "max_abs": 131.3924,
+              "sketch": [],
+              "clipped": false,
+              "_comment": "Note the much larger L2 norms compared to the CausalLM layer 0 (351 vs 2.6). This is architecture-dependent."
+            },
+            "attention_summary": {
+              "_comment": "DECODER SELF-ATTENTION. In T5's decoder at step 0, the decoder has only seen the start token, so self-attention is trivially peaked (entropy=0, all heads collapsed).",
+              "entropy_mean": 0.0,
+              "entropy_mean_normalized": 0.0,
+              "entropy_min": 0.0,
+              "concentration_max": 1.0,
+              "entropy_max": 0.0,
+              "concentration_min": 1.0,
+              "collapsed_head_count": 16,
+              "collapsed_head_rate": 1.0,
+              "focused_head_count": 16,
+              "_comment_collapsed": "All 16 heads collapsed because with only 1 token to attend to, attention is deterministic. This is expected and not a health concern for autoregressive decoding."
+            },
+            "cross_attention": {
+              "_comment": "DECODER-TO-ENCODER CROSS-ATTENTION. This is how the decoder reads the encoder's representation of the input. Only present in Seq2Seq decoder layers; always null for CausalLM.",
+              "entropy_mean": 1.5642,
+              "entropy_mean_normalized": 0.4212,
+              "_comment_entropy_mean_normalized": "0.42 = moderately spread attention over the encoder's 41 tokens. Neither fully uniform nor peaked.",
+              "entropy_min": 1.1171,
+              "concentration_max": 0.354,
+              "_comment_concentration_max": "0.35 = no single encoder token dominates any head's attention. Healthy cross-attention.",
+              "entropy_max": 2.9068,
+              "concentration_min": 0.1164,
+              "collapsed_head_count": 0,
+              "collapsed_head_rate": 0.0,
+              "focused_head_count": 0,
+              "_comment_cross_attn_summary": "No collapsed or overly focused heads in cross-attention = the decoder is reading from the encoder in a balanced way."
+            },
+            "anomalies": {"has_nan": false, "has_inf": false},
+            "extensions": {}
+          },
+          {
+            "_comment": "Decoder layer 12 (middle). Layers 1-11 omitted — same structure.",
+            "layer_index": 12,
+            "hidden_summary": {
+              "mean": -1.4808,
+              "std": 1117.043,
+              "l2_norm_mean": 35727.94,
+              "max_abs": 15627.9,
+              "sketch": [],
+              "clipped": false,
+              "_comment": "L2 norms are extremely large (35,728) in mid-layers. This is characteristic of T5 with 4-bit quantization and contributed to mid_layer_anomaly_detected=true."
+            },
+            "attention_summary": {
+              "entropy_mean": 0.0,
+              "entropy_mean_normalized": 0.0,
+              "entropy_min": 0.0,
+              "concentration_max": 1.0,
+              "entropy_max": 0.0,
+              "concentration_min": 1.0,
+              "collapsed_head_count": 16,
+              "collapsed_head_rate": 1.0,
+              "focused_head_count": 16,
+              "_comment": "Still all collapsed (step 0, single-token decoder self-attention)."
+            },
+            "cross_attention": {
+              "entropy_mean": 1.5577,
+              "entropy_mean_normalized": 0.4195,
+              "entropy_min": 1.1077,
+              "concentration_max": 0.356,
+              "entropy_max": 3.1301,
+              "concentration_min": 0.1388,
+              "collapsed_head_count": 0,
+              "collapsed_head_rate": 0.0,
+              "focused_head_count": 0
+            },
+            "anomalies": {"has_nan": false, "has_inf": false},
+            "extensions": {}
+          },
+          {
+            "_comment": "Decoder layer 23 (final). Layers 13-22 omitted.",
+            "layer_index": 23,
+            "hidden_summary": {
+              "mean": 0.01465,
+              "std": 0.4247,
+              "l2_norm_mean": 13.591,
+              "max_abs": 9.2188,
+              "sketch": [],
+              "clipped": false,
+              "_comment": "Final decoder layer L2 norm drops dramatically to 13.6 (from 35,728 at layer 12). T5 applies a final LayerNorm that normalizes hidden states before the LM head."
+            },
+            "attention_summary": {
+              "entropy_mean": 0.0,
+              "entropy_mean_normalized": 0.0,
+              "entropy_min": 0.0,
+              "concentration_max": 1.0,
+              "entropy_max": 0.0,
+              "concentration_min": 1.0,
+              "collapsed_head_count": 16,
+              "collapsed_head_rate": 1.0,
+              "focused_head_count": 16
+            },
+            "cross_attention": {
+              "entropy_mean": 3.0429,
+              "entropy_mean_normalized": 0.8194,
+              "_comment_entropy_mean_normalized": "0.82 = nearly uniform attention across all encoder tokens in the final layer. The last layer cross-attention spreads broadly.",
+              "entropy_min": 2.0153,
+              "concentration_max": 0.4902,
+              "entropy_max": 3.3144,
+              "concentration_min": 0.0899,
+              "collapsed_head_count": 0,
+              "collapsed_head_rate": 0.0,
+              "focused_head_count": 0
+            },
+            "anomalies": {"has_nan": false, "has_inf": false},
+            "extensions": {}
+          }
+        ],
+        "_comment_layers": "24 decoder layers total; only layers 0, 12, 23 shown. Each Seq2Seq decoder layer has cross_attention in addition to the standard attention_summary (self-attention).",
+        "extensions": {}
+      }
+    ],
+    "_comment_timeline": "Full trace has 21 steps (tokens generated before EOS). Only the first step (step_index=41) is shown.",
+
+    "summary": {
+      "prompt_tokens": 41,
+      "generated_tokens": 21,
+      "total_steps": 62,
+      "_comment_total_steps": "prompt_tokens + generated_tokens = 41 + 21 = 62. For Seq2Seq, prompt tokens are processed by the encoder in one pass, not step-by-step.",
+      "elapsed_ms": 1922
+    },
+
+    "warnings": [],
+
+    "encoder_layers": [
+      {
+        "_comment": "Encoder layer 0 of 24. ONLY present in Seq2Seq models. Encoder layers process the input prompt and have self-attention ONLY (no cross_attention). Run once before generation begins.",
+        "layer_index": 0,
+        "hidden_summary": {
+          "mean": -0.2996,
+          "std": 28.1135,
+          "l2_norm_mean": 490.0345,
+          "max_abs": 3190.3804,
+          "sketch": [],
+          "clipped": false
+        },
+        "attention_summary": {
+          "_comment": "ENCODER self-attention over the 41 prompt tokens. Unlike the decoder step-0 (which had only 1 token), the encoder sees all prompt tokens at once, so attention is meaningful.",
+          "entropy_mean": 1.677,
+          "entropy_mean_normalized": 0.4516,
+          "entropy_min": 0.4858,
+          "concentration_max": 1.0,
+          "entropy_max": 2.999,
+          "concentration_min": 0.0555,
+          "collapsed_head_count": 0,
+          "collapsed_head_rate": 0.0,
+          "focused_head_count": 0
+        },
+        "extensions": {}
+      },
+      {
+        "_comment": "Encoder layer 12 (middle). Layers 1-11 omitted.",
+        "layer_index": 12,
+        "hidden_summary": {
+          "mean": -84.6764,
+          "std": 4893.482,
+          "l2_norm_mean": 43352.355,
+          "max_abs": 395434.06,
+          "sketch": [],
+          "clipped": false,
+          "_comment": "Extremely high max_abs (395K). This scale is typical of T5's internal representations before the final LayerNorm."
+        },
+        "attention_summary": {
+          "entropy_mean": 1.8487,
+          "entropy_mean_normalized": 0.4978,
+          "entropy_min": 1.433,
+          "concentration_max": 0.9995,
+          "_comment_concentration_max": "0.9995 = one head in this layer is nearly fully focused on a single token. Could be a positional or syntactic specialist head.",
+          "entropy_max": 2.8554,
+          "concentration_min": 0.0528,
+          "collapsed_head_count": 0,
+          "collapsed_head_rate": 0.0,
+          "focused_head_count": 0
+        },
+        "extensions": {}
+      },
+      {
+        "_comment": "Encoder layer 23 (final). Layers 13-22 omitted.",
+        "layer_index": 23,
+        "hidden_summary": {
+          "mean": -0.0001,
+          "std": 0.0665,
+          "l2_norm_mean": 2.057,
+          "max_abs": 0.4917,
+          "sketch": [],
+          "clipped": false,
+          "_comment": "Final encoder layer after LayerNorm — values normalized to small range. These hidden states are what the decoder's cross-attention attends to."
+        },
+        "attention_summary": {
+          "entropy_mean": 2.0274,
+          "entropy_mean_normalized": 0.546,
+          "entropy_min": 1.1415,
+          "concentration_max": 0.999,
+          "entropy_max": 3.1327,
+          "concentration_min": 0.058,
+          "collapsed_head_count": 0,
+          "collapsed_head_rate": 0.0,
+          "focused_head_count": 0
+        },
+        "extensions": {}
+      }
+    ],
+    "_comment_encoder_layers": "24 encoder layers total; only 0, 12, 23 shown. Encoder layers capture how the model internally represents the input prompt. They have self-attention but NO cross_attention (that is decoder-only).",
+
+    "prompt_analysis": {
+      "_comment": "For Seq2Seq models, prompt_analysis captures encoder attention patterns. layer_transformations = cosine distances between consecutive encoder layer outputs. prompt_surprisals may be empty for T5 (encoder does not produce per-token surprisals in the same way as CausalLM).",
+      "layers": ["... (24 PromptAttentionLayer objects)"],
+      "_comment_layers": "Each layer has 'heads' (sparse attention SoA) and 'basin_scores' (per-head, middle-third vs boundary attention ratio). Example from layer 0: basin_scores = [0.4313, 0.3583, ...] — most heads have balanced attention.",
+      "layer_transformations": [0.095726, 0.021282, 0.022479, 0.038123, 0.006478, 0.009571, 0.011916, 0.009769, 0.010243, 0.012162, 0.010984, 0.012134, 0.012698, 0.011173, 0.011097, 0.015722, 0.014205, 0.0187, 0.016352, 0.018004, 0.019683, 0.022969, 0.418846],
+      "_comment_layer_transformations": "23 values (24 layers - 1 transition). The last transition (0.42) is very large — the final LayerNorm dramatically transforms the hidden state. Early transitions are small (layers refine gradually).",
+      "prompt_surprisals": [],
+      "_comment_prompt_surprisals": "Empty for T5/Seq2Seq because the encoder processes all tokens simultaneously (not autoregressively), so per-token surprisal is not meaningful."
+    },
+
+    "health_flags": {
+      "_comment": "This trace has multiple health concerns flagged.",
+      "nan_detected": false,
+      "inf_detected": false,
+      "attention_collapse_detected": true,
+      "_comment_attention_collapse_detected": "True because decoder self-attention heads are collapsed (expected for early steps with few decoder tokens). The severity field quantifies this.",
+      "attention_collapse_severity": 0.4,
+      "_comment_attention_collapse_severity": "Variable severity [0, 1] from detect_attention_collapse. 0.4 = moderate. Only present when attention_collapse_detected=true.",
+      "high_entropy_steps": 11,
+      "_comment_high_entropy_steps": "11 of 21 steps had entropy > 4.0 bits. Over half the steps — the model was frequently uncertain during this summarization task.",
+      "repetition_loop_detected": false,
+      "mid_layer_anomaly_detected": true,
+      "_comment_mid_layer_anomaly_detected": "True due to the extremely large L2 norms in mid-layers (35,000+). This is a known pattern with quantized T5 models."
+    },
+
+    "extensions": {
+      "compound_signals": [
+        {
+          "name": "attention_bottleneck",
+          "description": "Widespread attention collapse combined with high output entropy suggests information flow is restricted.",
+          "severity": 0.65,
+          "evidence": ["Collapse rate: 28.5% of observed heads", "Mean entropy: 3.61"],
+          "_comment": "This signal fires when many heads are collapsed AND entropy is elevated — the model may not be routing information effectively."
+        }
+      ],
+
+      "risk": {
+        "risk_score": 1.0,
+        "_comment_risk_score": "Maximum risk (1.0). Driven by mid_layer_anomaly (floor 0.7) + compound signal attention_bottleneck (severity 0.65) + elevated_entropy + elevated_surprisal. The continuous metrics pushed it from 0.7 to the 1.0 cap.",
+        "risk_factors": ["mid_layer_anomaly", "attention_collapse", "elevated_entropy", "elevated_surprisal", "compound:attention_bottleneck"],
+        "blamed_layers": [
+          {"layer": 0, "reasons": ["Attention collapse in 86% of steps"], "severity": 0.4},
+          {"layer": 7, "reasons": ["Attention collapse in 62% of steps", "Unstable L2 norms (CV=1.14)"], "severity": 0.4},
+          {"layer": 19, "reasons": ["Attention collapse in 100% of steps"], "severity": 0.4}
+        ],
+        "_comment_blamed_layers": "3 of 18 blamed layers shown. Layer 19 has 100% collapse rate across all generation steps.",
+        "blamed_layers_flat": [0, 1, 6, 7, 8, 9, 10, 11, 12, 13, 15, 17, 18, 19, 20, 21, 22, 23],
+        "attention_collapse_detail": {
+          "mean_collapse_rate": 0.1075,
+          "_comment": "10.75% mean collapse rate is elevated. The collapse trend was detected across layers.",
+          "trend_detected": true,
+          "trend_peak_deviation": 0.7068,
+          "trend_layers": [0, "... (additional layer indices)"],
+          "catastrophic": false,
+          "calibration_anomaly": false,
+          "calibration_anomaly_layers": [],
+          "per_layer_mean_collapse_rate": ["... (24 values, one per decoder layer)"]
+        }
+      },
+
+      "fingerprint": {
+        "vector": [3.6134, 2.1923, 0.2417, 7.6129, -0.0876, 0.3575, 0.3273, 0.0064, 2.0151, 1.8301, -0.0376, 0.8039, 0.1787, 1.0, 0.1774, 0.0, 0.0, 1.0, 0.0, 1.0, -0.8819, 0.6067, 5.2574, 3.3881, 0.0],
+        "_comment_vector": "Slot 13 = risk_score = 1.0. Slot 17 = mid_layer_anomaly = 1.0 (true). Slot 19 = attention_collapse = 1.0 (true). Slot 22 (first-quarter entropy) = 5.26 vs slot 23 (last-quarter) = 3.39 — entropy decreased over time.",
+        "prompt_hash": "db877e2575005f86fd6c444de8d76d458cf7d76f9e49a65538786dfdde7e8fa5",
+        "version": 2
+      },
+
+      "early_warning": {
+        "failure_risk": 0.6,
+        "_comment_failure_risk": "0.6 = moderate-high predicted failure probability. Driven by health flag passthrough (mid_layer_anomaly and attention_collapse are passed as hard ceilings).",
+        "warning_signals": ["mid_layer_anomaly", "attention_collapse"],
+        "_comment_warning_signals": "These are health flag passthrough signals, not trend-based early warnings. They indicate existing problems rather than developing ones."
+      },
+
+      "narrative": {
+        "summary": "High risk (score: 1.00), driven by anomalous behavior in middle transformer layers. Peak entropy of 7.6 bits at step 41 (mean: 3.6); the model was most uncertain when generating \"A\". Widespread attention collapse combined with high output entropy suggests information flow is restricted. Layer 0: Attention collapse in 86% of steps. Layer 1: Attention collapse in 52% of steps. Layer 7: Attention collapse in 62% of steps; Unstable L2 norms (CV=1.14). Consider: check input encoding, try different precision (fp32 vs fp16), or use a different model."
+      },
+
+      "performance": {
+        "_comment": "Seq2Seq performance includes encoder_forward as a separate phase. Note the much faster total time (12s vs 42s) due to fewer generated tokens (21 vs 128).",
+        "total_wall_time_ms": 12036.3,
+        "parent_operations": [
+          {"name": "config_load", "ms": 3.23, "pct": 0.03},
+          {"name": "model_load", "ms": 5615.43, "pct": 46.65},
+          {"name": "model_inference", "ms": 1922.36, "pct": 15.97},
+          {"name": "report_build", "ms": 113.95, "pct": 0.95}
+        ],
+        "baseline_ms": 1180.32,
+        "instrumented_inference_ms": 1922.36,
+        "inference_overhead_ms": 742.04,
+        "inference_overhead_pct": 62.87,
+        "_comment_overhead": "62.9% overhead is higher than CausalLM (23.4%) because Seq2Seq manual decoding loop has per-step hook overhead that is proportionally larger with fewer total tokens."
+      }
+    }
+  }
+}
