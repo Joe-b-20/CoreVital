@@ -225,12 +225,12 @@ import os
 from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# Must match the MODELS registry in run_experiment.py
+# Must match MODELS in run_experiment.py (qwen3b replaces phi for DynamicCache compatibility)
 models = {
-    "microsoft/Phi-3.5-mini-instruct":       {"trust_remote_code": True},
+    "Qwen/Qwen2.5-3B-Instruct":             {"trust_remote_code": True},
     "meta-llama/Llama-3.1-8B-Instruct":      {"trust_remote_code": False},
     "mistralai/Mistral-7B-Instruct-v0.3":    {"trust_remote_code": False},
-    "mistralai/Mistral-Nemo-Instruct-2407":   {"trust_remote_code": False},
+    "mistralai/Mistral-Nemo-Instruct-2407": {"trust_remote_code": False},
 }
 
 meta_dir = Path(os.environ["EXPERIMENT_DIR_PY"]) / "metadata"
@@ -255,7 +255,7 @@ for model_id, opts in models.items():
         import gc; gc.collect()
     except Exception as e:
         print(f"    FAILED: {e}")
-        print(f"    If this is a gated model, run: huggingface-cli login")
+        print(f"    If this is a gated model, run: python3 -c \"from huggingface_hub import login; login()\"")
         model_shas[model_id] = f"FAILED: {e}"
 
 with open(meta_dir / "model_versions.json", "w") as f:
@@ -271,7 +271,7 @@ echo ""
 echo "[6/8] Creating directory structure..."
 
 mkdir -p "$EXPERIMENT_DIR"/{traces,results,analysis,logs,perf_traces}
-mkdir -p "$EXPERIMENT_DIR"/traces/{phi,llama,mistral7b,nemo}
+mkdir -p "$EXPERIMENT_DIR"/traces/{qwen3b,llama,mistral7b,nemo}
 
 # Symlink scripts so they're accessible from ~/experiment/scripts/
 ln -sfn "$SCRIPT_DIR/scripts" "$EXPERIMENT_DIR/scripts"
@@ -344,7 +344,8 @@ try:
     import torch
     assert torch.cuda.is_available(), "No CUDA"
     gpu_name = torch.cuda.get_device_name(0)
-    gpu_mem = torch.cuda.get_device_properties(0).total_mem / 1e9
+    props = torch.cuda.get_device_properties(0)
+    gpu_mem = (getattr(props, 'total_memory', None) or getattr(props, 'total_mem', 0)) / 1e9
     checks.append((f"GPU: {gpu_name} ({gpu_mem:.0f}GB)", True))
 except Exception as e:
     checks.append(("GPU", f"FAIL: {e}"))
@@ -371,7 +372,7 @@ echo "Setup complete!"
 echo "=========================================="
 echo ""
 echo "Next steps:"
-echo "  1. If using gated models (Llama), run: huggingface-cli login"
+echo "  1. If using gated models (Llama), run: python3 -c \"from huggingface_hub import login; login()\""
 echo ""
 echo "  HANDS-OFF (recommended) — runs everything end-to-end:"
 echo "    S3_BUCKET=your-bucket nohup bash ~/CoreVital/experiment/run_all.sh 2>&1 | tee ~/experiment/logs/pipeline.log &"

@@ -74,7 +74,7 @@ def normalize_step_tensors(
 
     - Strip embedding layer if len(raw_hidden) > num_layers
     - Slice attention to last query token: [:, :, -1:, :]
-    - .detach().cpu() everything
+    - .detach() only (keep on GPU when available so summaries run on GPU)
     - Optional beam slicing via beam_handler
     - Shape assertions per NormalizedStepPayload contract (Issue 54)
     """
@@ -173,7 +173,7 @@ def _normalize_hidden(
         hs = hs[1 : num_layers + 1]
     if beam_handler is not None:
         hs = [beam_handler(t) for t in hs if t is not None]
-    result = [t.detach().cpu() for t in hs if t is not None and isinstance(t, torch.Tensor)]
+    result = [t.detach() for t in hs if t is not None and isinstance(t, torch.Tensor)]
     return result if result else None
 
 
@@ -192,7 +192,7 @@ def _normalize_attention(
             continue
         if t.dim() == 4:
             t = t[:, :, -1:, :]
-        processed.append(t.detach().cpu())
+        processed.append(t.detach())
     return processed if processed else None
 
 
@@ -204,7 +204,7 @@ def _normalize_logits(
         return None
     if beam_handler is not None:
         raw = beam_handler(raw)
-    return raw.detach().cpu()
+    return raw.detach()
 
 
 def _compute_logits(

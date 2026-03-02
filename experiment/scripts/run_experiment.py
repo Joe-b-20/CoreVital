@@ -49,8 +49,8 @@ GRADES_FILE = RESULTS_DIR / "grades.jsonl"
 # Model registry — each entry carries every setting that varies per model so
 # the runner never needs ad-hoc if/else branches.
 MODELS: Dict[str, Dict[str, Any]] = {
-    "phi": {
-        "hf_id": "microsoft/Phi-3.5-mini-instruct",
+    "qwen3b": {
+        "hf_id": "Qwen/Qwen2.5-3B-Instruct",
         "trust_remote_code": True,
     },
     "llama": {
@@ -275,7 +275,7 @@ class ModelSession:
         self.config.device.requested = "auto"
         self.config.generation.seed = SEED
         self.config.capture.capture_mode = "full"
-        self.config.prompt_telemetry.enabled = True
+        self.config.prompt_telemetry.enabled = False  # Disabled: Phi-3 + transformers DynamicCache compat issue
         self.config.summaries.logits.topk = 10
 
         self.collector = InstrumentationCollector(self.config)
@@ -382,7 +382,7 @@ def run_perf_subset(models_to_run: List[str], datasets_to_run: List[str]):
         config.device.requested = "auto"
         config.generation.seed = SEED
         config.capture.capture_mode = "full"
-        config.prompt_telemetry.enabled = True
+        config.prompt_telemetry.enabled = False  # Disabled: Phi-3 DynamicCache compat
         config.performance.mode = "strict"
 
         collector = InstrumentationCollector(config)

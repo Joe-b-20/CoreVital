@@ -44,8 +44,8 @@ def compute_hidden_summary(
         if hidden_state.dim() == 3:
             hidden_state = hidden_state[0]  # Take first batch
 
-        # Move to CPU for computation
-        hidden_state = hidden_state.cpu().float()
+        # Keep on same device (GPU when available); only sync scalars at the end via .item()
+        hidden_state = hidden_state.float()
 
         CLIP_BOUND = 1e6
         clamped = torch.clamp(hidden_state, -CLIP_BOUND, CLIP_BOUND)
