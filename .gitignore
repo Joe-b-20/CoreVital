@@ -48,6 +48,11 @@ htmlcov/
 # --- Private Documents (not for repo) ---
 private-ip-strategy.md
 
+# --- Experiment: internal-only (do not push) ---
+experiment/EXPERIMENT_SPEC.md
+experiment/IMPLEMENTATION_GUIDE.md
+experiment/RUNBOOK.md
+
 # --- Demo artifacts (generated / local) ---
 docs/demo/corevital.db
 docs/demo/*.bak
