@@ -277,7 +277,8 @@ try:
     import torch
     assert torch.cuda.is_available()
     gpu = torch.cuda.get_device_name(0)
-    mem = torch.cuda.get_device_properties(0).total_mem / 1e9
+    props = torch.cuda.get_device_properties(0)
+    mem = (getattr(props, "total_memory", None) or getattr(props, "total_mem", 0)) / 1e9
     checks.append((f"GPU: {gpu} ({mem:.0f}GB)", True))
 except Exception as e:
     checks.append(("GPU", f"FAIL: {e}"))
