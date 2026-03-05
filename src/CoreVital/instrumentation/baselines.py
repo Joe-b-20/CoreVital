@@ -219,14 +219,16 @@ def run_prompt_forward(
             return_dict=True,
         )
 
+    # Keep tensors on model device; report_builder runs summary ops (sparse attention,
+    # basin scores, layer transformations, prompt surprisal) on device and only syncs scalars.
     hidden_states = None
     if hasattr(outputs, "hidden_states") and outputs.hidden_states is not None:
         try:
             hs = outputs.hidden_states
             if isinstance(hs, (tuple, list)) and len(hs) > 1:
-                hidden_states = [h.cpu() for h in hs[1:]]
+                hidden_states = [h for h in hs[1:]]
             elif isinstance(hs, (tuple, list)):
-                hidden_states = [h.cpu() for h in hs]
+                hidden_states = list(hs)
             logger.debug(f"Prompt forward: extracted {len(hidden_states) if hidden_states else 0} hidden state layers")
         except (TypeError, AttributeError) as e:
             logger.debug(f"Prompt forward: could not extract hidden states: {e}")
@@ -236,7 +238,7 @@ def run_prompt_forward(
         try:
             att = outputs.attentions
             if isinstance(att, (tuple, list)):
-                attentions = [a.cpu() for a in att]
+                attentions = list(att)
             logger.debug(f"Prompt forward: extracted {len(attentions) if attentions else 0} attention layers")
         except (TypeError, AttributeError) as e:
             logger.debug(f"Prompt forward: could not extract attentions: {e}")
@@ -244,7 +246,7 @@ def run_prompt_forward(
     logits = None
     if hasattr(outputs, "logits") and outputs.logits is not None:
         try:
-            logits = outputs.logits.cpu()
+            logits = outputs.logits
             logger.debug(f"Prompt forward: logits shape {logits.shape}")
         except (TypeError, AttributeError) as e:
             logger.debug(f"Prompt forward: could not extract logits: {e}")

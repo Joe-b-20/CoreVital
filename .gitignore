@@ -52,6 +52,8 @@ private-ip-strategy.md
 experiment/EXPERIMENT_SPEC.md
 experiment/IMPLEMENTATION_GUIDE.md
 experiment/RUNBOOK.md
+experiment/RUNPOD_INSTRUCTIONS.md
+experiment/DEBUG_ON_POD_BRIEFING.md
 
 # --- Demo artifacts (generated / local) ---
 docs/demo/corevital.db

@@ -51,8 +51,8 @@ def compute_logits_summary(
         elif logits.dim() == 2:
             logits = logits[-1, :]
 
-        # Move to CPU
-        logits = logits.cpu().float()
+        # Keep on same device (GPU when available); only sync scalars via .item()/.tolist()
+        logits = logits.float()
 
         summary: Dict[str, Any] = {}
 
@@ -174,7 +174,8 @@ def compute_prompt_surprisal(
     """
     if logits.dim() == 3:
         logits = logits[0]  # (seq_len, vocab_size)
-    logits = logits.detach().cpu().float()
+    logits = logits.detach().float()
+    device = logits.device
 
     if len(prompt_token_ids) < 2:
         return []
@@ -182,7 +183,9 @@ def compute_prompt_surprisal(
     with torch.no_grad():
         # Autoregressive shift: logits[i] predicts token[i+1]
         shift_logits = logits[:-1, :].contiguous()
-        shift_labels = torch.tensor(prompt_token_ids[1:], dtype=torch.long).contiguous()
+        shift_labels = torch.tensor(
+            prompt_token_ids[1:], dtype=torch.long, device=device
+        ).contiguous()
 
         # CrossEntropyLoss with no reduction → per-token loss in nats
         loss_fct = torch.nn.CrossEntropyLoss(reduction="none")

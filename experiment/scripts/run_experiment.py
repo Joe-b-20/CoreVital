@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-CoreVital Validation Experiment - Runner
+CoreVital Validation Experiment — Runner
 
-Iterates over (model × dataset × question), runs CoreVital instrumented
-generation, grades the output, saves the trace, and logs results.
+Pass@k experiment: for each (model × prompt), run k=10 generations under
+sampling (5 @ temp 0.7, 5 @ temp 0.8), capture CoreVital traces, grade outputs.
 
-The model is loaded ONCE per model and stays in VRAM for all datasets and
-questions.  Between datasets only the generation parameters (max_new_tokens)
-change on the shared Config object, which the collector reads at each run().
+Key difference from v1:
+  - Sampling, not greedy
+  - Batched GPU work: 10 inferences per prompt before CPU serialization
+  - HumanEval sandboxed execution for code grading
+  - All runs include prompt analysis
 
 Usage:
-    python3 run_experiment.py                 # Full experiment
-    python3 run_experiment.py --dry-run       # 20 questions per model per dataset
-    python3 run_experiment.py --perf-only     # 50 traces per model with --perf strict
-    python3 run_experiment.py --model llama   # Run only one model
-    python3 run_experiment.py --dataset gsm8k # Run only one dataset
-    python3 run_experiment.py --resume        # Resume from checkpoint (default: on)
+    python3 run_experiment.py                   # Full experiment
+    python3 run_experiment.py --dry-run          # 5 problems per model per dataset
+    python3 run_experiment.py --model llama       # One model only
+    python3 run_experiment.py --dataset gsm8k     # One dataset only
 """
 
 import argparse
@@ -24,7 +24,9 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from pathlib import Path
@@ -40,56 +42,46 @@ from tqdm import tqdm
 EXPERIMENT_DIR = Path.home() / "experiment"
 DATA_DIR = EXPERIMENT_DIR / "data"
 TRACES_DIR = EXPERIMENT_DIR / "traces"
-PERF_DIR = EXPERIMENT_DIR / "perf_traces"
 RESULTS_DIR = EXPERIMENT_DIR / "results"
 LOGS_DIR = EXPERIMENT_DIR / "logs"
 CHECKPOINT_FILE = RESULTS_DIR / "checkpoint.json"
 GRADES_FILE = RESULTS_DIR / "grades.jsonl"
 
-# Model registry — each entry carries every setting that varies per model so
-# the runner never needs ad-hoc if/else branches.
-MODELS: Dict[str, Dict[str, Any]] = {
-    "qwen3b": {
-        "hf_id": "Qwen/Qwen2.5-3B-Instruct",
-        "trust_remote_code": True,
-    },
-    "llama": {
-        "hf_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "trust_remote_code": False,
-    },
-    "mistral7b": {
-        "hf_id": "mistralai/Mistral-7B-Instruct-v0.3",
-        "trust_remote_code": False,
-    },
-    "nemo": {
-        "hf_id": "mistralai/Mistral-Nemo-Instruct-2407",
-        "trust_remote_code": False,
-    },
+MODELS = {
+    "llama":     {"hf_id": "meta-llama/Llama-3.1-8B-Instruct", "quantize": None},
+    "qwen":      {"hf_id": "Qwen/Qwen2.5-7B-Instruct",        "quantize": None},
+    "mistral7b": {"hf_id": "mistralai/Mistral-7B-Instruct-v0.3", "quantize": None},
+    "mixtral":   {"hf_id": "mistralai/Mixtral-8x7B-Instruct-v0.1", "quantize": "8bit"},
 }
 
-DATASETS = ["mmlu", "gsm8k", "truthfulqa"]
+DATASETS = ["gsm8k", "humaneval"]
 
-# Generation parameters (greedy, deterministic)
-GEN_PARAMS: Dict[str, Dict[str, Any]] = {
-    "mmlu":       {"max_new_tokens": 32,  "do_sample": False, "temperature": 1.0, "top_k": 0, "top_p": 1.0},
-    "gsm8k":      {"max_new_tokens": 512, "do_sample": False, "temperature": 1.0, "top_k": 0, "top_p": 1.0},
-    "truthfulqa": {"max_new_tokens": 32,  "do_sample": False, "temperature": 1.0, "top_k": 0, "top_p": 1.0},
+# Pass@k configuration
+K_RUNS = 10  # 5 at temp 0.7 + 5 at temp 0.8
+TEMP_SCHEDULE = [0.7] * 5 + [0.8] * 5
+SEED_SCHEDULE = list(range(10))  # seeds 0-9
+
+# Shared generation parameters
+BASE_GEN_PARAMS = {
+    "do_sample": True,
+    "top_p": 0.95,
+    "top_k": 50,
+    "max_new_tokens": 512,
 }
-
-SEED = 42
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
 def setup_logging(log_file: Optional[str] = None):
-    handlers: list = [logging.StreamHandler(sys.stdout)]
+    handlers = [logging.StreamHandler(sys.stdout)]
     if log_file:
         handlers.append(logging.FileHandler(log_file))
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=handlers,
+        force=True,
     )
 
 logger = logging.getLogger("experiment")
@@ -100,26 +92,23 @@ logger = logging.getLogger("experiment")
 # ---------------------------------------------------------------------------
 
 def load_checkpoint() -> set:
-    """Load set of completed (model, dataset, question_id) keys."""
     if CHECKPOINT_FILE.exists():
         with open(CHECKPOINT_FILE) as f:
-            data = json.load(f)
-        return set(data.get("completed", []))
+            return set(json.load(f).get("completed", []))
     return set()
 
 
 def save_checkpoint(completed: set):
-    """Save checkpoint atomically."""
     tmp = CHECKPOINT_FILE.with_suffix(".tmp")
     with open(tmp, "w") as f:
         json.dump({"completed": sorted(completed)}, f)
     tmp.rename(CHECKPOINT_FILE)
 
 
-def append_grade(record: dict):
-    """Append a single grade record to the grades JSONL file."""
+def append_grades(records: List[dict]):
     with open(GRADES_FILE, "a") as f:
-        f.write(json.dumps(record) + "\n")
+        for r in records:
+            f.write(json.dumps(r) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +116,9 @@ def append_grade(record: dict):
 # ---------------------------------------------------------------------------
 
 def load_questions(dataset_name: str) -> List[dict]:
-    """Load questions from the prepared JSONL file."""
     path = DATA_DIR / f"{dataset_name}.jsonl"
     if not path.exists():
-        raise FileNotFoundError(f"Dataset file not found: {path}. Run setup.sh first.")
+        raise FileNotFoundError(f"Dataset not found: {path}. Run setup first.")
     questions = []
     with open(path) as f:
         for line in f:
@@ -143,38 +131,15 @@ def load_questions(dataset_name: str) -> List[dict]:
 # ---------------------------------------------------------------------------
 
 def format_prompt(question: dict, dataset_name: str) -> str:
-    """Format a question into a prompt string for the model."""
-
-    if dataset_name == "mmlu":
-        choices = question["choices"]
-        letters = "ABCD"
-        choice_text = "\n".join(f"{letters[i]}. {choices[i]}" for i in range(len(choices)))
-        return (
-            f"The following is a multiple choice question about {question['subject']}.\n\n"
-            f"Question: {question['question']}\n"
-            f"{choice_text}\n\n"
-            f"Answer with just the letter (A, B, C, or D):"
-        )
-
-    elif dataset_name == "gsm8k":
+    if dataset_name == "gsm8k":
         return (
             f"Solve the following math problem step by step. "
             f"After your solution, write the final numerical answer "
             f"on the last line preceded by \"####\".\n\n"
             f"Problem: {question['question']}"
         )
-
-    elif dataset_name == "truthfulqa":
-        choices = question["choices"]
-        letters = "ABCD"
-        choice_text = "\n".join(f"{letters[i]}. {choices[i]}" for i in range(len(choices)))
-        return (
-            f"Answer the following question by selecting the best option.\n\n"
-            f"Question: {question['question']}\n"
-            f"{choice_text}\n\n"
-            f"Answer with just the letter (A, B, C, or D):"
-        )
-
+    elif dataset_name == "humaneval":
+        return question["prompt"]  # HumanEval provides the function signature + docstring
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -183,166 +148,127 @@ def format_prompt(question: dict, dataset_name: str) -> str:
 # Output grading
 # ---------------------------------------------------------------------------
 
-def extract_mc_answer(text: str) -> Optional[str]:
-    """Extract a single letter (A-D) from model output for MC tasks."""
-    match = re.search(r'\b([A-D])\b', text)
-    if match:
-        return match.group(1)
-    match = re.search(r'[A-D]', text)
-    if match:
-        return match.group(0)
-    return None
-
-
-def extract_gsm8k_answer(text: str) -> Optional[str]:
-    """Extract the final numerical answer after #### from GSM8K output."""
-    matches = re.findall(r'####\s*([-+]?\d[\d,]*\.?\d*)', text)
+def grade_gsm8k(output_text: str, question: dict) -> dict:
+    matches = re.findall(r'####\s*([-+]?\d[\d,]*\.?\d*)', output_text)
     if matches:
-        answer = matches[-1].replace(",", "")
-        return answer
-    return None
+        extracted = matches[-1].replace(",", "")
+    else:
+        return {"correct": False, "extracted_answer": None,
+                "gold_answer": question["gold_answer"], "format_failure": True}
+    try:
+        is_correct = abs(float(extracted) - float(question["gold_answer"])) < 1e-6
+    except ValueError:
+        is_correct = extracted.strip() == question["gold_answer"].strip()
+    return {"correct": is_correct, "extracted_answer": extracted,
+            "gold_answer": question["gold_answer"], "format_failure": False}
+
+
+def grade_humaneval(output_text: str, question: dict) -> dict:
+    """
+    Grade HumanEval by executing the generated code with the test cases.
+
+    The model generates the function body. We prepend the prompt (function signature)
+    and append the test cases, then execute in a sandboxed subprocess.
+    """
+    full_code = question["prompt"] + output_text
+
+    # Append test cases
+    test_code = question.get("test", "")
+    entry_point = question.get("entry_point", "")
+    exec_code = full_code + "\n\n" + test_code
+    if entry_point:
+        exec_code += f"\n\ncheck({entry_point})\n"
+
+    # Execute in sandboxed subprocess with timeout
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", exec_code],
+            capture_output=True,
+            timeout=10,  # 10 second timeout
+            text=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        is_correct = result.returncode == 0
+        error_msg = result.stderr[:500] if result.stderr else None
+    except subprocess.TimeoutExpired:
+        is_correct = False
+        error_msg = "TIMEOUT"
+    except Exception as e:
+        is_correct = False
+        error_msg = str(e)[:500]
+
+    return {
+        "correct": is_correct,
+        "extracted_answer": "PASS" if is_correct else (error_msg or "FAIL"),
+        "gold_answer": "PASS",
+        "format_failure": False,
+    }
 
 
 def grade_output(output_text: str, question: dict, dataset_name: str) -> dict:
-    """Grade a model output against the ground truth."""
-    if dataset_name in ("mmlu", "truthfulqa"):
-        extracted = extract_mc_answer(output_text)
-        gold = question["answer_letter"]
-        if extracted is None:
-            return {
-                "correct": False,
-                "extracted_answer": None,
-                "gold_answer": gold,
-                "format_failure": True,
-            }
-        return {
-            "correct": extracted == gold,
-            "extracted_answer": extracted,
-            "gold_answer": gold,
-            "format_failure": False,
-        }
-
-    elif dataset_name == "gsm8k":
-        extracted = extract_gsm8k_answer(output_text)
-        gold = question["gold_answer"]
-        if extracted is None:
-            return {
-                "correct": False,
-                "extracted_answer": None,
-                "gold_answer": gold,
-                "format_failure": True,
-            }
-        try:
-            ext_num = float(extracted)
-            gold_num = float(gold)
-            is_correct = abs(ext_num - gold_num) < 1e-6
-        except ValueError:
-            is_correct = extracted.strip() == gold.strip()
-        return {
-            "correct": is_correct,
-            "extracted_answer": extracted,
-            "gold_answer": gold,
-            "format_failure": False,
-        }
-
+    if dataset_name == "gsm8k":
+        return grade_gsm8k(output_text, question)
+    elif dataset_name == "humaneval":
+        return grade_humaneval(output_text, question)
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
 
 # ---------------------------------------------------------------------------
-# CoreVital model lifecycle
+# CoreVital batched runner
 # ---------------------------------------------------------------------------
 
-class ModelSession:
-    """Owns a single model's Config + InstrumentationCollector.
-
-    The model is loaded into VRAM on the first collector.run() call and
-    stays there for every subsequent run().  Between datasets the caller
-    updates generation params via update_gen_params() — the collector
-    reads from the same Config reference at each run().
+def run_prompt_batch(
+    collector,
+    builder,
+    config,
+    prompt: str,
+    k: int = K_RUNS,
+) -> List[Tuple[Any, Any]]:
     """
+    Run k inferences for one prompt, batching GPU work.
 
-    def __init__(self, model_short: str, model_entry: Dict[str, Any]):
-        from CoreVital.config import Config
-        from CoreVital.instrumentation.collector import InstrumentationCollector
+    Returns list of (report_object, InstrumentationResults) tuples.
+    """
+    from CoreVital.instrumentation.performance import PerformanceMonitor
 
-        self.model_short = model_short
-        self.model_id = model_entry["hf_id"]
+    # Phase 1: GPU work — run all k inferences back to back
+    raw_results = []
+    for i in range(k):
+        config.generation.seed = SEED_SCHEDULE[i]
+        config.generation.temperature = TEMP_SCHEDULE[i]
 
-        self.config = Config.from_default()
-        self.config.model.hf_id = self.model_id
-        self.config.model.trust_remote_code = model_entry.get("trust_remote_code", False)
-        self.config.device.requested = "auto"
-        self.config.generation.seed = SEED
-        self.config.capture.capture_mode = "full"
-        self.config.prompt_telemetry.enabled = False  # Disabled: Phi-3 + transformers DynamicCache compat issue
-        self.config.summaries.logits.topk = 10
+        # Lightweight perf monitoring (summary mode = just timers, no warmup)
+        monitor = PerformanceMonitor(mode="summary")
+        monitor.mark_run_start()
 
-        self.collector = InstrumentationCollector(self.config)
-        self._loaded = False
+        result = collector.run(prompt, monitor=monitor)
+        raw_results.append((result, monitor))
 
-    def warmup(self, prompt: str = "Hello"):
-        """Force the model into VRAM with a throwaway run."""
-        if self._loaded:
-            return
-        logger.info(f"Loading {self.model_id} into VRAM (first run)...")
-        t0 = time.time()
-        self.collector.run(prompt)
-        elapsed = time.time() - t0
-        self._loaded = True
-        logger.info(f"Model loaded and warmed up in {elapsed:.1f}s")
+    # Phase 2: CPU work — build all reports
+    reports = []
+    for result, monitor in raw_results:
+        report = builder.build(result, prompt)
 
-    def update_gen_params(self, gen_params: Dict[str, Any]):
-        """Update generation parameters on the shared config for the next dataset."""
-        self.config.generation.max_new_tokens = gen_params["max_new_tokens"]
-        self.config.generation.do_sample = gen_params.get("do_sample", False)
-        self.config.generation.temperature = gen_params.get("temperature", 1.0)
-        self.config.generation.top_k = gen_params.get("top_k", 0)
-        self.config.generation.top_p = gen_params.get("top_p", 1.0)
+        # Finalize perf data and inject into report
+        monitor.mark_run_end()
+        perf_summary = monitor.build_summary_dict()
+        report.extensions["performance"] = perf_summary
 
-    def run_trace(self, prompt: str) -> Tuple[Any, str]:
-        """Run a single CoreVital trace and build the report.
+        reports.append((report, result))
 
-        Returns (report, output_text).
-        """
-        from CoreVital.reporting.report_builder import ReportBuilder
-
-        results = self.collector.run(prompt)
-        builder = ReportBuilder(self.config)
-        report = builder.build(results, prompt)
-
-        output_text = ""
-        if report.generated:
-            output_text = report.generated.output_text or ""
-
-        return report, output_text
-
-    def close(self):
-        """Release GPU memory held by this model."""
-        if self.collector.model_bundle is not None:
-            del self.collector.model_bundle.model
-            self.collector.model_bundle = None
-        del self.collector
-        self._loaded = False
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        logger.info(f"Released GPU memory for {self.model_id}")
+    return reports
 
 
-# ---------------------------------------------------------------------------
-# Trace persistence
-# ---------------------------------------------------------------------------
-
-def save_trace(report: Any, key: str, output_dir: Path) -> Path:
-    """Save a report as a JSON file."""
+def save_trace(report, key: str, run_idx: int, output_dir: Path) -> Path:
+    """Save a single trace as JSON."""
     from CoreVital.utils.serialization import serialize_report_to_json
 
     parts = key.split("/")
     trace_dir = output_dir / parts[0] / parts[1]
     trace_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{parts[2]}.json"
+    filename = f"{parts[2]}_run{run_idx:02d}.json"
     filepath = trace_dir / filename
 
     json_str = serialize_report_to_json(report, indent=None)
@@ -353,84 +279,37 @@ def save_trace(report: Any, key: str, output_dir: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Performance overhead subset
+# Model lifecycle
 # ---------------------------------------------------------------------------
 
-def run_perf_subset(models_to_run: List[str], datasets_to_run: List[str]):
-    """Run a small subset of traces with --perf strict for overhead measurement.
-
-    Uses its own collector/config with perf enabled to avoid contaminating
-    the main signal data.
-    """
+def make_config(model_spec: dict) -> "Config":
+    """Create a CoreVital Config for a given model spec."""
     from CoreVital.config import Config
-    from CoreVital.instrumentation.collector import InstrumentationCollector
-    from CoreVital.instrumentation.performance import PerformanceMonitor
-    from CoreVital.reporting.report_builder import ReportBuilder
-    from CoreVital.utils.serialization import serialize_report_to_json
 
-    logger.info("=== PERFORMANCE OVERHEAD MEASUREMENT ===")
-    per_cell = 17  # ~50 total across 3 datasets
+    config = Config.from_default()
+    config.model.hf_id = model_spec["hf_id"]
+    config.device.requested = "auto"
+    config.capture.capture_mode = "full"
+    config.prompt_telemetry.enabled = True
 
-    for model_short in models_to_run:
-        entry = MODELS[model_short]
-        model_id = entry["hf_id"]
-        logger.info(f"\n  Perf run: {model_short} ({model_id})")
+    # Sampling defaults (will be overridden per-run)
+    config.generation.do_sample = True
+    config.generation.top_p = 0.95
+    config.generation.top_k = 50
+    config.generation.max_new_tokens = 512
 
-        config = Config.from_default()
-        config.model.hf_id = model_id
-        config.model.trust_remote_code = entry.get("trust_remote_code", False)
-        config.device.requested = "auto"
-        config.generation.seed = SEED
-        config.capture.capture_mode = "full"
-        config.prompt_telemetry.enabled = False  # Disabled: Phi-3 DynamicCache compat
-        config.performance.mode = "strict"
+    # Quantization
+    if model_spec.get("quantize") == "8bit":
+        config.model.load_in_8bit = True
 
-        collector = InstrumentationCollector(config)
+    return config
 
-        for dataset_name in datasets_to_run:
-            questions = load_questions(dataset_name)[:per_cell]
-            gen_params = GEN_PARAMS[dataset_name]
 
-            config.generation.max_new_tokens = gen_params["max_new_tokens"]
-            config.generation.do_sample = gen_params.get("do_sample", False)
-            config.generation.temperature = gen_params.get("temperature", 1.0)
-            config.generation.top_k = gen_params.get("top_k", 0)
-            config.generation.top_p = gen_params.get("top_p", 1.0)
-
-            for question in tqdm(questions, desc=f"  perf/{model_short}/{dataset_name}", unit="q"):
-                prompt = format_prompt(question, dataset_name)
-                try:
-                    monitor = PerformanceMonitor(mode="strict")
-                    monitor.mark_run_start()
-
-                    results = collector.run(prompt, monitor=monitor)
-                    builder = ReportBuilder(config)
-                    report = builder.build(results, prompt)
-
-                    monitor.mark_run_end()
-                    perf_summary = monitor.build_summary_dict()
-                    perf_summary["detailed_breakdown"] = monitor.build_detailed_breakdown()
-                    report.extensions["performance"] = perf_summary
-
-                    key = f"{model_short}/{dataset_name}/{question['id']}"
-                    trace_dir = PERF_DIR / model_short / dataset_name
-                    trace_dir.mkdir(parents=True, exist_ok=True)
-                    json_str = serialize_report_to_json(report, indent=None)
-                    with open(trace_dir / f"{question['id']}.json", "w") as f:
-                        f.write(json_str)
-
-                except Exception as e:
-                    logger.error(f"  Perf error on {question['id']}: {e}")
-
-        # Free model
-        if collector.model_bundle is not None:
-            del collector.model_bundle.model
-            collector.model_bundle = None
-        del collector
-        gc.collect()
-        torch.cuda.empty_cache()
-
-    logger.info("=== PERF MEASUREMENT COMPLETE ===")
+def clear_gpu():
+    """Force clear GPU memory."""
+    torch.cuda.empty_cache()
+    gc.collect()
+    torch.cuda.empty_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -442,165 +321,181 @@ def run_experiment(
     datasets_to_run: List[str],
     max_per_cell: Optional[int] = None,
 ):
-    """Main experiment loop.
-
-    For each model, a single ModelSession is created.  The model loads into
-    VRAM on the first trace and stays there for all datasets and questions.
-    Between datasets, only generation parameters are updated.
-    """
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
     completed = load_checkpoint()
-    logger.info(f"Checkpoint loaded: {len(completed)} traces already completed.")
+    logger.info(f"Checkpoint: {len(completed)} prompt-groups already completed.")
 
-    total_traces = 0
-    total_correct = 0
+    total_prompts = 0
+    total_runs = 0
     total_errors = 0
-    cell_stats: Dict[Tuple[str, str], Dict[str, int]] = {}
+    cell_stats = {}
 
     for model_short in models_to_run:
-        entry = MODELS[model_short]
+        model_spec = MODELS[model_short]
         logger.info(f"\n{'='*60}")
-        logger.info(f"MODEL: {model_short} ({entry['hf_id']})")
+        logger.info(f"MODEL: {model_short} ({model_spec['hf_id']})")
+        if model_spec.get("quantize"):
+            logger.info(f"  Quantization: {model_spec['quantize']}")
         logger.info(f"{'='*60}")
 
-        session = ModelSession(model_short, entry)
+        # Create config and collector (loads model once)
+        config = make_config(model_spec)
+        from CoreVital.instrumentation.collector import InstrumentationCollector
+        from CoreVital.reporting.report_builder import ReportBuilder
 
-        # Warm up: force model into VRAM before timing any real traces.
-        session.warmup()
+        collector = InstrumentationCollector(config)
+        builder = ReportBuilder(config)
+
+        # Force model load
+        logger.info("Loading model...")
+        config.generation.seed = 0
+        config.generation.temperature = 0.7
 
         for dataset_name in datasets_to_run:
             questions = load_questions(dataset_name)
-            gen_params = GEN_PARAMS[dataset_name]
-
             if max_per_cell is not None:
                 questions = questions[:max_per_cell]
 
-            # Point the session at this dataset's generation params
-            session.update_gen_params(gen_params)
-
             cell_key = (model_short, dataset_name)
-            cell_stats[cell_key] = {"correct": 0, "incorrect": 0, "format_fail": 0, "error": 0}
+            cell_stats[cell_key] = {
+                "prompts": 0, "runs": 0,
+                "correct_runs": 0, "incorrect_runs": 0,
+                "format_fails": 0, "errors": 0,
+            }
 
-            logger.info(f"\n  Dataset: {dataset_name} ({len(questions)} questions)")
-            logger.info(f"  Gen params: max_tokens={gen_params['max_new_tokens']}, greedy")
+            logger.info(f"\n  Dataset: {dataset_name} ({len(questions)} problems × {K_RUNS} runs = {len(questions) * K_RUNS} traces)")
 
-            pbar = tqdm(questions, desc=f"  {model_short}/{dataset_name}", unit="q")
+            pbar = tqdm(questions, desc=f"  {model_short}/{dataset_name}", unit="prompt")
 
             for question in pbar:
                 qid = question["id"]
-                key = f"{model_short}/{dataset_name}/{qid}"
+                prompt_key = f"{model_short}/{dataset_name}/{qid}"
 
-                if key in completed:
+                # Skip if all k runs for this prompt are already done
+                if prompt_key in completed:
                     continue
 
                 try:
                     prompt = format_prompt(question, dataset_name)
-                    report, output_text = session.run_trace(prompt)
 
-                    grade_result = grade_output(output_text, question, dataset_name)
+                    # Batched: run all k inferences, then build reports
+                    reports = run_prompt_batch(collector, builder, config, prompt)
 
-                    trace_path = save_trace(report, key, TRACES_DIR)
+                    # Grade and save each run
+                    grade_records = []
+                    for run_idx, (report, result) in enumerate(reports):
+                        output_text = ""
+                        if report.generated:
+                            output_text = report.generated.output_text or ""
 
-                    grade_record = {
-                        "key": key,
-                        "model": model_short,
-                        "model_id": entry["hf_id"],
-                        "dataset": dataset_name,
-                        "question_id": qid,
-                        "correct": grade_result["correct"],
-                        "extracted_answer": grade_result["extracted_answer"],
-                        "gold_answer": grade_result["gold_answer"],
-                        "format_failure": grade_result["format_failure"],
-                        "output_text": output_text[:500],
-                        "generated_tokens": report.summary.generated_tokens if report.summary else 0,
-                        "trace_path": str(trace_path),
-                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    }
-                    append_grade(grade_record)
+                        grade = grade_output(output_text, question, dataset_name)
 
-                    if grade_result["format_failure"]:
-                        cell_stats[cell_key]["format_fail"] += 1
-                    elif grade_result["correct"]:
-                        cell_stats[cell_key]["correct"] += 1
-                        total_correct += 1
-                    else:
-                        cell_stats[cell_key]["incorrect"] += 1
+                        trace_path = save_trace(report, prompt_key, run_idx, TRACES_DIR)
 
-                    total_traces += 1
-                    completed.add(key)
+                        record = {
+                            "prompt_key": prompt_key,
+                            "model": model_short,
+                            "model_id": model_spec["hf_id"],
+                            "dataset": dataset_name,
+                            "question_id": qid,
+                            "run_idx": run_idx,
+                            "temperature": TEMP_SCHEDULE[run_idx],
+                            "seed": SEED_SCHEDULE[run_idx],
+                            "correct": grade["correct"],
+                            "extracted_answer": grade["extracted_answer"],
+                            "gold_answer": grade["gold_answer"],
+                            "format_failure": grade["format_failure"],
+                            "output_text": output_text[:500],
+                            "generated_tokens": len(result.generated_token_ids),
+                            "trace_path": str(trace_path),
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        }
+                        grade_records.append(record)
 
-                    if total_traces % 10 == 0:
-                        save_checkpoint(completed)
+                        if grade["format_failure"]:
+                            cell_stats[cell_key]["format_fails"] += 1
+                        elif grade["correct"]:
+                            cell_stats[cell_key]["correct_runs"] += 1
+                        else:
+                            cell_stats[cell_key]["incorrect_runs"] += 1
 
+                    # Write all grades for this prompt
+                    append_grades(grade_records)
+                    cell_stats[cell_key]["runs"] += K_RUNS
+                    cell_stats[cell_key]["prompts"] += 1
+                    total_prompts += 1
+                    total_runs += K_RUNS
+
+                    # Checkpoint per prompt
+                    completed.add(prompt_key)
+                    save_checkpoint(completed)
+
+                    # Progress
                     c = cell_stats[cell_key]
-                    total_cell = c["correct"] + c["incorrect"] + c["format_fail"]
-                    acc = c["correct"] / total_cell if total_cell > 0 else 0
-                    pbar.set_postfix(acc=f"{acc:.1%}", done=total_cell)
+                    total_cell = c["correct_runs"] + c["incorrect_runs"] + c["format_fails"]
+                    acc = c["correct_runs"] / total_cell if total_cell > 0 else 0
+                    pass_k = c["prompts"]  # Will compute real pass@k in analysis
+                    pbar.set_postfix(acc=f"{acc:.0%}", prompts=c["prompts"])
 
                 except torch.cuda.OutOfMemoryError:
-                    logger.error(f"  OOM on {key}. Clearing cache and skipping.")
-                    torch.cuda.empty_cache()
-                    gc.collect()
-                    cell_stats[cell_key]["error"] += 1
+                    logger.error(f"  OOM on {prompt_key}. Clearing GPU.")
+                    clear_gpu()
+                    cell_stats[cell_key]["errors"] += 1
                     total_errors += 1
-                    completed.add(key)
+                    completed.add(prompt_key)
+                    save_checkpoint(completed)
 
                 except Exception as e:
-                    logger.error(f"  Error on {key}: {e}")
+                    logger.error(f"  Error on {prompt_key}: {e}")
                     logger.debug(traceback.format_exc())
-                    cell_stats[cell_key]["error"] += 1
+                    cell_stats[cell_key]["errors"] += 1
                     total_errors += 1
-                    completed.add(key)
+                    completed.add(prompt_key)
+                    save_checkpoint(completed)
 
             pbar.close()
 
+            # Cell summary
             c = cell_stats[cell_key]
-            total_cell = c["correct"] + c["incorrect"] + c["format_fail"]
-            acc = c["correct"] / total_cell if total_cell > 0 else 0
+            total_cell = c["correct_runs"] + c["incorrect_runs"] + c["format_fails"]
+            acc = c["correct_runs"] / total_cell if total_cell > 0 else 0
             logger.info(
-                f"  Cell summary: {c['correct']} correct, {c['incorrect']} incorrect, "
-                f"{c['format_fail']} format failures, {c['error']} errors "
-                f"(accuracy: {acc:.1%})"
+                f"  Cell: {c['prompts']} prompts, {c['runs']} runs, "
+                f"{acc:.1%} run accuracy, {c['format_fails']} format fails, "
+                f"{c['errors']} errors"
             )
 
-            save_checkpoint(completed)
-
-        # Release model from GPU before loading the next one
-        session.close()
+        # Clear model before next
+        del collector
+        del builder
+        clear_gpu()
+        logger.info(f"  GPU cleared.")
 
     save_checkpoint(completed)
 
-    # --- Overall summary -------------------------------------------------------
+    # Final summary
     logger.info(f"\n{'='*60}")
     logger.info("EXPERIMENT COMPLETE")
     logger.info(f"{'='*60}")
-    logger.info(f"Total traces: {total_traces}")
-    logger.info(f"Total errors: {total_errors}")
-    logger.info(f"\nPer-cell breakdown:")
+    logger.info(f"Total prompts: {total_prompts}, Total runs: {total_runs}, Errors: {total_errors}")
     for (model, dataset), c in sorted(cell_stats.items()):
-        total_cell = c["correct"] + c["incorrect"] + c["format_fail"]
-        acc = c["correct"] / total_cell if total_cell > 0 else 0
-        logger.info(
-            f"  {model}/{dataset}: {total_cell} total, "
-            f"{acc:.1%} accuracy, {c['format_fail']} format fails, {c['error']} errors"
-        )
+        total_cell = c["correct_runs"] + c["incorrect_runs"] + c["format_fails"]
+        acc = c["correct_runs"] / total_cell if total_cell > 0 else 0
+        logger.info(f"  {model}/{dataset}: {c['prompts']} prompts, {acc:.1%} accuracy, "
+                     f"{c['format_fails']} format fails")
 
-    logger.info("\n  Accuracy warnings:")
+    # Ceiling/floor warnings
     for (model, dataset), c in sorted(cell_stats.items()):
-        total_cell = c["correct"] + c["incorrect"] + c["format_fail"]
+        total_cell = c["correct_runs"] + c["incorrect_runs"] + c["format_fails"]
         if total_cell == 0:
             continue
-        acc = c["correct"] / total_cell
-        if acc > 0.90:
-            logger.warning(
-                f"    WARNING {model}/{dataset}: accuracy {acc:.1%} — too few incorrect samples."
-            )
-        elif acc < 0.10:
-            logger.warning(
-                f"    WARNING {model}/{dataset}: accuracy {acc:.1%} — too few correct samples."
-            )
+        acc = c["correct_runs"] / total_cell
+        if acc > 0.95:
+            logger.warning(f"  ⚠ {model}/{dataset}: {acc:.1%} accuracy — almost all correct under sampling")
+        elif acc < 0.05:
+            logger.warning(f"  ⚠ {model}/{dataset}: {acc:.1%} accuracy — model can't do this task at all")
 
 
 # ---------------------------------------------------------------------------
@@ -608,50 +503,35 @@ def run_experiment(
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="CoreVital Validation Experiment Runner")
+    parser = argparse.ArgumentParser(description="CoreVital Validation Runner")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Run 20 questions per model per dataset (quick test)")
-    parser.add_argument("--perf-only", action="store_true",
-                        help="Run 50 traces per model with --perf strict (overhead measurement)")
-    parser.add_argument("--model", type=str, choices=list(MODELS.keys()),
-                        help="Run only this model (default: all)")
-    parser.add_argument("--dataset", type=str, choices=DATASETS,
-                        help="Run only this dataset (default: all)")
-    parser.add_argument("--max-per-cell", type=int, default=None,
-                        help="Max questions per (model, dataset) cell")
-    parser.add_argument("--no-resume", action="store_true",
-                        help="Start fresh (ignore checkpoint)")
+                        help="5 problems per cell (quick test)")
+    parser.add_argument("--model", type=str, choices=list(MODELS.keys()))
+    parser.add_argument("--dataset", type=str, choices=DATASETS)
+    parser.add_argument("--max-per-cell", type=int, default=None)
+    parser.add_argument("--no-resume", action="store_true")
     args = parser.parse_args()
 
-    # Setup
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    log_file = LOGS_DIR / f"run_{timestamp}.log"
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    setup_logging(str(log_file))
+    setup_logging(str(LOGS_DIR / f"run_{timestamp}.log"))
 
-    logger.info(f"Log file: {log_file}")
     logger.info(f"Args: {vars(args)}")
 
     if args.no_resume and CHECKPOINT_FILE.exists():
         CHECKPOINT_FILE.unlink()
-        logger.info("Checkpoint cleared.")
+        if GRADES_FILE.exists():
+            GRADES_FILE.unlink()
 
     models_to_run = [args.model] if args.model else list(MODELS.keys())
     datasets_to_run = [args.dataset] if args.dataset else DATASETS
 
     max_per_cell = args.max_per_cell
     if args.dry_run:
-        max_per_cell = 20
-        logger.info("DRY RUN MODE: 20 questions per cell")
+        max_per_cell = 5
+        logger.info("DRY RUN: 5 problems per cell")
 
-    if args.perf_only:
-        run_perf_subset(models_to_run, datasets_to_run)
-    else:
-        run_experiment(
-            models_to_run=models_to_run,
-            datasets_to_run=datasets_to_run,
-            max_per_cell=max_per_cell,
-        )
+    run_experiment(models_to_run, datasets_to_run, max_per_cell)
 
 
 if __name__ == "__main__":
