@@ -329,6 +329,13 @@ class ReportBuilder:
                     report.prompt_analysis = full_prompt_analysis
                 logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
 
+            # Clear prompt-forward tensors after all prompt_analysis builds (including on_risk rebuild).
+            # Frees GPU memory when report_on_gpu=True; safe to clear now since no further _build_prompt_analysis.
+            pf = getattr(results, "prompt_forward", None)
+            if pf is not None:
+                pf.hidden_states = None
+                pf.attentions = None
+
             # Phase-4: calibration divergence scoring (Issue 33)
             if self.config.calibration_profile:
                 try:
@@ -873,9 +880,10 @@ class ReportBuilder:
             # Discard raw logits after use — not persisted to report JSON; frees memory.
             pf.logits = None
 
-        # Clear prompt-forward tensors after use (always) to free memory; when report_on_gpu=True this frees GPU.
-        pf.hidden_states = None
-        pf.attentions = None
+        # Do not clear pf.hidden_states / pf.attentions here: when capture_mode is on_risk,
+        # build() may call _build_prompt_analysis again with store_sparse_heads_override=True
+        # after risk/flag evaluation; clearing here would drop sparse heads/layer data for that rebuild.
+        # Clearing is done in build() after the on_risk rebuild path (if any).
 
         return PromptAnalysis(
             layers=layers,
