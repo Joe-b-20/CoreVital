@@ -473,8 +473,9 @@ def run_command(args: argparse.Namespace) -> int:
                     raise FileNotFoundError(f"Calibration profile not found: {cal_path}")
                 config.calibration_profile = cal_path
 
-            # Report on GPU (default: offload to CPU to leave GPU free for inference)
-            config.device.report_on_gpu = getattr(args, "report_on_gpu", False)
+            # Report on GPU: only set True when flag is passed; never overwrite config/env with False
+            if getattr(args, "report_on_gpu", False):
+                config.device.report_on_gpu = True
 
             # OpenTelemetry export (optional)
             if getattr(args, "export_otel", False):

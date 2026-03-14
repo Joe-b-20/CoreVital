@@ -288,7 +288,7 @@ def compute_basin_scores(
 
     # Vectorized over all heads: sum over key dim, mean over query dim
     middle_attn = attention[:, :, mid_start:mid_end].sum(dim=-1).mean(dim=-1)  # (heads,)
-    boundary_mask = torch.ones(seq_len, dtype=torch.bool)
+    boundary_mask = torch.ones(seq_len, dtype=torch.bool, device=attention.device)
     boundary_mask[mid_start:mid_end] = False
     boundary_attn = attention[:, :, boundary_mask].sum(dim=-1).mean(dim=-1)  # (heads,)
 
