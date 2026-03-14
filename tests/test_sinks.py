@@ -432,6 +432,17 @@ class TestCLISinkRouting:
         args_default = parser.parse_args(["run", "--model", "gpt2", "--prompt", "test"])
         assert getattr(args_default, "capture", None) is None
 
+    def test_cli_parser_report_on_gpu(self):
+        """CLI should set report_on_gpu=True when --report-on-gpu is passed."""
+        from CoreVital.cli import create_parser
+
+        parser = create_parser()
+        args = parser.parse_args(["run", "--model", "gpt2", "--prompt", "test", "--report-on-gpu"])
+        assert getattr(args, "report_on_gpu", False) is True
+
+        args_default = parser.parse_args(["run", "--model", "gpt2", "--prompt", "test"])
+        assert getattr(args_default, "report_on_gpu", False) is False
+
     def test_cli_parser_rag_context(self):
         """CLI should accept --rag-context path."""
         from CoreVital.cli import create_parser

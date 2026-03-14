@@ -314,7 +314,11 @@ def _safe_anomalies(
 def _extract_last_layer_vec(
     payload: NormalizedStepPayload,
 ) -> Optional[torch.Tensor]:
-    """Extract a small 1-D vector from the last layer for repetition detection."""
+    """Extract a small 1-D vector from the last layer for repetition detection.
+
+    Returns tensor on the same device as payload (no .cpu()); when report_on_gpu is True
+    the buffer stays on device and detect_repetition_loop runs on GPU.
+    """
     if not payload.hidden_states:
         return None
     last_layer = payload.hidden_states[-1]
@@ -322,11 +326,11 @@ def _extract_last_layer_vec(
         return None
     try:
         if last_layer.dim() == 3:
-            return last_layer[0, -1, :].detach().cpu()
+            return last_layer[0, -1, :].detach()
         if last_layer.dim() == 2:
-            return last_layer[-1, :].detach().cpu()
+            return last_layer[-1, :].detach()
         if last_layer.dim() == 1:
-            return last_layer.detach().cpu()
+            return last_layer.detach()
     except Exception:
         pass
     return None

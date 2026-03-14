@@ -82,7 +82,8 @@ class PromptForwardData:
     For Seq2Seq: reuses encoder outputs (zero-cost).
     By default tensors are offloaded to CPU (config.device.report_on_gpu=False).
     When report_on_gpu=True they stay on the model device and report_builder runs
-    summary ops on device. After building prompt_analysis, logits are cleared.
+    summary ops on device. After building prompt_analysis, report_builder clears
+    logits, hidden_states, and attentions to free GPU memory when report_on_gpu=True.
     """
 
     hidden_states: Optional[List[torch.Tensor]] = None
