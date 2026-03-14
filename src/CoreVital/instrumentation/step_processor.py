@@ -4,8 +4,8 @@
 # logits). This module:
 # 1. Normalizes shapes into a uniform contract (NormalizedStepPayload)
 # 2. Computes all summary functions (logits, attention, hidden state)
-# 3. Returns scalars-only StepSummary
-# 4. Discards all raw tensors (they must not survive past process_step)
+# 3. Returns StepSummary (scalars + one small 1D vector per step for repetition buffer)
+# 4. Discards all raw full tensors; no large or GPU tensors retained past process_step
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -49,7 +49,12 @@ class LayerStepSummary:
 @dataclass
 class StepSummary:
     """Pre-computed summaries for one generation step.
-    Contains only scalars and small lists — no raw model tensors."""
+
+    Contains scalars and small lists; no large or raw full-layer tensors. The only
+    tensor retained is _last_layer_hidden_vec (one small 1D vector per step for
+    the repetition buffer); it stays on the same device as the payload so that
+    report_on_gpu can keep repetition detection on-device without per-step sync.
+    """
 
     step_index: int
     token_id: int
@@ -57,8 +62,8 @@ class StepSummary:
     is_prompt_token: bool
     logits_summary: Dict[str, Any] = field(default_factory=dict)
     layer_summaries: List[LayerStepSummary] = field(default_factory=list)
-    # Small derived 1-D vector for repetition detection buffer.
-    # Consumed by _build_health_flags then deleted; not a raw model tensor.
+    # Small 1D vector from last layer for repetition detection buffer (same device as payload).
+    # Consumed by _build_health_flags then discarded; not persisted to report.
     _last_layer_hidden_vec: Optional[torch.Tensor] = field(default=None, repr=False)
 
 
@@ -133,7 +138,7 @@ def process_step(
         profile: Optional model profile for threshold overrides.
 
     Returns:
-        StepSummary with all computed summaries (scalars only).
+        StepSummary with computed summaries (scalars + one small vec for repetition buffer).
     """
     logits_dict = _compute_logits(payload, config, step_index, token_id, tokenizer)
     layers = _compute_layer_summaries(payload, config, step_index, profile)
@@ -176,9 +181,11 @@ def _normalize_hidden(
         hs = hs[1 : num_layers + 1]
     if beam_handler is not None:
         hs = [beam_handler(t) for t in hs if t is not None]
-    result = [
-        t.detach().cpu() if offload_to_cpu else t.detach() for t in hs if t is not None and isinstance(t, torch.Tensor)
-    ]
+    result: List[torch.Tensor] = []
+    for t in hs:
+        if t is None or not isinstance(t, torch.Tensor):
+            continue
+        result.append(t.detach().cpu() if offload_to_cpu else t.detach())
     return result if result else None
 
 
@@ -316,8 +323,11 @@ def _extract_last_layer_vec(
 ) -> Optional[torch.Tensor]:
     """Extract a small 1-D vector from the last layer for repetition detection.
 
-    Returns tensor on the same device as payload (no .cpu()); when report_on_gpu is True
-    the buffer stays on device and detect_repetition_loop runs on GPU.
+    Returns the vector on the same device as the payload (detach only, no .cpu()).
+    When report_on_gpu=True the payload is on GPU, so the repetition buffer stays
+    on device and detection runs without per-step CPU sync; when False, payload is
+    already on CPU so no GPU retention. Keeps one small vector per step in the
+    timeline until _build_health_flags consumes and discards it.
     """
     if not payload.hidden_states:
         return None
