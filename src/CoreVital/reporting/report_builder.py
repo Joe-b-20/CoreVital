@@ -873,7 +873,7 @@ class ReportBuilder:
             # Discard raw logits after use — not persisted to report JSON; frees memory.
             pf.logits = None
 
-        # When report_on_gpu=True, clear prompt-forward tensors after use to free GPU memory.
+        # Clear prompt-forward tensors after use (always) to free memory; when report_on_gpu=True this frees GPU.
         pf.hidden_states = None
         pf.attentions = None
 

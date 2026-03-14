@@ -176,9 +176,11 @@ def _normalize_hidden(
         hs = hs[1 : num_layers + 1]
     if beam_handler is not None:
         hs = [beam_handler(t) for t in hs if t is not None]
-    result = [
-        t.detach().cpu() if offload_to_cpu else t.detach() for t in hs if t is not None and isinstance(t, torch.Tensor)
-    ]
+    result: List[torch.Tensor] = []
+    for t in hs:
+        if t is None or not isinstance(t, torch.Tensor):
+            continue
+        result.append(t.detach().cpu() if offload_to_cpu else t.detach())
     return result if result else None
 
 
@@ -316,8 +318,8 @@ def _extract_last_layer_vec(
 ) -> Optional[torch.Tensor]:
     """Extract a small 1-D vector from the last layer for repetition detection.
 
-    Returns tensor on the same device as payload (no .cpu()); when report_on_gpu is True
-    the buffer stays on device and detect_repetition_loop runs on GPU.
+    Always copies to CPU so StepSummary does not retain GPU tensors (avoids
+    per-token GPU accumulation and keeps the no-tensors-past-process_step contract).
     """
     if not payload.hidden_states:
         return None
@@ -326,11 +328,11 @@ def _extract_last_layer_vec(
         return None
     try:
         if last_layer.dim() == 3:
-            return last_layer[0, -1, :].detach()
+            return last_layer[0, -1, :].detach().cpu()
         if last_layer.dim() == 2:
-            return last_layer[-1, :].detach()
+            return last_layer[-1, :].detach().cpu()
         if last_layer.dim() == 1:
-            return last_layer.detach()
+            return last_layer.detach().cpu()
     except Exception:
         pass
     return None
