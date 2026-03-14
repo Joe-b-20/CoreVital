@@ -310,17 +310,15 @@ experiment/
 - ✅ `results/` — Feature tables and extraction manifest
 - ✅ `traces/` — Organized by model/dataset
 
-## Next Steps
+## Recommendations for future work
 
-Based on these findings:
+Suggested directions based on these findings (for contributors and maintainers):
 
-1. **Implement per-model calibration** — Step 6 showed the pooled model (step 5) underperforms on most individual cells. Fit separate models per (model, dataset) or per architecture.
-2. **Add format-failure prediction** as separate signal (especially for GSM8K: Mistral 72%, Mixtral 62% failure rate)
-3. **Add confident-but-wrong detector** using signals from confidence calibration analysis
-4. **Replace built-in risk score** with learned model (but only after per-model calibration)
-5. **Document limitations clearly** in user-facing docs (no production validation, offline only, GSM8K+HumanEval scope)
-6. **Add disclaimers** to `risk_score` and `failure_risk` outputs noting poor calibration
-7. **Consider deprecating `failure_risk`** (discrete, low predictive power)
+1. **Per-model calibration** — Step 6 showed the pooled model (step 5) underperforms on most individual cells. Fit separate models per (model, dataset) or per architecture.
+2. **Format-failure prediction** as a separate signal (especially for GSM8K: Mistral 72%, Mixtral 62% failure rate).
+3. **Confident-but-wrong detector** using signals from confidence calibration analysis.
+4. **Replace built-in risk score** with a learned model (after per-model calibration is in place).
+5. **User-facing disclaimers** for `risk_score` and `failure_risk` noting poor calibration; consider deprecating `failure_risk` (discrete, low predictive power).
 
 ## Citation
 
@@ -329,8 +327,8 @@ If using this experiment design or findings:
 ```bibtex
 @misc{corevital-validation-v2,
   title={CoreVital Validation Experiment: Internal Model Signals Predict Task Correctness},
-  author={CoreVital Contributors},
-  year={2025},
+  author={Joe Bachir},
+  year={2026},
   note={Pass@k validation on GSM8K and HumanEval with grouped held-out evaluation. AUROC 0.60-0.90 across models/tasks.}
 }
 ```

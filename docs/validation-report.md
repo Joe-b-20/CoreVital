@@ -125,19 +125,19 @@ This subsection summarizes the per-metric correlation analysis: for each (model,
 
 The following figures show correlation heatmaps and predictive-power distributions for GSM8K and HumanEval.
 
-![Correlation of CoreVital signals with correctness, GSM8K (all models).](experiment/analysis/focus_01_metric_correlation/figures/focus1_correlation_gsm8k.png)
+![Correlation of CoreVital signals with correctness, GSM8K (all models).](../experiment/analysis/focus_01_metric_correlation/figures/focus1_correlation_gsm8k.png)
 
 *Figure: Correlation heatmap — GSM8K. Per (model, signal): Spearman correlation with correct; direction and magnitude indicate association strength.*
 
-![Correlation of CoreVital signals with correctness, HumanEval (all models).](experiment/analysis/focus_01_metric_correlation/figures/focus1_correlation_humaneval.png)
+![Correlation of CoreVital signals with correctness, HumanEval (all models).](../experiment/analysis/focus_01_metric_correlation/figures/focus1_correlation_humaneval.png)
 
 *Figure: Correlation heatmap — HumanEval. Per (model, signal): Spearman correlation with correct.*
 
-![Predictive power (direction-aware AUROC) of CoreVital signals, GSM8K.](experiment/analysis/focus_01_metric_correlation/figures/focus1_pred_power_gsm8k.png)
+![Predictive power (direction-aware AUROC) of CoreVital signals, GSM8K.](../experiment/analysis/focus_01_metric_correlation/figures/focus1_pred_power_gsm8k.png)
 
 *Figure: Predictive power — GSM8K. Distribution of effective AUROC across signals and models.*
 
-![Predictive power (direction-aware AUROC) of CoreVital signals, HumanEval.](experiment/analysis/focus_01_metric_correlation/figures/focus1_pred_power_humaneval.png)
+![Predictive power (direction-aware AUROC) of CoreVital signals, HumanEval.](../experiment/analysis/focus_01_metric_correlation/figures/focus1_pred_power_humaneval.png)
 
 *Figure: Predictive power — HumanEval. Distribution of effective AUROC across signals and models.*
 
@@ -157,19 +157,19 @@ So MoE exhibits systematically different internal-signal distributions (e.g. exp
 
 The following figures show per-signal boxplots and layer-wise entropy comparisons for GSM8K and HumanEval.
 
-![MoE vs Dense: signal boxplots by correctness, GSM8K.](experiment/analysis/focus_02_moe_vs_dense/figures/focus2_boxplots_gsm8k.png)
+![MoE vs Dense: signal boxplots by correctness, GSM8K.](../experiment/analysis/focus_02_moe_vs_dense/figures/focus2_boxplots_gsm8k.png)
 
 *Figure: MoE vs Dense — GSM8K. Distribution of selected signals by model type (Mixtral vs dense) and correctness.*
 
-![MoE vs Dense: signal boxplots by correctness, HumanEval.](experiment/analysis/focus_02_moe_vs_dense/figures/focus2_boxplots_humaneval.png)
+![MoE vs Dense: signal boxplots by correctness, HumanEval.](../experiment/analysis/focus_02_moe_vs_dense/figures/focus2_boxplots_humaneval.png)
 
 *Figure: MoE vs Dense — HumanEval. Distribution of selected signals by model type and correctness.*
 
-![Layer-wise entropy comparison, MoE vs Dense, GSM8K.](experiment/analysis/focus_02_moe_vs_dense/figures/focus2_layer_entropy_gsm8k.png)
+![Layer-wise entropy comparison, MoE vs Dense, GSM8K.](../experiment/analysis/focus_02_moe_vs_dense/figures/focus2_layer_entropy_gsm8k.png)
 
 *Figure: Layer entropy — GSM8K. Per-layer attention entropy by model (Mixtral vs dense).*
 
-![Layer-wise entropy comparison, MoE vs Dense, HumanEval.](experiment/analysis/focus_02_moe_vs_dense/figures/focus2_layer_entropy_humaneval.png)
+![Layer-wise entropy comparison, MoE vs Dense, HumanEval.](../experiment/analysis/focus_02_moe_vs_dense/figures/focus2_layer_entropy_humaneval.png)
 
 *Figure: Layer entropy — HumanEval. Per-layer attention entropy by model (Mixtral vs dense).*
 
@@ -192,19 +192,19 @@ So **run-varying internal signals** (hidden-state norms, perplexity, layer-wise 
 
 The following figures show entropy-mean and margin-mean divergence distributions by dataset.
 
-![Within-prompt divergence of entropy_mean, GSM8K.](experiment/analysis/focus_03_self_consistency/figures/focus3_entropy_mean_divergence_gsm8k.png)
+![Within-prompt divergence of entropy_mean, GSM8K.](../experiment/analysis/focus_03_self_consistency/figures/focus3_entropy_mean_divergence_gsm8k.png)
 
 *Figure: Entropy-mean divergence — GSM8K. Distribution of within-prompt divergence in entropy_mean across runs.*
 
-![Within-prompt divergence of entropy_mean, HumanEval.](experiment/analysis/focus_03_self_consistency/figures/focus3_entropy_mean_divergence_humaneval.png)
+![Within-prompt divergence of entropy_mean, HumanEval.](../experiment/analysis/focus_03_self_consistency/figures/focus3_entropy_mean_divergence_humaneval.png)
 
 *Figure: Entropy-mean divergence — HumanEval. Distribution of within-prompt divergence in entropy_mean.*
 
-![Within-prompt divergence of margin_mean, GSM8K.](experiment/analysis/focus_03_self_consistency/figures/focus3_margin_mean_divergence_gsm8k.png)
+![Within-prompt divergence of margin_mean, GSM8K.](../experiment/analysis/focus_03_self_consistency/figures/focus3_margin_mean_divergence_gsm8k.png)
 
 *Figure: Margin-mean divergence — GSM8K. Distribution of within-prompt divergence in margin_mean.*
 
-![Within-prompt divergence of margin_mean, HumanEval.](experiment/analysis/focus_03_self_consistency/figures/focus3_margin_mean_divergence_humaneval.png)
+![Within-prompt divergence of margin_mean, HumanEval.](../experiment/analysis/focus_03_self_consistency/figures/focus3_margin_mean_divergence_humaneval.png)
 
 *Figure: Margin-mean divergence — HumanEval. Distribution of within-prompt divergence in margin_mean.*
 
@@ -235,27 +235,27 @@ So **which layer best predicts correctness is model- and dataset-dependent**: ea
 
 Below we embed **six representative figures** (two per figure family: attention-entropy profile, L2-norm profile, combined layers view). The full set of 24 layer-analysis figures is in `experiment/analysis/focus_04_layer_analysis/figures/`; see also `experiment/analysis/global_manifest.json` for the full gallery.
 
-![Attention entropy by layer vs correctness, Qwen, GSM8K.](experiment/analysis/focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_gsm8k.png)
+![Attention entropy by layer vs correctness, Qwen, GSM8K.](../experiment/analysis/focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_gsm8k.png)
 
 *Figure: Attention entropy profile — Qwen, GSM8K. Per-layer correlation with correctness; peak at layer 9.*
 
-![Attention entropy by layer vs correctness, Qwen, HumanEval.](experiment/analysis/focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_humaneval.png)
+![Attention entropy by layer vs correctness, Qwen, HumanEval.](../experiment/analysis/focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_humaneval.png)
 
 *Figure: Attention entropy profile — Qwen, HumanEval. Per-layer correlation; peak at layer 2.*
 
-![L2 norm by layer vs correctness, Qwen, GSM8K.](experiment/analysis/focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_gsm8k.png)
+![L2 norm by layer vs correctness, Qwen, GSM8K.](../experiment/analysis/focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_gsm8k.png)
 
 *Figure: L2 norm profile — Qwen, GSM8K. Per-layer correlation with correctness; peak at layer 18.*
 
-![L2 norm by layer vs correctness, Qwen, HumanEval.](experiment/analysis/focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_humaneval.png)
+![L2 norm by layer vs correctness, Qwen, HumanEval.](../experiment/analysis/focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_humaneval.png)
 
 *Figure: L2 norm profile — Qwen, HumanEval. Per-layer correlation; peak at layer 10.*
 
-![Combined layer-wise signals vs correctness, Qwen, GSM8K.](experiment/analysis/focus_04_layer_analysis/figures/focus4_layers_qwen_gsm8k.png)
+![Combined layer-wise signals vs correctness, Qwen, GSM8K.](../experiment/analysis/focus_04_layer_analysis/figures/focus4_layers_qwen_gsm8k.png)
 
 *Figure: Layer analysis overview — Qwen, GSM8K. Combined view of per-layer associations.*
 
-![Combined layer-wise signals vs correctness, Qwen, HumanEval.](experiment/analysis/focus_04_layer_analysis/figures/focus4_layers_qwen_humaneval.png)
+![Combined layer-wise signals vs correctness, Qwen, HumanEval.](../experiment/analysis/focus_04_layer_analysis/figures/focus4_layers_qwen_humaneval.png)
 
 *Figure: Layer analysis overview — Qwen, HumanEval. Combined view of per-layer associations.*
 
@@ -281,11 +281,11 @@ This subsection examines **prompt-level** correlation of CoreVital signals with 
 
 So prompt-level surprisal and layer-transform statistics correlate with which prompts are harder across runs; the strength and direction are model- and dataset-dependent.
 
-![Difficulty correlation of prompt-level signals, GSM8K.](experiment/analysis/focus_05_difficulty/figures/focus5_difficulty_corr_gsm8k.png)
+![Difficulty correlation of prompt-level signals, GSM8K.](../experiment/analysis/focus_05_difficulty/figures/focus5_difficulty_corr_gsm8k.png)
 
 *Figure: Difficulty profiling — GSM8K. Prompt-level signal correlation with empirical difficulty (1 − mean correct).*
 
-![Difficulty correlation of prompt-level signals, HumanEval.](experiment/analysis/focus_05_difficulty/figures/focus5_difficulty_corr_humaneval.png)
+![Difficulty correlation of prompt-level signals, HumanEval.](../experiment/analysis/focus_05_difficulty/figures/focus5_difficulty_corr_humaneval.png)
 
 *Figure: Difficulty profiling — HumanEval. Prompt-level signal correlation with empirical difficulty.*
 
@@ -301,11 +301,11 @@ This subsection summarizes **cross-model difficulty agreement** (do models find 
 
 **Fingerprint note.** From the summary: the 25-d fingerprint is concatenated summary statistics (e.g. fp_00 = entropy_mean, fp_01 = entropy_std), not a learned embedding; fingerprint analysis is redundant with named-feature analysis and should not be treated as independent evidence.
 
-![Cross-model difficulty agreement, GSM8K.](experiment/analysis/focus_06_cross_model/figures/focus6_agreement_gsm8k.png)
+![Cross-model difficulty agreement, GSM8K.](../experiment/analysis/focus_06_cross_model/figures/focus6_agreement_gsm8k.png)
 
 *Figure: Cross-model agreement — GSM8K. Pairwise agreement in per-prompt difficulty.*
 
-![Cross-model difficulty agreement, HumanEval.](experiment/analysis/focus_06_cross_model/figures/focus6_agreement_humaneval.png)
+![Cross-model difficulty agreement, HumanEval.](../experiment/analysis/focus_06_cross_model/figures/focus6_agreement_humaneval.png)
 
 *Figure: Cross-model agreement — HumanEval. Pairwise agreement in per-prompt difficulty.*
 
@@ -334,11 +334,11 @@ Incremental **tiered ablation** (T1–T6) measures how much discriminative power
 - **GSM8K (math):** Mixed. Some models benefit from prompt signals (T3), others from early-window (T4) or health signals (T5).
 - **Full feature set (T6):** Best in 6/8 cells, but not universal. Can hurt when features are redundant or noisy.
 
-![Ablation curves by tier, GSM8K.](experiment/analysis/ablation/figures/ablation_curve_gsm8k.png)
+![Ablation curves by tier, GSM8K.](../experiment/analysis/ablation/figures/ablation_curve_gsm8k.png)
 
 *Figure: Signal ablation — GSM8K. Mean AUROC by tier (T1–T6) per model.*
 
-![Ablation curves by tier, HumanEval.](experiment/analysis/ablation/figures/ablation_curve_humaneval.png)
+![Ablation curves by tier, HumanEval.](../experiment/analysis/ablation/figures/ablation_curve_humaneval.png)
 
 *Figure: Signal ablation — HumanEval. Mean AUROC by tier (T1–T6) per model.*
 
@@ -359,11 +359,11 @@ For prompts with at least one correct run, we rank the k runs by a run-varying C
 
 So run-varying signals can substantially improve best-of-k selection over random, especially where baseline accuracy is low (e.g. Mixtral/Mistral on HumanEval).
 
-![Ranking lift vs random, GSM8K.](experiment/analysis/ranking/figures/ranking_lift_gsm8k.png)
+![Ranking lift vs random, GSM8K.](../experiment/analysis/ranking/figures/ranking_lift_gsm8k.png)
 
 *Figure: Ranking — GSM8K. Lift in accuracy when selecting by signal vs random.*
 
-![Ranking lift vs random, HumanEval.](experiment/analysis/ranking/figures/ranking_lift_humaneval.png)
+![Ranking lift vs random, HumanEval.](../experiment/analysis/ranking/figures/ranking_lift_humaneval.png)
 
 *Figure: Ranking — HumanEval. Lift in accuracy when selecting by signal vs random.*
 
@@ -438,6 +438,8 @@ So run-varying signals can substantially improve best-of-k selection over random
 **Mean absolute predictive power shift:** **0.028** (nearly identical discrimination at temp 0.7 vs 0.8)
 
 **Implication:** Signals measure **model internals**, not just **sampling artifacts**. This validates that CoreVital captures inference health, not temperature-dependent randomness.
+
+**Figures:** See [experiment/analysis/temperature_effects/figures/](../experiment/analysis/temperature_effects/figures/) for predictive-power scatter by dataset (GSM8K, HumanEval).
 
 ---
 
@@ -525,11 +527,11 @@ So the pooled model is promising overall but **do not** present it as a universa
 
 The following figures show calibration curves for the built-in risk_score and failure_risk (from `experiment/analysis/risk_calibration/`).
 
-![Calibration of built-in risk_score (reliability diagram).](experiment/analysis/risk_calibration/figures/calibration_risk_score.png)
+![Calibration of built-in risk_score (reliability diagram).](../experiment/analysis/risk_calibration/figures/calibration_risk_score.png)
 
 *Figure: Risk score calibration. Predicted probability vs observed failure rate (risk_score, step 1).*
 
-![Calibration of built-in failure_risk (reliability diagram).](experiment/analysis/risk_calibration/figures/calibration_failure_risk.png)
+![Calibration of built-in failure_risk (reliability diagram).](../experiment/analysis/risk_calibration/figures/calibration_failure_risk.png)
 
 *Figure: Failure risk calibration. Predicted probability vs observed failure rate (failure_risk, step 1).*
 
@@ -675,9 +677,10 @@ This report embeds a **curated subset** of figures (see sections 2 and 3). The f
 | Focus 6 — Cross-model | [focus_06_cross_model/figures/](../experiment/analysis/focus_06_cross_model/figures/) | 2 |
 | Ablation | [ablation/figures/](../experiment/analysis/ablation/figures/) | 2 |
 | Ranking | [ranking/figures/](../experiment/analysis/ranking/figures/) | 2 |
-| Confidence calibration | [confidence_calibration/figures/](../experiment/analysis/confidence_calibration/figures/) | See directory |
-| Outcome profiling | [outcome_profiling/tables/](../experiment/analysis/outcome_profiling/tables/) | Tables only |
-| Temperature effects | — | No figures |
+| Confidence calibration | [confidence_calibration/figures/](../experiment/analysis/confidence_calibration/figures/) | 2 |
+| Outcome profiling | [outcome_profiling/figures/](../experiment/analysis/outcome_profiling/figures/) | 8 |
+| Temperature effects | [temperature_effects/figures/](../experiment/analysis/temperature_effects/figures/) | 2 |
 | Difficulty-stratified | [difficulty_stratified/figures/](../experiment/analysis/difficulty_stratified/figures/) | 2 |
 | Format failure | [format_failure/tables/](../experiment/analysis/format_failure/tables/) | Tables only |
 | Risk calibration | [risk_calibration/figures/](../experiment/analysis/risk_calibration/figures/) | 2 |
+| Signal redundancy | [signal_redundancy/figures/](../experiment/analysis/signal_redundancy/figures/) | 1 |

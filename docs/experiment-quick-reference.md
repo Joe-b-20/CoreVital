@@ -114,8 +114,8 @@ experiment/
 ```bibtex
 @misc{corevital-validation-v2,
   title={CoreVital Validation Experiment: Internal Model Signals Predict Task Correctness},
-  author={CoreVital Contributors},
-  year={2025},
+  author={Joe Bachir},
+  year={2026},
   note={Pass@k validation on GSM8K and HumanEval with grouped held-out evaluation. AUROC 0.60-0.90 across models/tasks.}
 }
 ```
