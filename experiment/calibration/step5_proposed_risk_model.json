@@ -1,0 +1,68 @@
+{
+  "evaluation_protocol": "Grouped held-out CV by model/dataset/question_id; coefficients fit on all labeled rows after evaluation.",
+  "target": "failure",
+  "selected_features": [
+    "entropy_mean",
+    "margin_mean",
+    "topk_mass_mean",
+    "prompt_surprisal_mean",
+    "basin_score_mean",
+    "entropy_slope"
+  ],
+  "intercept": 0.17191723445556978,
+  "features": {
+    "entropy_mean": {
+      "raw_coef": 0.9521295186587945,
+      "importance": 0.9521295186587945,
+      "direction": "+",
+      "feature_mean": 0.27335750329693725,
+      "feature_std": 0.1427903350562927
+    },
+    "margin_mean": {
+      "raw_coef": 0.7469597104754644,
+      "importance": 0.7469597104754644,
+      "direction": "+",
+      "feature_mean": 0.8764327092935049,
+      "feature_std": 0.058838822978807444
+    },
+    "topk_mass_mean": {
+      "raw_coef": 0.14083452459706647,
+      "importance": 0.14083452459706647,
+      "direction": "+",
+      "feature_mean": 0.9989314161250613,
+      "feature_std": 0.0025715051559963165
+    },
+    "prompt_surprisal_mean": {
+      "raw_coef": -0.9729520338244743,
+      "importance": 0.9729520338244743,
+      "direction": "-",
+      "feature_mean": 2.7648189552266214,
+      "feature_std": 1.2370273108225542
+    },
+    "basin_score_mean": {
+      "raw_coef": 0.4312871458746779,
+      "importance": 0.4312871458746779,
+      "direction": "+",
+      "feature_mean": 0.18155567071015177,
+      "feature_std": 0.05294861724926311
+    },
+    "entropy_slope": {
+      "raw_coef": 0.005321422447424515,
+      "importance": 0.005321422447424515,
+      "direction": "+",
+      "feature_mean": -0.0014210330087434547,
+      "feature_std": 0.003952872558976452
+    }
+  },
+  "auroc_grouped_cv": 0.7436414583054187,
+  "ece_grouped_cv": 0.16414441286658008,
+  "current_risk_auroc_grouped_cv": 0.5922140290838109,
+  "current_risk_ece_grouped_cv": 0.2322828925929269,
+  "current_failure_risk_auroc_grouped_cv": 0.5484575629842938,
+  "current_failure_risk_ece_grouped_cv": 0.2998333771814435,
+  "n_samples": 11403,
+  "n_prompt_groups": 1384,
+  "splitter": "StratifiedGroupKFold",
+  "description": "Logistic regression: P(failure) = sigmoid(intercept + sum(coef_i * (feat_i - mean_i) / std_i))",
+  "predictions_path": "experiment/calibration/step5_proposed_risk_predictions.parquet"
+}

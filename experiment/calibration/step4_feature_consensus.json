@@ -1,0 +1,116 @@
+{
+  "entropy_mean": {
+    "mean_importance": 1.6769170714895472,
+    "consistency": 0.875,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "margin_mean": {
+    "mean_importance": 1.1517195753392455,
+    "consistency": 0.75,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "surprisal_mean": {
+    "mean_importance": 0.5489702797307203,
+    "consistency": 0.5,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "topk_mass_mean": {
+    "mean_importance": 0.343208846248811,
+    "consistency": 0.875,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "l2_norm_last_layer_mean": {
+    "mean_importance": 0.29416035844205535,
+    "consistency": 0.625,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "high_entropy_frac": {
+    "mean_importance": 0.28127455741498997,
+    "consistency": 0.625,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "collapsed_rate_mean": {
+    "mean_importance": 0.2756782428299376,
+    "consistency": 0.625,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "basin_score_min": {
+    "mean_importance": 0.25133686786718673,
+    "consistency": 0.5,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "prompt_surprisal_mean": {
+    "mean_importance": 0.2266952490867173,
+    "consistency": 0.875,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "basin_score_mean": {
+    "mean_importance": 0.20279293898184558,
+    "consistency": 0.875,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "layer_transform_std": {
+    "mean_importance": 0.19351397188840982,
+    "consistency": 0.625,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "entropy_slope": {
+    "mean_importance": 0.17308936722614643,
+    "consistency": 0.75,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "layer_transform_mean": {
+    "mean_importance": 0.15201859758503888,
+    "consistency": 0.625,
+    "majority_direction": "higher failure risk",
+    "n_cells": 8
+  },
+  "repetition_detected": {
+    "mean_importance": 0.09534565662342362,
+    "consistency": 0.75,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "attention_collapse_detected": {
+    "mean_importance": 0.06238466634885681,
+    "consistency": 0.625,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "n_compound_signals": {
+    "mean_importance": 0.04364224926345904,
+    "consistency": 0.625,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "max_compound_severity": {
+    "mean_importance": 0.04325266449254442,
+    "consistency": 0.625,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "nan_detected": {
+    "mean_importance": 0.0,
+    "consistency": 1.0,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  },
+  "mid_layer_anomaly": {
+    "mean_importance": 0.0,
+    "consistency": 1.0,
+    "majority_direction": "lower failure risk",
+    "n_cells": 8
+  }
+}

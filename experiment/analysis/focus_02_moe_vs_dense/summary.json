@@ -1,0 +1,42 @@
+{
+  "description": "MoE (Mixtral) vs Dense architectural comparison",
+  "n_comparisons": 30,
+  "n_significant_p05": 29,
+  "largest_effects": [
+    {
+      "dataset": "gsm8k",
+      "signal": "collapsed_rate_mean",
+      "delta_mean": 0.006785793019962788,
+      "rank_biserial": -0.8991891605256477,
+      "mann_whitney_p": 0.0
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "collapsed_rate_mean",
+      "delta_mean": 0.0107887534651642,
+      "rank_biserial": -0.8967906253136606,
+      "mann_whitney_p": 0.0
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "delta_mean": 0.5136205051514549,
+      "rank_biserial": -0.866240732230146,
+      "mann_whitney_p": 0.0
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "delta_mean": 0.37215703496960095,
+      "rank_biserial": -0.6527579544313962,
+      "mann_whitney_p": 0.0
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "l2_norm_cross_layer_max_zscore",
+      "delta_mean": -0.6637977014816919,
+      "rank_biserial": 0.3530723677607146,
+      "mann_whitney_p": 4.134448767826503e-101
+    }
+  ]
+}

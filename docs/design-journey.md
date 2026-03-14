@@ -28,9 +28,9 @@ Existing observability tools (LangSmith, Langfuse, OpenLIT) work at the API leve
 
 **Question:** How do we structure the output so it's stable across versions and useful for downstream tools?
 
-**Decision:** Pydantic-validated schema with explicit versioning (`schema_version: "0.3.0"`). Every report field is typed and documented. Optional `extensions` dicts on Report, TimelineStep, and LayerSummary allow future metrics without breaking the schema.
+**Decision:** Pydantic-validated schema with explicit versioning (`schema_version: "0.4.0"`). Every report field is typed and documented. Optional `extensions` dicts on Report, TimelineStep, and LayerSummary allow future metrics without breaking the schema.
 
-**Lesson learned:** The schema evolved twice (0.1.0 to 0.2.0 to 0.3.0) before stabilizing. Breaking changes early (removing deprecated fields, restructuring encoder/decoder separation) were worth the pain — they prevented confusion later when health flags and risk scores needed clean extension points.
+**Lesson learned:** The schema evolved through 0.1.0 → 0.2.0 → 0.3.0 → 0.4.0 before stabilizing. Breaking changes early (removing deprecated fields, restructuring encoder/decoder separation) were worth the pain — they prevented confusion later when health flags and risk scores needed clean extension points.
 
 ---
 
@@ -61,7 +61,7 @@ Existing observability tools (LangSmith, Langfuse, OpenLIT) work at the API leve
 
 **Design choice: transient buffer for repetition detection.** Repetition loops are detected by comparing cosine similarity of last-layer hidden states across consecutive steps. But we don't store all past hidden states — we keep a rolling buffer of the last 3 steps and check for similarity above 0.9995. This catches repetition without accumulating memory.
 
-**Phase 1d — Dashboard and SQLite default.** The Streamlit dashboard visualizes entropy/perplexity/surprisal curves, attention heatmaps, health flags, prompt analysis, and performance breakdowns. SQLite replaced JSON files as the default sink — one DB per project directory is cleaner than hundreds of JSON files, and it enables the Compare view.
+**Phase 1d — Dashboard and SQLite default.** A standalone React dashboard (see [dashboard-react-spec.md](dashboard-react-spec.md)) visualizes entropy/perplexity/surprisal curves, attention heatmaps, health flags, prompt analysis, and performance breakdowns. SQLite replaced JSON files as the default sink — one DB per project directory is cleaner than hundreds of JSON files, and it enables the Compare view.
 
 ---
 

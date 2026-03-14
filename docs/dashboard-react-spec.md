@@ -18,6 +18,7 @@ When using **Database** mode, the dashboard talks to the CoreVital local API (th
 |--------|------|--------|
 | GET | `/api/traces?db_path=...` | List traces. Query: `db_path` (optional; default from `COREVITAL_DB_PATH` or `runs/corevital.db`), optional `limit`, `model_id`, `prompt_hash`, `order_asc`. |
 | GET | `/api/traces/{trace_id}?db_path=...` | Load full report JSON for `trace_id`. Short id (e.g. 8 chars) matched as prefix. |
+| GET | `/api/reports/{trace_id}?db_path=...` | Alias for the above; same response. |
 
 ### SQLite schema (read-only)
 
@@ -30,7 +31,7 @@ When using **Database** mode, the dashboard talks to the CoreVital local API (th
 Frontend consumes a single report object. Key top-level keys:
 
 - **model** — `hf_id`, `architecture`, `num_layers`, `hidden_size`, `num_attention_heads`, `device`, `quantization`, etc.
-- **summary** — `generated_tokens`, `elapsed_ms`, `total_steps`.
+- **summary** — `prompt_tokens`, `generated_tokens`, `total_steps`, `elapsed_ms`.
 - **prompt** — `text`, `num_tokens`.
 - **generated** — `output_text`.
 - **run_config** — `generation` (temperature, top_k, top_p), `seed`, `max_new_tokens`.

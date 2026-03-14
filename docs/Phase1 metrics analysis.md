@@ -4,6 +4,8 @@
 
 **Structure:** For each metric: Formula | Dashboard Fit | Model Behavior Signal | Cost | Usefulness Assessment (with research)
 
+For the current interpretation guide and validation evidence, see [Metrics interpretation](metrics-interpretation.md) and the [Validation Report](validation-report.md). This document is the Phase-1 research and design rationale.
+
 ---
 
 ## LOGIT METRICS (Output Distribution Analysis)

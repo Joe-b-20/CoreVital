@@ -1,0 +1,134 @@
+{
+  "description": "Per-layer signal association with correctness",
+  "n_layer_tests": 496,
+  "peak_layers": [
+    {
+      "model": "llama",
+      "dataset": "gsm8k",
+      "metric": "attn_entropy",
+      "peak_layer": 3,
+      "peak_correlation": -0.12401273452946739,
+      "peak_p": 4.6723874949486546e-07
+    },
+    {
+      "model": "llama",
+      "dataset": "gsm8k",
+      "metric": "l2_norm",
+      "peak_layer": 12,
+      "peak_correlation": 0.16016320755113123,
+      "peak_p": 6.785845330106496e-11
+    },
+    {
+      "model": "llama",
+      "dataset": "humaneval",
+      "metric": "attn_entropy",
+      "peak_layer": 29,
+      "peak_correlation": 0.16654753304908404,
+      "peak_p": 1.1451156939370323e-11
+    },
+    {
+      "model": "llama",
+      "dataset": "humaneval",
+      "metric": "l2_norm",
+      "peak_layer": 31,
+      "peak_correlation": 0.10978270547462265,
+      "peak_p": 8.352439012588033e-06
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "metric": "attn_entropy",
+      "peak_layer": 27,
+      "peak_correlation": -0.27612809990079884,
+      "peak_p": 3.60154312099364e-11
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "metric": "l2_norm",
+      "peak_layer": 18,
+      "peak_correlation": 0.24898539312559417,
+      "peak_p": 2.741374275912132e-09
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "humaneval",
+      "metric": "attn_entropy",
+      "peak_layer": 1,
+      "peak_correlation": -0.09268069899102575,
+      "peak_p": 0.0001709265893657499
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "humaneval",
+      "metric": "l2_norm",
+      "peak_layer": 9,
+      "peak_correlation": 0.06945838162562702,
+      "peak_p": 0.004891332843712546
+    },
+    {
+      "model": "mixtral",
+      "dataset": "gsm8k",
+      "metric": "attn_entropy",
+      "peak_layer": 23,
+      "peak_correlation": -0.22845526884904982,
+      "peak_p": 1.968887340408715e-10
+    },
+    {
+      "model": "mixtral",
+      "dataset": "gsm8k",
+      "metric": "l2_norm",
+      "peak_layer": 18,
+      "peak_correlation": 0.1881891843196341,
+      "peak_p": 1.7956285634925427e-07
+    },
+    {
+      "model": "mixtral",
+      "dataset": "humaneval",
+      "metric": "attn_entropy",
+      "peak_layer": 23,
+      "peak_correlation": 0.029495573439581455,
+      "peak_p": 0.23541869777662214
+    },
+    {
+      "model": "mixtral",
+      "dataset": "humaneval",
+      "metric": "l2_norm",
+      "peak_layer": 30,
+      "peak_correlation": 0.07326287545385883,
+      "peak_p": 0.003172977438377256
+    },
+    {
+      "model": "qwen",
+      "dataset": "gsm8k",
+      "metric": "attn_entropy",
+      "peak_layer": 9,
+      "peak_correlation": -0.256497043030189,
+      "peak_p": 4.655538642006678e-30
+    },
+    {
+      "model": "qwen",
+      "dataset": "gsm8k",
+      "metric": "l2_norm",
+      "peak_layer": 18,
+      "peak_correlation": 0.24278310338363324,
+      "peak_p": 5.193251711726514e-27
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "metric": "attn_entropy",
+      "peak_layer": 2,
+      "peak_correlation": -0.4835629437602046,
+      "peak_p": 7.417263406301028e-97
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "metric": "l2_norm",
+      "peak_layer": 10,
+      "peak_correlation": 0.47679083024227603,
+      "peak_p": 7.635771248756666e-94
+    }
+  ]
+}

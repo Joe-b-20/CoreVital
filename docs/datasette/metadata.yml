@@ -174,7 +174,7 @@ plugins:
           query: |
             SELECT
               json_extract(report_json, '$.prompt.text') AS prompt_text,
-              json_extract(report_json, '$.generated.text') AS generated_text
+              json_extract(report_json, '$.generated.output_text') AS generated_text
             FROM reports
             WHERE trace_id = :trace_id
               AND report_json IS NOT NULL

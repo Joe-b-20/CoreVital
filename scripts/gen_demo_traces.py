@@ -62,6 +62,12 @@ DEMO_RUNS = [
         "better cognitive function in studies, but confounding factors make causal claims hard. "
         "Recent randomized trials have had mixed results.",
     ),
+    (
+        "Qwen/Qwen2-0.5B-Instruct",
+        "Classify the following text into one of these categories: Technology, Health, Finance,"
+        "Education, or Entertainment: 'The stock market reacted positively to the news of a breakthrough"
+        "in renewable energy technology, with several green tech companies seeing significant gains.'",
+    )
 ]
 
 

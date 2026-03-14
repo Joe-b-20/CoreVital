@@ -1,0 +1,38 @@
+{
+  "llama": {
+    "profile_path": "experiment/calibration/profile_llama.json",
+    "n_traces": 200,
+    "entropy_mean": 0.2511852448435324,
+    "entropy_std": 0.5844581515298223,
+    "margin_mean": 0.8872194199161937,
+    "margin_std": 0.251350630193545,
+    "n_layers_with_l2": 32
+  },
+  "mistral7b": {
+    "profile_path": "experiment/calibration/profile_mistral7b.json",
+    "n_traces": 200,
+    "entropy_mean": 0.23956925314279176,
+    "entropy_std": 0.5265015890557239,
+    "margin_mean": 0.8877256463419468,
+    "margin_std": 0.24466982585240238,
+    "n_layers_with_l2": 32
+  },
+  "mixtral": {
+    "profile_path": "experiment/calibration/profile_mixtral.json",
+    "n_traces": 200,
+    "entropy_mean": 0.24219286904177106,
+    "entropy_std": 0.5449243218027906,
+    "margin_mean": 0.8882921893996011,
+    "margin_std": 0.24560198180776605,
+    "n_layers_with_l2": 32
+  },
+  "qwen": {
+    "profile_path": "experiment/calibration/profile_qwen.json",
+    "n_traces": 200,
+    "entropy_mean": 0.2865155881509605,
+    "entropy_std": 0.5894596530179574,
+    "margin_mean": 0.8657059706261044,
+    "margin_std": 0.26724156599836857,
+    "n_layers_with_l2": 28
+  }
+}

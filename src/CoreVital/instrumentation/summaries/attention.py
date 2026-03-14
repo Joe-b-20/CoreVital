@@ -102,8 +102,8 @@ def compute_attention_summary(
         # For cross-attention, the last two dimensions may differ (target_seq_len != source_seq_len)
         # This is fine - we compute entropy over the source dimension (last dim) for each target position
 
-        # Move to CPU
-        attention = attention.cpu().float()
+        # Keep on same device (GPU when available); only sync scalars at the end via .item()/.tolist()
+        attention = attention.float()
 
         # Issue 23: Renormalize by division, not softmax.
         # Attention is already post-softmax; numerical drift means it may not sum to exactly 1.
@@ -229,7 +229,7 @@ def extract_sparse_attention(
     # Ensure 3D: (heads, seq_len, seq_len)
     if attention.dim() == 4:
         attention = attention[0]
-    attention = attention.cpu().float()
+    attention = attention.float()
 
     num_heads = attention.shape[0]
     heads: List[Dict[str, Any]] = []
@@ -276,7 +276,7 @@ def compute_basin_scores(
     """
     if attention.dim() == 4:
         attention = attention[0]
-    attention = attention.cpu().float()
+    attention = attention.float()
 
     num_heads, seq_len, _ = attention.shape
 
@@ -288,7 +288,7 @@ def compute_basin_scores(
 
     # Vectorized over all heads: sum over key dim, mean over query dim
     middle_attn = attention[:, :, mid_start:mid_end].sum(dim=-1).mean(dim=-1)  # (heads,)
-    boundary_mask = torch.ones(seq_len, dtype=torch.bool)
+    boundary_mask = torch.ones(seq_len, dtype=torch.bool, device=attention.device)
     boundary_mask[mid_start:mid_end] = False
     boundary_attn = attention[:, :, boundary_mask].sum(dim=-1).mean(dim=-1)  # (heads,)
 

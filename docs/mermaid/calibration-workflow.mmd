@@ -1,10 +1,25 @@
 %% Calibration Workflow — Building and using calibration profiles
 %% Two paths: (1) build a baseline profile from known-healthy runs,
 %% (2) score production traces against that baseline.
-%% Ref: src/CoreVital/calibration.py, calibration_risk.py, cli.py (calibrate command)
+%% Experiment path: experiment/scripts/calibrate_risk.py steps 1–6 (ECE, failure_risk eval, profiles, consensus, step 5 pooled model, step 6 per-model eval).
+%% Built-in risk_score and failure_risk are heuristic; not production-calibrated (see validation report).
+%% Ref: src/CoreVital/calibration.py, calibration_risk.py, experiment/scripts/calibrate_risk.py, docs/validation-report.md
 %%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
 
 flowchart TB
+
+    %% Experiment pipeline (steps 1–6)
+    subgraph EXPT["EXPERIMENT: calibrate_risk.py (experiment/calibration/)"]
+        direction TB
+        E0["features.parquet<br/>(labeled runs, format_failure excluded)"]
+        E1["Step 1: ECE + Platt<br/>risk_score & failure_risk<br/>per (model, dataset)"]
+        E2["Step 2: Calibration profiles<br/>per model from correct runs"]
+        E3["Step 3: Per-cell logistic regression<br/>failure prediction"]
+        E4["Step 4: Feature consensus<br/>step4_feature_consensus.json"]
+        E5["Step 5: Pooled failure model<br/>AUROC ~0.744, ECE ~0.164<br/>step5_proposed_risk_model.json"]
+        E6["Step 6: Per-model evaluation<br/>step6_per_model_evaluation.json<br/>pooled model not universally better"]
+        E0 --> E1 --> E2 --> E3 --> E4 --> E5 --> E6
+    end
 
     %% Path 1: Build profile
     subgraph BUILD["PATH 1: Build Calibration Profile (offline)"]
@@ -74,6 +89,7 @@ flowchart TB
         I3["divergence > 0.5<br/>Anomalous 🔴"]
         I4["ECE < 0.10<br/>Well calibrated ✅"]
         I5["ECE > 0.20<br/>Needs tuning ⚠️"]
+        I6["Built-in risk_score / failure_risk:<br/>heuristic, not production-calibrated"]
     end
 
     %% Styling
@@ -107,9 +123,19 @@ flowchart TB
     style E3 fill:#713f12,stroke:#facc15,color:#fef9c3
     style E4 fill:#713f12,stroke:#facc15,color:#fef9c3
 
+    style EXPT fill:#1e3a5f15,stroke:#60a5fa
+    style E0 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style E1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style E2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style E3 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style E4 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style E5 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style E6 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
     style INTERP fill:#0f172a,stroke:#334155
     style I1 fill:#065f46,stroke:#10b981,color:#6ee7b7
     style I2 fill:#713f12,stroke:#f59e0b,color:#fde68a
     style I3 fill:#7f1d1d,stroke:#f87171,color:#fecaca
     style I4 fill:#065f46,stroke:#10b981,color:#6ee7b7
     style I5 fill:#713f12,stroke:#f59e0b,color:#fde68a
+    style I6 fill:#374151,stroke:#9ca3af,color:#e5e7eb

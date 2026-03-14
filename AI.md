@@ -176,7 +176,7 @@ CHANGELOG.md          # v0.5.0-rc changelog: all phases, schema/config/CLI chang
 
 ## 9. Use cases (how to use the repo)
 
-- **Run one monitored generation:** `corevital run --model gpt2 --prompt "Hello" --max_new_tokens 5` → report in runs/corevital.db (or --sink local for JSON). Optional: --device cuda, --quantize-4, --perf, --capture summary|full|on_risk, --calibration <path>.
+- **Run one monitored generation:** `corevital run --model gpt2 --prompt "Hello" --max_new_tokens 5` → report in runs/corevital.db (or --sink local for JSON). Optional: --device cuda, --report-on-gpu (run report on GPU; default offload to CPU), --quantize-4, --perf, --capture summary|full|on_risk, --calibration <path>.
 - **Build calibration profile:** `corevital calibrate --model gpt2 --prompts prompts.txt --out calibration/gpt2.json`. Then use: `corevital run --model gpt2 --prompt "..." --calibration calibration/gpt2.json`.
 - **Use in Python:** `CoreVitalMonitor(capture_mode="summary").run("gpt2", "Hello", max_new_tokens=5)` then `get_risk_score()`, `get_health_flags()`, `should_intervene()`. Or `wrap_generation()` context manager.
 - **Local API:** corevital serve → uvicorn CoreVital.api:app. GET /api/traces (SQLiteSink.list_traces), GET /api/traces/{id} (SQLiteSink.load_report). DB path: COREVITAL_DB_PATH or --db (default runs/corevital.db).
@@ -187,7 +187,40 @@ CHANGELOG.md          # v0.5.0-rc changelog: all phases, schema/config/CLI chang
 
 ---
 
-## 10. Contributing (how to contribute)
+## 10. Validation experiment (evidence)
+
+**Location:** `experiment/` — Pass@k validation on GSM8K (math) and HumanEval (code); 4 models, 14,540 traces, grouped held-out CV.
+
+**Key findings:**
+- **CoreVital signals predict task correctness**: Ablation AUROC 0.60-0.90 (HistGradientBoosting, grouped 5-fold CV); pooled logistic regression AUROC 0.74
+- **Ablation nuance**: Biggest gains vary by model/task. Qwen/HumanEval jumps at T4 (early-window: 0.73→0.85). Mistral/GSM8K peaks at T5 (0.71); T6 drops to 0.67. Early-window features drive HumanEval; prompt signals help GSM8K.
+- **Models are overconfident but CoreVital discriminates**: Confident-but-wrong runs caught by internal signals (Qwen/HumanEval: compound_density AUROC 0.92; Mistral/GSM8K: hidden_max_abs AUROC 0.90)
+- **Three-way outcome signatures**: Correct/incorrect/format-failure have distinct, architecture-dependent signals (Mistral: hidden_max_abs for incorrect PP 0.90; Mixtral: focused_head for incorrect PP 0.90; Qwen: concentration_min for format-fail PP 0.77)
+- **Temperature-robust**: Mean absolute predictive power shift 0.028 across temp 0.7 vs 0.8 (finding: "Robust")
+- **Built-in `risk_score` is not production-calibrated**: saturates at 1.0 for Mistral/Mixtral (96%/94%); ECE 0.24-0.70; AUROC 0.48-0.62
+- **Built-in `failure_risk` evaluated but weak**: discrete (2-5 unique values), AUROC near chance
+- **Format failure is predictable** from internal signals (GSM8K: 72% for Mistral, 62% for Mixtral)
+- **Cross-model agreement is modest**: pass-rate correlation 0.10-0.45 (Spearman rho)
+
+**Limitations (honest accounting):**
+- Offline batch analysis only (not real-time capability)
+- GSM8K + HumanEval scope (no generalization claims beyond)
+- No production validation (all evaluation is offline held-out CV on labeled data)
+- Pooled model does not uniformly outperform heuristic in every cell (mixed transfer)
+
+**Files:**
+- **experiment/README.md** — Full methodology, findings, and usage
+- **docs/validation-report.md** — Detailed technical report with figures, tables, and per-model results
+- **experiment/scripts/** — run_experiment.py (generation), extract_features.py, analyze.py, calibrate_risk.py
+- **experiment/results/** — grades.jsonl, features.parquet (244 columns), prompt_level.parquet, layer_long.parquet
+- **experiment/calibration/** — step1-6 outputs (ECE, Platt scaling, data-driven weights, proposed failure model)
+- **experiment/analysis/** — 15 focus areas with summary.json, tables/*.csv, figures/*.png
+
+**Use:** `risk_score` and `failure_risk` are research placeholders, not production-calibrated predictors. For calibrated failure prediction, see `experiment/calibration/step5_proposed_risk_model.json` (logistic regression with 6 features). Treat built-in scores as indicative only; apply explicit calibration or learned model for production decisions.
+
+---
+
+## 11. Contributing (how to contribute)
 
 - **Setup:** Clone; `pip install -e ".[dev]"`. Optional conda env (e.g. llm_hm) for local runs.
 - **Before PR:** Run `ruff check src/ tests/ && ruff format --check src/ tests/ && mypy src/ && pytest tests/ -m 'not slow'`. Fix format with `ruff format src/ tests/`.

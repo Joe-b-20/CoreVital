@@ -1,0 +1,1466 @@
+{
+  "llama/gsm8k": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 1641,
+    "n_prompt_groups": 200,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.6485275019898622,
+    "data_driven_ece_grouped_cv": 0.2677788203437326,
+    "current_risk_auroc_grouped_cv": 0.5675028742453652,
+    "current_risk_ece_grouped_cv": 0.23889359968855767,
+    "current_failure_risk_auroc_grouped_cv": 0.5040635080222865,
+    "current_failure_risk_ece_grouped_cv": 0.2514929920780012,
+    "improvement_vs_risk_score": 0.08102462774449704,
+    "fold_auroc": {
+      "mean": 0.6528858185491149,
+      "std": 0.0636513870549812,
+      "ci95": 0.05579290070029854,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.26895728783128636,
+      "std": 0.027008995254839272,
+      "ci95": 0.023674428162365625,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 1.4953681747434335,
+        "importance": 1.4953681747434335,
+        "direction": "+",
+        "feature_mean": 0.3156763542016175,
+        "feature_std": 0.15691885362060926
+      },
+      "margin_mean": {
+        "raw_coef": 0.5815818136721583,
+        "importance": 0.5815818136721583,
+        "direction": "+",
+        "feature_mean": 0.8537102400943328,
+        "feature_std": 0.06400545159684654
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.28091806136411845,
+        "importance": 0.28091806136411845,
+        "direction": "+",
+        "feature_mean": 0.9991326525309671,
+        "feature_std": 0.0016035280633744133
+      },
+      "surprisal_mean": {
+        "raw_coef": -0.16340770997849374,
+        "importance": 0.16340770997849374,
+        "direction": "-",
+        "feature_mean": 0.3154872131700686,
+        "feature_std": 0.16460897139199873
+      },
+      "entropy_slope": {
+        "raw_coef": 0.05630800938572474,
+        "importance": 0.05630800938572474,
+        "direction": "+",
+        "feature_mean": -0.0012028506300843973,
+        "feature_std": 0.0014914536743481797
+      },
+      "high_entropy_frac": {
+        "raw_coef": 0.01529991008030008,
+        "importance": 0.01529991008030008,
+        "direction": "+",
+        "feature_mean": 0.0016541349499496023,
+        "feature_std": 0.004016036814198818
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": 0.3201188356839645,
+        "importance": 0.3201188356839645,
+        "direction": "+",
+        "feature_mean": 0.008991788076746237,
+        "feature_std": 0.0025006479614511244
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": -0.11516071400755686,
+        "importance": 0.11516071400755686,
+        "direction": "-",
+        "feature_mean": 140.31369542470875,
+        "feature_std": 1.256273631714632
+      },
+      "n_compound_signals": {
+        "raw_coef": -0.0007235973241654175,
+        "importance": 0.0007235973241654175,
+        "direction": "-",
+        "feature_mean": 0.8671541742839732,
+        "feature_std": 0.33940803217639653
+      },
+      "max_compound_severity": {
+        "raw_coef": -0.0007235973241635904,
+        "importance": 0.0007235973241635904,
+        "direction": "-",
+        "feature_mean": 0.3468616697135893,
+        "feature_std": 0.13576321287055862
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": -0.3102521041504467,
+        "importance": 0.3102521041504467,
+        "direction": "-",
+        "feature_mean": 0.003656307129798903,
+        "feature_std": 0.060356760582154216
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.09652055853863091,
+        "importance": 0.09652055853863091,
+        "direction": "+",
+        "feature_mean": 0.0018281535648994515,
+        "feature_std": 0.042717811501089296
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.25092594497816567,
+        "importance": 0.25092594497816567,
+        "direction": "+",
+        "feature_mean": 3.974144874326841,
+        "feature_std": 0.4540560253331555
+      },
+      "basin_score_min": {
+        "raw_coef": 0.050710636014635005,
+        "importance": 0.050710636014635005,
+        "direction": "+",
+        "feature_mean": 0.0003412553321145643,
+        "feature_std": 0.00048687653394137724
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.3036702587936254,
+        "importance": 0.3036702587936254,
+        "direction": "+",
+        "feature_mean": 0.13700818039210086,
+        "feature_std": 0.019501016858784317
+      },
+      "layer_transform_mean": {
+        "raw_coef": 0.10935991702605097,
+        "importance": 0.10935991702605097,
+        "direction": "+",
+        "feature_mean": 0.14813668486957204,
+        "feature_std": 0.0025967384596319405
+      },
+      "layer_transform_std": {
+        "raw_coef": -0.07189492438394036,
+        "importance": 0.07189492438394036,
+        "direction": "-",
+        "feature_mean": 0.08977401260729617,
+        "feature_std": 0.00268833397672928
+      }
+    }
+  },
+  "llama/humaneval": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 1640,
+    "n_prompt_groups": 164,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.5660355778401303,
+    "data_driven_ece_grouped_cv": 0.21704571944076428,
+    "current_risk_auroc_grouped_cv": 0.48671134650115583,
+    "current_risk_ece_grouped_cv": 0.3043092024652766,
+    "current_failure_risk_auroc_grouped_cv": 0.4944205549375645,
+    "current_failure_risk_ece_grouped_cv": 0.6064024390243902,
+    "improvement_vs_risk_score": 0.07932423133897443,
+    "fold_auroc": {
+      "mean": 0.5650408861888746,
+      "std": 0.02688753678970215,
+      "ci95": 0.023567965123645784,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.21961606100604603,
+      "std": 0.013049458679101745,
+      "ci95": 0.011438354857010077,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": -1.249914936515649,
+        "importance": 1.249914936515649,
+        "direction": "-",
+        "feature_mean": 0.21174929307888052,
+        "feature_std": 0.13428957925471285
+      },
+      "margin_mean": {
+        "raw_coef": -1.001744877217727,
+        "importance": 1.001744877217727,
+        "direction": "-",
+        "feature_mean": 0.9107863912093015,
+        "feature_std": 0.049787883083220796
+      },
+      "topk_mass_mean": {
+        "raw_coef": -0.5139655990261075,
+        "importance": 0.5139655990261075,
+        "direction": "-",
+        "feature_mean": 0.9978831177971249,
+        "feature_std": 0.004883696906696933
+      },
+      "surprisal_mean": {
+        "raw_coef": 0.07794940532201201,
+        "importance": 0.07794940532201201,
+        "direction": "+",
+        "feature_mean": 0.21284146702280915,
+        "feature_std": 0.13910991670216225
+      },
+      "entropy_slope": {
+        "raw_coef": -0.13593261570068646,
+        "importance": 0.13593261570068646,
+        "direction": "-",
+        "feature_mean": -0.0004400759675765902,
+        "feature_std": 0.0006126193700959369
+      },
+      "high_entropy_frac": {
+        "raw_coef": -0.3063663040222735,
+        "importance": 0.3063663040222735,
+        "direction": "-",
+        "feature_mean": 0.0048537514362445786,
+        "feature_std": 0.010032744550085475
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": 0.27292316982762116,
+        "importance": 0.27292316982762116,
+        "direction": "+",
+        "feature_mean": 0.013561606293661226,
+        "feature_std": 0.003664645260619953
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": -0.1592613616646423,
+        "importance": 0.1592613616646423,
+        "direction": "-",
+        "feature_mean": 139.45553374304788,
+        "feature_std": 1.940283757237827
+      },
+      "n_compound_signals": {
+        "raw_coef": 0.05179634331628492,
+        "importance": 0.05179634331628492,
+        "direction": "+",
+        "feature_mean": 0.9713414634146341,
+        "feature_std": 0.16684491261693027
+      },
+      "max_compound_severity": {
+        "raw_coef": 0.051796343316284583,
+        "importance": 0.051796343316284583,
+        "direction": "+",
+        "feature_mean": 0.38853658536585367,
+        "feature_std": 0.06673796504677214
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.15170329963847423,
+        "importance": 0.15170329963847423,
+        "direction": "+",
+        "feature_mean": 0.0006097560975609756,
+        "feature_std": 0.02468571034145995
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": -0.052015566332549903,
+        "importance": 0.052015566332549903,
+        "direction": "-",
+        "feature_mean": 0.03231707317073171,
+        "feature_std": 0.1768408322543447
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.05348622354425524,
+        "importance": 0.05348622354425524,
+        "direction": "+",
+        "feature_mean": 2.2110508749919244,
+        "feature_std": 0.519364026336432
+      },
+      "basin_score_min": {
+        "raw_coef": -0.1526566940430511,
+        "importance": 0.1526566940430511,
+        "direction": "-",
+        "feature_mean": 0.0005981707317073171,
+        "feature_std": 0.0008567858656812517
+      },
+      "basin_score_mean": {
+        "raw_coef": -0.01075130283554108,
+        "importance": 0.01075130283554108,
+        "direction": "-",
+        "feature_mean": 0.12551541241901676,
+        "feature_std": 0.01638835362234833
+      },
+      "layer_transform_mean": {
+        "raw_coef": 0.07543854924808902,
+        "importance": 0.07543854924808902,
+        "direction": "+",
+        "feature_mean": 0.14213009166011015,
+        "feature_std": 0.005105082676929191
+      },
+      "layer_transform_std": {
+        "raw_coef": 0.14914648489374505,
+        "importance": 0.14914648489374505,
+        "direction": "+",
+        "feature_mean": 0.09018363107648175,
+        "feature_std": 0.003546346916840608
+      }
+    }
+  },
+  "mistral7b/gsm8k": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 555,
+    "n_prompt_groups": 165,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.6775543276127729,
+    "data_driven_ece_grouped_cv": 0.07524575127157222,
+    "current_risk_auroc_grouped_cv": 0.49419531374528447,
+    "current_risk_ece_grouped_cv": 0.5590879697806699,
+    "current_failure_risk_auroc_grouped_cv": 0.5005512459486743,
+    "current_failure_risk_ece_grouped_cv": 0.0007207207207207206,
+    "improvement_vs_risk_score": 0.18335901386748843,
+    "fold_auroc": {
+      "mean": 0.6762217193029649,
+      "std": 0.08004360903546452,
+      "ci95": 0.07016131677934428,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.12236398143163418,
+      "std": 0.03389952393894741,
+      "ci95": 0.029714242853488188,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 0.32240831608761045,
+        "importance": 0.32240831608761045,
+        "direction": "+",
+        "feature_mean": 0.2672171947093679,
+        "feature_std": 0.08490241887885425
+      },
+      "margin_mean": {
+        "raw_coef": -0.5583936902846728,
+        "importance": 0.5583936902846728,
+        "direction": "-",
+        "feature_mean": 0.8745432936145406,
+        "feature_std": 0.03808254463761672
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.014852884172719209,
+        "importance": 0.014852884172719209,
+        "direction": "+",
+        "feature_mean": 0.9997806229799286,
+        "feature_std": 0.00042505481646654526
+      },
+      "surprisal_mean": {
+        "raw_coef": -0.3623164568100789,
+        "importance": 0.3623164568100789,
+        "direction": "-",
+        "feature_mean": 0.26556946503488005,
+        "feature_std": 0.09705914121711225
+      },
+      "entropy_slope": {
+        "raw_coef": 0.29537064995501133,
+        "importance": 0.29537064995501133,
+        "direction": "+",
+        "feature_mean": -0.0012024288354316583,
+        "feature_std": 0.0011246596367994212
+      },
+      "high_entropy_frac": {
+        "raw_coef": -0.17138035943608942,
+        "importance": 0.17138035943608942,
+        "direction": "-",
+        "feature_mean": 2.3745214924822433e-05,
+        "feature_std": 0.000438471674977698
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": 0.15833306597480956,
+        "importance": 0.15833306597480956,
+        "direction": "+",
+        "feature_mean": 0.001531664450738561,
+        "feature_std": 0.000247407928526863
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": 0.3066164850975316,
+        "importance": 0.3066164850975316,
+        "direction": "+",
+        "feature_mean": 360.0137270877231,
+        "feature_std": 2.715489711592922
+      },
+      "n_compound_signals": {
+        "raw_coef": -0.011108143364712341,
+        "importance": 0.011108143364712341,
+        "direction": "-",
+        "feature_mean": 0.9387387387387387,
+        "feature_std": 0.2398089221233037
+      },
+      "max_compound_severity": {
+        "raw_coef": -0.01110814336471328,
+        "importance": 0.01110814336471328,
+        "direction": "-",
+        "feature_mean": 0.37549549549549543,
+        "feature_std": 0.09592356884932147
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 1.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.4431355420331427,
+        "importance": 0.4431355420331427,
+        "direction": "+",
+        "feature_mean": 3.260664918001745,
+        "feature_std": 0.3782055433334745
+      },
+      "basin_score_min": {
+        "raw_coef": -0.8451739586158257,
+        "importance": 0.8451739586158257,
+        "direction": "-",
+        "feature_mean": 0.0020077477477477477,
+        "feature_std": 0.0022399793615059055
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.17533836526158428,
+        "importance": 0.17533836526158428,
+        "direction": "+",
+        "feature_mean": 0.20914415575731982,
+        "feature_std": 0.04959131890258412
+      },
+      "layer_transform_mean": {
+        "raw_coef": 0.10237980310432584,
+        "importance": 0.10237980310432584,
+        "direction": "+",
+        "feature_mean": 0.11748154861958732,
+        "feature_std": 0.0019643073667855696
+      },
+      "layer_transform_std": {
+        "raw_coef": 0.1417160523009108,
+        "importance": 0.1417160523009108,
+        "direction": "+",
+        "feature_mean": 0.0630559676247908,
+        "feature_std": 0.0011764914254790175
+      }
+    }
+  },
+  "mistral7b/humaneval": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 1640,
+    "n_prompt_groups": 164,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.6368940304487181,
+    "data_driven_ece_grouped_cv": 0.375557904246869,
+    "current_risk_auroc_grouped_cv": 0.49868852664262825,
+    "current_risk_ece_grouped_cv": 0.06622395776965014,
+    "current_failure_risk_auroc_grouped_cv": 0.5026041666666666,
+    "current_failure_risk_ece_grouped_cv": 0.0014634146341463417,
+    "improvement_vs_risk_score": 0.1382055038060898,
+    "fold_auroc": {
+      "mean": 0.6427915437817201,
+      "std": 0.054450242325000994,
+      "ci95": 0.047727741746175056,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.37575507301363437,
+      "std": 0.037109999223378286,
+      "ci95": 0.03252834851610779,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 2.7433644592071578,
+        "importance": 2.7433644592071578,
+        "direction": "+",
+        "feature_mean": 0.24832364669257323,
+        "feature_std": 0.11122553719561831
+      },
+      "margin_mean": {
+        "raw_coef": 1.3290360870098423,
+        "importance": 1.3290360870098423,
+        "direction": "+",
+        "feature_mean": 0.8886327250437065,
+        "feature_std": 0.044785953014253484
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.3961632464784048,
+        "importance": 0.3961632464784048,
+        "direction": "+",
+        "feature_mean": 0.9987889438856373,
+        "feature_std": 0.0017492884500460324
+      },
+      "surprisal_mean": {
+        "raw_coef": -0.987851093152537,
+        "importance": 0.987851093152537,
+        "direction": "-",
+        "feature_mean": 0.25369069529224253,
+        "feature_std": 0.12608949759581034
+      },
+      "entropy_slope": {
+        "raw_coef": 0.22907104802363393,
+        "importance": 0.22907104802363393,
+        "direction": "+",
+        "feature_mean": -0.003623531084466317,
+        "feature_std": 0.0061567586979914225
+      },
+      "high_entropy_frac": {
+        "raw_coef": -0.43366388828137326,
+        "importance": 0.43366388828137326,
+        "direction": "-",
+        "feature_mean": 0.0008406007445087729,
+        "feature_std": 0.002653813506018484
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": -0.17512416559834168,
+        "importance": 0.17512416559834168,
+        "direction": "-",
+        "feature_mean": 0.0019241947043125774,
+        "feature_std": 0.0005358424710895413
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": 0.17174105528352954,
+        "importance": 0.17174105528352954,
+        "direction": "+",
+        "feature_mean": 360.0564307268156,
+        "feature_std": 6.910231942207583
+      },
+      "n_compound_signals": {
+        "raw_coef": -0.004770958883795601,
+        "importance": 0.004770958883795601,
+        "direction": "-",
+        "feature_mean": 0.9682926829268292,
+        "feature_std": 0.17521975664060302
+      },
+      "max_compound_severity": {
+        "raw_coef": -0.004770958883795728,
+        "importance": 0.004770958883795728,
+        "direction": "-",
+        "feature_mean": 0.3873170731707317,
+        "feature_std": 0.0700879026562412
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 1.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": -0.17954243533533987,
+        "importance": 0.17954243533533987,
+        "direction": "-",
+        "feature_mean": 1.9794878852320963,
+        "feature_std": 0.4579086867544672
+      },
+      "basin_score_min": {
+        "raw_coef": 0.2629421507188734,
+        "importance": 0.2629421507188734,
+        "direction": "+",
+        "feature_mean": 8.963414634146343e-05,
+        "feature_std": 5.3668929148796926e-05
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.04842978274805171,
+        "importance": 0.04842978274805171,
+        "direction": "+",
+        "feature_mean": 0.1325406797827744,
+        "feature_std": 0.015652842693024815
+      },
+      "layer_transform_mean": {
+        "raw_coef": -0.14604909111319497,
+        "importance": 0.14604909111319497,
+        "direction": "-",
+        "feature_mean": 0.12190664181746655,
+        "feature_std": 0.0030177341355317757
+      },
+      "layer_transform_std": {
+        "raw_coef": 0.04484486418050535,
+        "importance": 0.04484486418050535,
+        "direction": "+",
+        "feature_mean": 0.058978975730850355,
+        "feature_std": 0.002829312078558341
+      }
+    }
+  },
+  "mixtral/gsm8k": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 758,
+    "n_prompt_groups": 165,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.6515820795440258,
+    "data_driven_ece_grouped_cv": 0.19319499520437655,
+    "current_risk_auroc_grouped_cv": 0.48676501403964634,
+    "current_risk_ece_grouped_cv": 0.6959563309810274,
+    "current_failure_risk_auroc_grouped_cv": 0.5044843049327354,
+    "current_failure_risk_ece_grouped_cv": 0.00079155672823219,
+    "improvement_vs_risk_score": 0.16481706550437947,
+    "fold_auroc": {
+      "mean": 0.6567755877787925,
+      "std": 0.08680976482313231,
+      "ci95": 0.07609211382007519,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.19725675295109424,
+      "std": 0.030476954853131327,
+      "ci95": 0.026714228777127154,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 1.9085746140705184,
+        "importance": 1.9085746140705184,
+        "direction": "+",
+        "feature_mean": 0.27854314118438306,
+        "feature_std": 0.1090461127586801
+      },
+      "margin_mean": {
+        "raw_coef": 1.0581782781317515,
+        "importance": 1.0581782781317515,
+        "direction": "+",
+        "feature_mean": 0.8728122926337938,
+        "feature_std": 0.044769767359876055
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.5338282000459176,
+        "importance": 0.5338282000459176,
+        "direction": "+",
+        "feature_mean": 0.9993203679088812,
+        "feature_std": 0.0008761361645257538
+      },
+      "surprisal_mean": {
+        "raw_coef": 0.06608422689504664,
+        "importance": 0.06608422689504664,
+        "direction": "+",
+        "feature_mean": 0.27919140768931805,
+        "feature_std": 0.11712281842021753
+      },
+      "entropy_slope": {
+        "raw_coef": 0.3606549452708227,
+        "importance": 0.3606549452708227,
+        "direction": "+",
+        "feature_mean": -0.0019519563275451485,
+        "feature_std": 0.001684441833143798
+      },
+      "high_entropy_frac": {
+        "raw_coef": 0.334575285039978,
+        "importance": 0.334575285039978,
+        "direction": "+",
+        "feature_mean": 1.364881924625611e-05,
+        "feature_std": 0.0002805322734138914
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": -0.14162982571221674,
+        "importance": 0.14162982571221674,
+        "direction": "-",
+        "feature_mean": 0.01821292850841998,
+        "feature_std": 0.0011225135574011477
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": 0.20776587146104766,
+        "importance": 0.20776587146104766,
+        "direction": "+",
+        "feature_mean": 279.57249709565593,
+        "feature_std": 12.277320940360193
+      },
+      "n_compound_signals": {
+        "raw_coef": -0.01883852292919585,
+        "importance": 0.01883852292919585,
+        "direction": "-",
+        "feature_mean": 0.9604221635883905,
+        "feature_std": 0.1949652052972155
+      },
+      "max_compound_severity": {
+        "raw_coef": -0.018838522929194523,
+        "importance": 0.018838522929194523,
+        "direction": "-",
+        "feature_mean": 0.3841688654353561,
+        "feature_std": 0.07798608211888622
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 1.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.19830746645994893,
+        "importance": 0.19830746645994893,
+        "direction": "+",
+        "feature_mean": 0.0013192612137203166,
+        "feature_std": 0.036297668844848564
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.26233452096156734,
+        "importance": 0.26233452096156734,
+        "direction": "+",
+        "feature_mean": 3.308303824737668,
+        "feature_std": 0.38251997011158373
+      },
+      "basin_score_min": {
+        "raw_coef": -0.17470622095932345,
+        "importance": 0.17470622095932345,
+        "direction": "-",
+        "feature_mean": 7.137203166226914e-05,
+        "feature_std": 6.383493190844848e-05
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.20464047782501776,
+        "importance": 0.20464047782501776,
+        "direction": "+",
+        "feature_mean": 0.22138333389161446,
+        "feature_std": 0.02476901526667059
+      },
+      "layer_transform_mean": {
+        "raw_coef": 0.17574902230226128,
+        "importance": 0.17574902230226128,
+        "direction": "+",
+        "feature_mean": 0.0570351862286152,
+        "feature_std": 0.0005318386724314571
+      },
+      "layer_transform_std": {
+        "raw_coef": -0.27073265067779534,
+        "importance": 0.27073265067779534,
+        "direction": "-",
+        "feature_mean": 0.10362259302871499,
+        "feature_std": 0.002016545844131951
+      }
+    }
+  },
+  "mixtral/humaneval": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 1620,
+    "n_prompt_groups": 162,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.6393691555102785,
+    "data_driven_ece_grouped_cv": 0.3667441705279184,
+    "current_risk_auroc_grouped_cv": 0.5180007880750787,
+    "current_risk_ece_grouped_cv": 0.047850551103211215,
+    "current_failure_risk_auroc_grouped_cv": 0.506117192530586,
+    "current_failure_risk_ece_grouped_cv": 0.0027777777777777783,
+    "improvement_vs_risk_score": 0.12136836743519985,
+    "fold_auroc": {
+      "mean": 0.6430045255684559,
+      "std": 0.06648675511978656,
+      "ci95": 0.05827821038808017,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.3666552579263797,
+      "std": 0.027295970437421983,
+      "ci95": 0.023925973000680886,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 2.8862621281190126,
+        "importance": 2.8862621281190126,
+        "direction": "+",
+        "feature_mean": 0.2064388600556757,
+        "feature_std": 0.09985097810361489
+      },
+      "margin_mean": {
+        "raw_coef": 1.7809562323888355,
+        "importance": 1.7809562323888355,
+        "direction": "+",
+        "feature_mean": 0.9079397250495241,
+        "feature_std": 0.041904266510762664
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.46296018547817314,
+        "importance": 0.46296018547817314,
+        "direction": "+",
+        "feature_mean": 0.9989626254442721,
+        "feature_std": 0.0014181945179371355
+      },
+      "surprisal_mean": {
+        "raw_coef": -0.968191012037746,
+        "importance": 0.968191012037746,
+        "direction": "-",
+        "feature_mean": 0.20605785245955288,
+        "feature_std": 0.11351850083778994
+      },
+      "entropy_slope": {
+        "raw_coef": 0.1997443278158051,
+        "importance": 0.1997443278158051,
+        "direction": "+",
+        "feature_mean": -0.0019306819297740746,
+        "feature_std": 0.004454890420184886
+      },
+      "high_entropy_frac": {
+        "raw_coef": -0.5055090289501049,
+        "importance": 0.5055090289501049,
+        "direction": "-",
+        "feature_mean": 0.0002546766176952047,
+        "feature_std": 0.0013639384374558097
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": -0.050588770931400934,
+        "importance": 0.050588770931400934,
+        "direction": "-",
+        "feature_mean": 0.022215902570247515,
+        "feature_std": 0.0021913914457002003
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": 0.034274186119903766,
+        "importance": 0.034274186119903766,
+        "direction": "+",
+        "feature_mean": 279.59993662250565,
+        "feature_std": 10.049899709170608
+      },
+      "n_compound_signals": {
+        "raw_coef": 0.03773332235700379,
+        "importance": 0.03773332235700379,
+        "direction": "+",
+        "feature_mean": 0.9290123456790124,
+        "feature_std": 0.2568042196985704
+      },
+      "max_compound_severity": {
+        "raw_coef": 0.03773332235700392,
+        "importance": 0.03773332235700392,
+        "direction": "+",
+        "feature_mean": 0.37160493827160485,
+        "feature_std": 0.10272168787942816
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.300809849198468,
+        "importance": 0.300809849198468,
+        "direction": "+",
+        "feature_mean": 0.003703703703703704,
+        "feature_std": 0.06074525728465455
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 1.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.06674165590098935,
+        "importance": 0.06674165590098935,
+        "direction": "+",
+        "feature_mean": 1.7648567127163106,
+        "feature_std": 0.4074238975001769
+      },
+      "basin_score_min": {
+        "raw_coef": 0.13930841110134976,
+        "importance": 0.13930841110134976,
+        "direction": "+",
+        "feature_mean": 5.8641975308641984e-05,
+        "feature_std": 6.250438180036903e-05
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.23580607820589705,
+        "importance": 0.23580607820589705,
+        "direction": "+",
+        "feature_mean": 0.18655965591242282,
+        "feature_std": 0.0187541998391344
+      },
+      "layer_transform_mean": {
+        "raw_coef": -0.3482322763989885,
+        "importance": 0.3482322763989885,
+        "direction": "-",
+        "feature_mean": 0.05823972281959379,
+        "feature_std": 0.001046147833240437
+      },
+      "layer_transform_std": {
+        "raw_coef": 0.42876982836269617,
+        "importance": 0.42876982836269617,
+        "direction": "+",
+        "feature_mean": 0.10247115295098434,
+        "feature_std": 0.00410426659471702
+      }
+    }
+  },
+  "qwen/gsm8k": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 1909,
+    "n_prompt_groups": 200,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.6366710580166035,
+    "data_driven_ece_grouped_cv": 0.22407273918462606,
+    "current_risk_auroc_grouped_cv": 0.5369739715428575,
+    "current_risk_ece_grouped_cv": 0.34854131197310695,
+    "current_failure_risk_auroc_grouped_cv": 0.4798229419654726,
+    "current_failure_risk_ece_grouped_cv": 0.5499738082765846,
+    "improvement_vs_risk_score": 0.09969708647374598,
+    "fold_auroc": {
+      "mean": 0.6394162794795365,
+      "std": 0.04531822096458272,
+      "ci95": 0.03972317209689591,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.22777012312299044,
+      "std": 0.016504955946013346,
+      "ci95": 0.014467231756682674,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 1.5158913109373224,
+        "importance": 1.5158913109373224,
+        "direction": "+",
+        "feature_mean": 0.3039271452130617,
+        "feature_std": 0.1230294288652649
+      },
+      "margin_mean": {
+        "raw_coef": 2.007121141169776,
+        "importance": 2.007121141169776,
+        "direction": "+",
+        "feature_mean": 0.8563696293884636,
+        "feature_std": 0.05108318068564802
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.4168707637801913,
+        "importance": 0.4168707637801913,
+        "direction": "+",
+        "feature_mean": 0.9996303472326072,
+        "feature_std": 0.0007734821410634347
+      },
+      "surprisal_mean": {
+        "raw_coef": 0.715890653851789,
+        "importance": 0.715890653851789,
+        "direction": "+",
+        "feature_mean": 0.30225407408275945,
+        "feature_std": 0.12762228065993425
+      },
+      "entropy_slope": {
+        "raw_coef": 0.07068426815475672,
+        "importance": 0.07068426815475672,
+        "direction": "+",
+        "feature_mean": -0.0005747455053843809,
+        "feature_std": 0.0008753623393905358
+      },
+      "high_entropy_frac": {
+        "raw_coef": 0.03695262731101515,
+        "importance": 0.03695262731101515,
+        "direction": "+",
+        "feature_mean": 6.016491024078445e-06,
+        "feature_std": 0.00012031728279205883
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": -0.12840324649505358,
+        "importance": 0.12840324649505358,
+        "direction": "-",
+        "feature_mean": 0.016397482019914245,
+        "feature_std": 0.000930402991064494
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": 0.3752341346577222,
+        "importance": 0.3752341346577222,
+        "direction": "+",
+        "feature_mean": 310.3990531898653,
+        "feature_std": 14.754561152506545
+      },
+      "n_compound_signals": {
+        "raw_coef": 0.018960421077620637,
+        "importance": 0.018960421077620637,
+        "direction": "+",
+        "feature_mean": 0.926663174436878,
+        "feature_std": 0.26068857968742376
+      },
+      "max_compound_severity": {
+        "raw_coef": 0.01896042107762153,
+        "importance": 0.01896042107762153,
+        "direction": "+",
+        "feature_mean": 0.37066526977475117,
+        "feature_std": 0.10427543187496949
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.19111178035704968,
+        "importance": 0.19111178035704968,
+        "direction": "+",
+        "feature_mean": 4.529190235544518,
+        "feature_std": 0.5836073696839426
+      },
+      "basin_score_min": {
+        "raw_coef": 0.16651994684324645,
+        "importance": 0.16651994684324645,
+        "direction": "+",
+        "feature_mean": 7.674174960712418e-05,
+        "feature_std": 4.77208888031165e-05
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.2989572200727674,
+        "importance": 0.2989572200727674,
+        "direction": "+",
+        "feature_mean": 0.2535191824306988,
+        "feature_std": 0.028041774464821104
+      },
+      "layer_transform_mean": {
+        "raw_coef": -0.20199686351154825,
+        "importance": 0.20199686351154825,
+        "direction": "-",
+        "feature_mean": 0.11545498859204936,
+        "feature_std": 0.0028336412622740987
+      },
+      "layer_transform_std": {
+        "raw_coef": 0.03590618774286385,
+        "importance": 0.03590618774286385,
+        "direction": "+",
+        "feature_mean": 0.08241348499454264,
+        "feature_std": 0.006080972957615215
+      }
+    }
+  },
+  "qwen/humaneval": {
+    "evaluation_protocol": "Grouped held-out CV by question_id; coefficients fit on all labeled rows after evaluation.",
+    "target": "failure",
+    "n_samples": 1640,
+    "n_prompt_groups": 164,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "features": [
+      "entropy_mean",
+      "margin_mean",
+      "topk_mass_mean",
+      "surprisal_mean",
+      "entropy_slope",
+      "high_entropy_frac",
+      "collapsed_rate_mean",
+      "l2_norm_last_layer_mean",
+      "n_compound_signals",
+      "max_compound_severity",
+      "nan_detected",
+      "repetition_detected",
+      "mid_layer_anomaly",
+      "attention_collapse_detected",
+      "prompt_surprisal_mean",
+      "basin_score_min",
+      "basin_score_mean",
+      "layer_transform_mean",
+      "layer_transform_std"
+    ],
+    "data_driven_auroc_grouped_cv": 0.8663442423027448,
+    "data_driven_ece_grouped_cv": 0.21030562177227266,
+    "current_risk_auroc_grouped_cv": 0.615542357874338,
+    "current_risk_ece_grouped_cv": 0.4789273814735207,
+    "current_failure_risk_auroc_grouped_cv": 0.4467937152307924,
+    "current_failure_risk_ece_grouped_cv": 0.7048780487804878,
+    "improvement_vs_risk_score": 0.2508018844284068,
+    "fold_auroc": {
+      "mean": 0.870846406502291,
+      "std": 0.047728552350268356,
+      "ci95": 0.0418359207089601,
+      "n_folds": 5
+    },
+    "fold_ece": {
+      "mean": 0.2101950505688305,
+      "std": 0.043826235059532766,
+      "ci95": 0.03841538879007192,
+      "n_folds": 5
+    },
+    "coefficients": {
+      "entropy_mean": {
+        "raw_coef": 1.2935526322356734,
+        "importance": 1.2935526322356734,
+        "direction": "+",
+        "feature_mean": 0.34785486222045486,
+        "feature_std": 0.18444333383096265
+      },
+      "margin_mean": {
+        "raw_coef": 0.8967444828392017,
+        "importance": 0.8967444828392017,
+        "direction": "+",
+        "feature_mean": 0.8471592113224458,
+        "feature_std": 0.07169000825736832
+      },
+      "topk_mass_mean": {
+        "raw_coef": 0.12611182964485612,
+        "importance": 0.12611182964485612,
+        "direction": "+",
+        "feature_mean": 0.9986092703630898,
+        "feature_std": 0.003353870827485238
+      },
+      "surprisal_mean": {
+        "raw_coef": 1.0500716797980596,
+        "importance": 1.0500716797980596,
+        "direction": "+",
+        "feature_mean": 0.3477482062096113,
+        "feature_std": 0.19043538736071186
+      },
+      "entropy_slope": {
+        "raw_coef": -0.03694907350273042,
+        "importance": 0.03694907350273042,
+        "direction": "-",
+        "feature_mean": -0.000728061678918397,
+        "feature_std": 0.006190538934556097
+      },
+      "high_entropy_frac": {
+        "raw_coef": -0.44644905619878555,
+        "importance": 0.44644905619878555,
+        "direction": "-",
+        "feature_mean": 0.0002520734488414947,
+        "feature_std": 0.003530285794652666
+      },
+      "collapsed_rate_mean": {
+        "raw_coef": -0.9583048624160928,
+        "importance": 0.9583048624160928,
+        "direction": "-",
+        "feature_mean": 0.01879564631727614,
+        "feature_std": 0.0021627585270689318
+      },
+      "l2_norm_last_layer_mean": {
+        "raw_coef": -0.9832290592445088,
+        "importance": 0.9832290592445088,
+        "direction": "-",
+        "feature_mean": 306.85285878644635,
+        "feature_std": 14.74992729799085
+      },
+      "n_compound_signals": {
+        "raw_coef": -0.2052066848548938,
+        "importance": 0.2052066848548938,
+        "direction": "-",
+        "feature_mean": 0.8780487804878049,
+        "feature_std": 0.32722946012192045
+      },
+      "max_compound_severity": {
+        "raw_coef": -0.2020900066875782,
+        "importance": 0.2020900066875782,
+        "direction": "-",
+        "feature_mean": 0.3514024390243902,
+        "feature_std": 0.1311691664910378
+      },
+      "nan_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "repetition_detected": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "mid_layer_anomaly": {
+        "raw_coef": 0.0,
+        "importance": 0.0,
+        "direction": "-",
+        "feature_mean": 0.0,
+        "feature_std": 1.0
+      },
+      "attention_collapse_detected": {
+        "raw_coef": 0.15223373945972468,
+        "importance": 0.15223373945972468,
+        "direction": "+",
+        "feature_mean": 0.0006097560975609756,
+        "feature_std": 0.024685710341459957
+      },
+      "prompt_surprisal_mean": {
+        "raw_coef": 0.36628388958322855,
+        "importance": 0.36628388958322855,
+        "direction": "+",
+        "feature_mean": 1.4088535841551186,
+        "feature_std": 0.4702668079084725
+      },
+      "basin_score_min": {
+        "raw_coef": -0.218676924641189,
+        "importance": 0.218676924641189,
+        "direction": "-",
+        "feature_mean": 4.695121951219513e-05,
+        "feature_std": 4.990696281619611e-05
+      },
+      "basin_score_mean": {
+        "raw_coef": 0.3447500261122801,
+        "importance": 0.3447500261122801,
+        "direction": "+",
+        "feature_mean": 0.21473083079268293,
+        "feature_std": 0.023402283177731163
+      },
+      "layer_transform_mean": {
+        "raw_coef": 0.056943257975852174,
+        "importance": 0.056943257975852174,
+        "direction": "+",
+        "feature_mean": 0.10287128026196929,
+        "feature_std": 0.0031445467704585193
+      },
+      "layer_transform_std": {
+        "raw_coef": -0.40510078256482157,
+        "importance": 0.40510078256482157,
+        "direction": "-",
+        "feature_mean": 0.11282420674644403,
+        "feature_std": 0.010437116888827078
+      }
+    }
+  }
+}

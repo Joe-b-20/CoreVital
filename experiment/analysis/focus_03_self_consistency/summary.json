@@ -1,0 +1,88 @@
+{
+  "description": "Within-prompt signal divergence and self-consistency",
+  "n_divergence_pairs": 58223,
+  "n_dispersion_records": 120075,
+  "temperature_sensitivity_available": true,
+  "top_divergent_signals": [
+    {
+      "model": "mixtral",
+      "dataset": "humaneval",
+      "signal": "l2_norm_cross_layer_max",
+      "mean_delta": -10.42732800515355,
+      "frac_positive": 0.4090909090909091,
+      "n_prompts": 44
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "hidden_max_abs_last_layer_mean",
+      "mean_delta": -8.492056025069461,
+      "frac_positive": 0.22916666666666666,
+      "n_prompts": 48
+    },
+    {
+      "model": "mixtral",
+      "dataset": "gsm8k",
+      "signal": "l2_norm_cross_layer_max",
+      "mean_delta": 5.023323627065125,
+      "frac_positive": 0.5915492957746479,
+      "n_prompts": 71
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "l2_norm_cross_layer_max",
+      "mean_delta": -4.15243663434629,
+      "frac_positive": 0.4791666666666667,
+      "n_prompts": 48
+    },
+    {
+      "model": "mixtral",
+      "dataset": "humaneval",
+      "signal": "perplexity_max",
+      "mean_delta": -4.141587957201559,
+      "frac_positive": 0.36363636363636365,
+      "n_prompts": 44
+    },
+    {
+      "model": "qwen",
+      "dataset": "gsm8k",
+      "signal": "l2_norm_last_layer_mean",
+      "mean_delta": 2.8070351108704354,
+      "frac_positive": 0.5802469135802469,
+      "n_prompts": 81
+    },
+    {
+      "model": "qwen",
+      "dataset": "gsm8k",
+      "signal": "l2_norm_cross_layer_max",
+      "mean_delta": 2.7490532332533757,
+      "frac_positive": 0.5185185185185185,
+      "n_prompts": 81
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "l2_norm_last_layer_mean",
+      "mean_delta": -2.511431179344099,
+      "frac_positive": 0.4166666666666667,
+      "n_prompts": 48
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "perplexity_max",
+      "mean_delta": 2.2729371453964493,
+      "frac_positive": 0.7916666666666666,
+      "n_prompts": 48
+    },
+    {
+      "model": "llama",
+      "dataset": "gsm8k",
+      "signal": "perplexity_max",
+      "mean_delta": 1.9360353025065393,
+      "frac_positive": 0.6307692307692307,
+      "n_prompts": 130
+    }
+  ]
+}

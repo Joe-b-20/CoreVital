@@ -48,6 +48,13 @@ htmlcov/
 # --- Private Documents (not for repo) ---
 private-ip-strategy.md
 
+# --- Experiment: internal-only (do not push) ---
+experiment/EXPERIMENT_SPEC.md
+experiment/IMPLEMENTATION_GUIDE.md
+experiment/RUNBOOK.md
+experiment/RUNPOD_INSTRUCTIONS.md
+experiment/DEBUG_ON_POD_BRIEFING.md
+
 # --- Demo artifacts (generated / local) ---
 docs/demo/corevital.db
 docs/demo/*.bak
@@ -61,3 +68,17 @@ docs/issues-and-fixes.md
 # --- Refactor Tracker ---
 REFACTOR_TRACKER.md
 CHANGELOG.md
+
+# --- Experiment Data ---
+# Raw traces (run_experiment.py): very large, regenerable
+experiment/traces
+# Baseline profiles (calibrate_risk.py step 2): ~180MB each, regenerable
+experiment/calibration/profile_*.json
+# Feature tables and grades: regenerable via extract_features.py (~46MB)
+experiment/results/*.parquet
+experiment/results/grades.jsonl
+
+# --- Local Documentation (not for repo) ---
+local_docs
+
+COMMIT_MSG.txt

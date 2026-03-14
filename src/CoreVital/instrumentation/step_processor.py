@@ -69,19 +69,21 @@ def normalize_step_tensors(
     raw_logits: Optional[torch.Tensor],
     num_layers: int,
     beam_handler: Optional[Callable] = None,
+    offload_to_cpu: bool = True,
 ) -> NormalizedStepPayload:
     """Normalize shapes from either CausalLM or Seq2Seq into uniform contract.
 
     - Strip embedding layer if len(raw_hidden) > num_layers
     - Slice attention to last query token: [:, :, -1:, :]
-    - .detach().cpu() everything
+    - When offload_to_cpu (default): .detach().cpu() to leave GPU free for inference.
+    - When False (--report-on-gpu): .detach() only so summaries run on GPU.
     - Optional beam slicing via beam_handler
     - Shape assertions per NormalizedStepPayload contract (Issue 54)
     """
-    hidden = _normalize_hidden(raw_hidden, num_layers, beam_handler)
-    attn = _normalize_attention(raw_attention, beam_handler)
-    cross = _normalize_attention(raw_cross_attention, beam_handler)
-    logits = _normalize_logits(raw_logits, beam_handler)
+    hidden = _normalize_hidden(raw_hidden, num_layers, beam_handler, offload_to_cpu)
+    attn = _normalize_attention(raw_attention, beam_handler, offload_to_cpu)
+    cross = _normalize_attention(raw_cross_attention, beam_handler, offload_to_cpu)
+    logits = _normalize_logits(raw_logits, beam_handler, offload_to_cpu)
 
     # Shape contract: hidden (1, 1, hidden_dim), attention (1, heads, 1, key_len), logits 1D or 2D
     if hidden is not None:
@@ -165,6 +167,7 @@ def _normalize_hidden(
     raw: Optional[tuple],
     num_layers: int,
     beam_handler: Optional[Callable],
+    offload_to_cpu: bool = True,
 ) -> Optional[List[torch.Tensor]]:
     if raw is None:
         return None
@@ -173,13 +176,16 @@ def _normalize_hidden(
         hs = hs[1 : num_layers + 1]
     if beam_handler is not None:
         hs = [beam_handler(t) for t in hs if t is not None]
-    result = [t.detach().cpu() for t in hs if t is not None and isinstance(t, torch.Tensor)]
+    result = [
+        t.detach().cpu() if offload_to_cpu else t.detach() for t in hs if t is not None and isinstance(t, torch.Tensor)
+    ]
     return result if result else None
 
 
 def _normalize_attention(
     raw: Optional[tuple],
     beam_handler: Optional[Callable],
+    offload_to_cpu: bool = True,
 ) -> Optional[List[torch.Tensor]]:
     if raw is None:
         return None
@@ -192,19 +198,20 @@ def _normalize_attention(
             continue
         if t.dim() == 4:
             t = t[:, :, -1:, :]
-        processed.append(t.detach().cpu())
+        processed.append(t.detach().cpu() if offload_to_cpu else t.detach())
     return processed if processed else None
 
 
 def _normalize_logits(
     raw: Optional[torch.Tensor],
     beam_handler: Optional[Callable],
+    offload_to_cpu: bool = True,
 ) -> Optional[torch.Tensor]:
     if raw is None or not isinstance(raw, torch.Tensor):
         return None
     if beam_handler is not None:
         raw = beam_handler(raw)
-    return raw.detach().cpu()
+    return raw.detach().cpu() if offload_to_cpu else raw.detach()
 
 
 def _compute_logits(
@@ -307,7 +314,11 @@ def _safe_anomalies(
 def _extract_last_layer_vec(
     payload: NormalizedStepPayload,
 ) -> Optional[torch.Tensor]:
-    """Extract a small 1-D vector from the last layer for repetition detection."""
+    """Extract a small 1-D vector from the last layer for repetition detection.
+
+    Returns tensor on the same device as payload (no .cpu()); when report_on_gpu is True
+    the buffer stays on device and detect_repetition_loop runs on GPU.
+    """
     if not payload.hidden_states:
         return None
     last_layer = payload.hidden_states[-1]
@@ -315,11 +326,11 @@ def _extract_last_layer_vec(
         return None
     try:
         if last_layer.dim() == 3:
-            return last_layer[0, -1, :].detach().cpu()
+            return last_layer[0, -1, :].detach()
         if last_layer.dim() == 2:
-            return last_layer[-1, :].detach().cpu()
+            return last_layer[-1, :].detach()
         if last_layer.dim() == 1:
-            return last_layer.detach().cpu()
+            return last_layer.detach()
     except Exception:
         pass
     return None

@@ -335,12 +335,14 @@ def _append_step_summary(
 ) -> None:
     """Normalize tensors and append StepSummary to timeline."""
     token_text = cast(str, model_bundle.tokenizer.decode([token_id]))
+    offload_to_cpu = not getattr(config.device, "report_on_gpu", False)
     payload = normalize_step_tensors(
         raw_hidden=raw_hidden,
         raw_attention=raw_attn,
         raw_cross_attention=raw_cross,
         raw_logits=raw_logits,
         num_layers=num_layers,
+        offload_to_cpu=offload_to_cpu,
     )
     summary = process_step(
         payload,

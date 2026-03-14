@@ -1,0 +1,13 @@
+dataset,model_a,model_b,spearman_rho,n_questions
+gsm8k,llama,mistral7b,0.45346826164098875,165
+gsm8k,llama,mixtral,0.32748781822361756,165
+gsm8k,llama,qwen,0.09646292637757689,200
+gsm8k,mistral7b,mixtral,0.4558457483885435,145
+gsm8k,mistral7b,qwen,0.025895770238097967,165
+gsm8k,mixtral,qwen,-0.133960645627787,165
+humaneval,llama,mistral7b,0.3629443647995699,164
+humaneval,llama,mixtral,0.2670237792231006,162
+humaneval,llama,qwen,0.31800348087514146,164
+humaneval,mistral7b,mixtral,0.3126575585287894,162
+humaneval,mistral7b,qwen,0.16896528373739478,164
+humaneval,mixtral,qwen,0.15032153699248652,162

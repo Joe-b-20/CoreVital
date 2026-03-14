@@ -1,0 +1,58 @@
+{
+  "description": "Difficulty-stratified signal analysis. Tests whether CoreVital signals are equally predictive on easy, medium, and hard questions.",
+  "n_results": 300,
+  "mean_pp_range_across_bands": 0.10585200994948817,
+  "finding": "Some difficulty sensitivity",
+  "most_variable_signals": [
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "signal": "hidden_max_abs_last_layer_mean",
+      "pp_easy": 0.8809523809523809,
+      "pp_medium": 0.5581522549848341,
+      "pp_hard": 0.5158591408591409,
+      "pp_range": 0.36509324009324007,
+      "best_band": "easy"
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "signal": "compound_density_per_100t",
+      "pp_easy": 0.9166666666666666,
+      "pp_medium": 0.5918651484262344,
+      "pp_hard": 0.5553821178821179,
+      "pp_range": 0.36128454878454874,
+      "best_band": "easy"
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "signal": "collapsed_rate_mean",
+      "pp_easy": 0.8571428571428572,
+      "pp_medium": 0.5249366018596788,
+      "pp_hard": 0.5028721278721279,
+      "pp_range": 0.35427072927072933,
+      "best_band": "easy"
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "signal": "l2_norm_slope",
+      "pp_easy": 0.7738095238095238,
+      "pp_medium": 0.5260802545870419,
+      "pp_hard": 0.6106393606393605,
+      "pp_range": 0.24772926922248195,
+      "best_band": "easy"
+    },
+    {
+      "model": "mixtral",
+      "dataset": "gsm8k",
+      "signal": "compound_density_per_100t",
+      "pp_easy": 0.7472222222222222,
+      "pp_medium": 0.5471807065217391,
+      "pp_hard": 0.5095845555631353,
+      "pp_range": 0.23763766665908692,
+      "best_band": "easy"
+    }
+  ]
+}

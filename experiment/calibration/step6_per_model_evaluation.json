@@ -1,0 +1,82 @@
+{
+  "llama/gsm8k": {
+    "n_samples": 1641,
+    "proposed_auroc_grouped_cv": 0.5604941374703848,
+    "proposed_ece_grouped_cv": 0.06132799563012909,
+    "current_risk_auroc_grouped_cv": 0.5675028742453652,
+    "current_risk_ece_grouped_cv": 0.23889359968855767,
+    "current_failure_risk_auroc_grouped_cv": 0.5040635080222865,
+    "current_failure_risk_ece_grouped_cv": 0.2514929920780012,
+    "delta_vs_risk_score": -0.007008736774980373
+  },
+  "llama/humaneval": {
+    "n_samples": 1640,
+    "proposed_auroc_grouped_cv": 0.4684446362983993,
+    "proposed_ece_grouped_cv": 0.20538228587108123,
+    "current_risk_auroc_grouped_cv": 0.48671134650115583,
+    "current_risk_ece_grouped_cv": 0.3043092024652766,
+    "current_failure_risk_auroc_grouped_cv": 0.4944205549375645,
+    "current_failure_risk_ece_grouped_cv": 0.6064024390243902,
+    "delta_vs_risk_score": -0.018266710202756553
+  },
+  "mistral7b/gsm8k": {
+    "n_samples": 555,
+    "proposed_auroc_grouped_cv": 0.4170872961054142,
+    "proposed_ece_grouped_cv": 0.14689904617606866,
+    "current_risk_auroc_grouped_cv": 0.49419531374528447,
+    "current_risk_ece_grouped_cv": 0.5590879697806699,
+    "current_failure_risk_auroc_grouped_cv": 0.5005512459486743,
+    "current_failure_risk_ece_grouped_cv": 0.0007207207207207206,
+    "delta_vs_risk_score": -0.0771080176398703
+  },
+  "mistral7b/humaneval": {
+    "n_samples": 1640,
+    "proposed_auroc_grouped_cv": 0.5244328425480769,
+    "proposed_ece_grouped_cv": 0.3493134876758504,
+    "current_risk_auroc_grouped_cv": 0.49868852664262825,
+    "current_risk_ece_grouped_cv": 0.06622395776965014,
+    "current_failure_risk_auroc_grouped_cv": 0.5026041666666666,
+    "current_failure_risk_ece_grouped_cv": 0.0014634146341463417,
+    "delta_vs_risk_score": 0.025744315905448623
+  },
+  "mixtral/gsm8k": {
+    "n_samples": 758,
+    "proposed_auroc_grouped_cv": 0.541636980847408,
+    "proposed_ece_grouped_cv": 0.22594304557429915,
+    "current_risk_auroc_grouped_cv": 0.48676501403964634,
+    "current_risk_ece_grouped_cv": 0.6959563309810274,
+    "current_failure_risk_auroc_grouped_cv": 0.5044843049327354,
+    "current_failure_risk_ece_grouped_cv": 0.00079155672823219,
+    "delta_vs_risk_score": 0.05487196680776163
+  },
+  "mixtral/humaneval": {
+    "n_samples": 1620,
+    "proposed_auroc_grouped_cv": 0.4672131935300958,
+    "proposed_ece_grouped_cv": 0.2422273501741889,
+    "current_risk_auroc_grouped_cv": 0.5180007880750787,
+    "current_risk_ece_grouped_cv": 0.047850551103211215,
+    "current_failure_risk_auroc_grouped_cv": 0.506117192530586,
+    "current_failure_risk_ece_grouped_cv": 0.0027777777777777783,
+    "delta_vs_risk_score": -0.05078759454498283
+  },
+  "qwen/gsm8k": {
+    "n_samples": 1909,
+    "proposed_auroc_grouped_cv": 0.5637343203415096,
+    "proposed_ece_grouped_cv": 0.401329241099893,
+    "current_risk_auroc_grouped_cv": 0.5369739715428575,
+    "current_risk_ece_grouped_cv": 0.34854131197310695,
+    "current_failure_risk_auroc_grouped_cv": 0.4798229419654726,
+    "current_failure_risk_ece_grouped_cv": 0.5499738082765846,
+    "delta_vs_risk_score": 0.02676034879865208
+  },
+  "qwen/humaneval": {
+    "n_samples": 1640,
+    "proposed_auroc_grouped_cv": 0.600014200036753,
+    "proposed_ece_grouped_cv": 0.07874880097648716,
+    "current_risk_auroc_grouped_cv": 0.615542357874338,
+    "current_risk_ece_grouped_cv": 0.4789273814735207,
+    "current_failure_risk_auroc_grouped_cv": 0.4467937152307924,
+    "current_failure_risk_ece_grouped_cv": 0.7048780487804878,
+    "delta_vs_risk_score": -0.015528157837584988
+  }
+}

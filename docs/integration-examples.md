@@ -1,6 +1,6 @@
 # Integration Examples
 
-This guide shows how to integrate CoreVital into your application using the Library API (`CoreVitalMonitor`).
+This guide shows how to integrate CoreVital into your application using the Library API (`CoreVitalMonitor`). For interpretation of the risk score and when to rely on it in production, see the [Validation Report](validation-report.md).
 
 ## Flask Example
 

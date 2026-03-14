@@ -14,9 +14,9 @@ Use it to debug why a model repeats itself, monitor inference health in producti
 -  **Summary Statistics**: Compute lightweight summaries (mean, std, L2 norm, entropy, etc.) instead of full tensors. Raw tensors are discarded immediately after summary computation via `StepSummary`
 -  **Composite Risk Scoring**: Continuous metrics (entropy, margin, surprisal, top-K mass) combined with boolean health flags and compound multi-metric signals for a 0–1 risk score with explanatory factors
 -  **Compound Signal Detection**: Five multi-metric failure patterns (context loss, confident confusion, degenerating generation, attention bottleneck, confident repetition risk)
--  **Early Warning**: Trend detectors (entropy acceleration, margin collapse/decline, surprisal volatility, entropy-margin divergence) that predict failures before they trip health-flag thresholds
+-  **Early Warning**: Trend detectors (entropy acceleration, margin collapse/decline, surprisal volatility, entropy-margin divergence). The validation experiment evaluated `failure_risk`, which did not behave as a reliable calibrated predictor; trend detectors remain theoretical/exploratory—use for debugging and research iteration, not as production quality predictors
 -  **Enriched Layer Blame**: Blamed layers include structured reasons and severity (NaN/Inf, attention collapse rate, L2 norm outlier, L2 instability)
--  **Data-Driven Calibration**: Build baseline profiles from known-healthy runs (`corevital calibrate`), then score production traces by statistical divergence. ECE + Platt scaling for benchmark validation
+-  **Data-Driven Calibration**: Build baseline profiles from known-healthy runs (`corevital calibrate`), then score production traces by statistical divergence. ECE + Platt scaling; benchmark validation run on GSM8K/HumanEval (see [Risk calibration](docs/risk-calibration.md) and [Validation Report](docs/validation-report.md))
 -  **Per-Model Profiles**: Calibrated thresholds per model family (GPT-2, LLaMA, Mistral, Mixtral, Qwen2, Phi-3) in `configs/model_profiles/`
 -  **25-Element Fingerprint**: Compact run-summary vector with temporal patterns, cross-metric correlations, and trend slopes for clustering and pattern detection
 -  **Actionable Narratives**: Data-specific 2–6 sentence summaries citing actual entropy values, step indices, token text, compound signals, and recommendations
@@ -105,15 +105,7 @@ flowchart TD
 
 ## Measured Overhead
 
-All measurements on CPU, `--perf` mode, excluding model load time:
-
-| Model | Layers | Steps | Inference | Report build | Prompt telemetry | Total overhead |
-|-------|--------|-------|-----------|-------------|-----------------|---------------|
-| flan-t5-small | 8 | 8 | 709 ms | 164 ms | -- | +23% |
-| Phi-3-mini-4k | 32 | 50 | 3,347 ms | 1,652 ms | 687 ms | +70% |
-| Llama-3.1-8B | 32 | 50 | 4,183 ms | 1,578 ms | 1,084 ms | +64% |
-
-Report building scales as O(steps x layers x heads). For production use, `--capture summary` skips per-layer data and drops overhead to under 5%. `--capture on_risk` records a full trace only when risk exceeds a threshold.
+For overhead and performance numbers on real GPU models (Llama, Mistral, Mixtral, Qwen, etc.), how to measure with `--perf`, and optimization levers like `--capture summary` and `--capture on_risk`, see **[GPU benchmarks](docs/gpu-benchmarks.md)**.
 
 ## Quick Start
 
@@ -154,6 +146,9 @@ corevital run \
   --max_new_tokens 50 \
   --device cuda \
   --quantize-4
+
+# On weak-CPU hosts (e.g. RunPod): run report computation on GPU to avoid CPU bottleneck
+corevital run --model gpt2 --prompt "Hello" --device cuda --report-on-gpu
 
 # Run with 8-bit quantization (requires CUDA)
 corevital run \
@@ -224,6 +219,7 @@ Options:
   --prompt TEXT             Input prompt text (required)
   --max_new_tokens INT      Number of tokens to generate [default: 20]
   --device TEXT             Device: auto|cpu|cuda [default: auto]
+  --report-on-gpu           Run report/summary on GPU (keep tensors on device). Default: offload to CPU. Use on weak-CPU hosts (e.g. RunPod).
   --seed INT                Random seed [default: 42]
   --temperature FLOAT       Sampling temperature [default: 0.8]
   --top_k INT               Top-k sampling [default: 50]
@@ -475,15 +471,16 @@ Built-in sinks:
 
 ### Configuration
 
-Override defaults via `configs/default.yaml` or environment variables. Per-model detection thresholds live in `configs/model_profiles/` (see [model compatibility](docs/model-compatibility.md#per-model-threshold-profiles)).
+Override defaults via `configs/default.yaml` or environment variables (pattern: `COREVITAL_<SECTION>_<KEY>`). Per-model detection thresholds live in `configs/model_profiles/` (see [model compatibility](docs/model-compatibility.md#per-model-threshold-profiles)).
 ```bash
-export COREVITAL_DEVICE=cuda
-export COREVITAL_SEED=123
+export COREVITAL_DEVICE_REQUESTED=cuda
+export COREVITAL_DEVICE_REPORT_ON_GPU=1   # optional: run report on GPU (e.g. RunPod)
+export COREVITAL_GENERATION_SEED=123
 ```
 
 ## Performance
 
-See [Measured Overhead](#measured-overhead) for real numbers. Key optimization levers:
+See [GPU benchmarks](docs/gpu-benchmarks.md) for real numbers. Key optimization levers:
 
 - **`--capture summary`**: Skips per-layer data; overhead drops to under 5%.
 - **`--capture on_risk`**: Summary by default, full trace only when risk exceeds threshold.
@@ -628,7 +625,7 @@ corevital compare --db runs/corevital.db
 
 **Compound Signals:** Multi-metric failure patterns detected from timeline data. Five patterns: context loss (high entropy + low basin), confident confusion (high entropy + high margin), degenerating generation (rising entropy + declining margin), attention bottleneck (high collapse + elevated entropy), confident repetition risk (low entropy + very high mass).
 
-**Early Warning:** Trend-based predictors that detect degradation patterns before they trip health-flag thresholds. Signals: entropy acceleration, margin collapse/decline, surprisal volatility, entropy-margin divergence.
+**Early Warning:** Trend detectors (entropy acceleration, margin collapse/decline, surprisal volatility, entropy-margin divergence). Evaluated in the validation experiment; `failure_risk` did not behave as a reliable calibrated predictor. Use for debugging and research iteration, not as production quality predictors.
 
 **Calibration Profile:** Empirical baseline built from known-healthy runs. Contains per-metric distributions (entropy, margin, surprisal per step; L2 norm, attention entropy per layer). Production traces are scored by statistical divergence (z-scores) from the baseline.
 
@@ -789,7 +786,7 @@ The `should_intervene()` API operates **post-run**. For **Seq2Seq models** (T5, 
 
 ### Risk Threshold Calibration
 
-Risk scores and thresholds use heuristics overridable per model via [per-model threshold profiles](docs/model-compatibility.md#per-model-threshold-profiles). See [Risk and threshold calibration](docs/risk-calibration.md) for defaults and planned calibration (ECE, benchmark validation).
+Risk scores and thresholds use heuristics overridable per model via [per-model threshold profiles](docs/model-compatibility.md#per-model-threshold-profiles). **The built-in risk score is not production-calibrated**; the validation experiment (GSM8K/HumanEval) showed raw risk is poorly calibrated (saturates at 1.0 for Mistral/Mixtral; ECE 0.24-0.70; AUROC 0.48-0.62). **CoreVital signals do predict task correctness** (ablation AUROC 0.60-0.90), but built-in composite scores need per-model calibration for production use. See [Experiment Quick Reference](docs/experiment-quick-reference.md) for a summary, [Risk and threshold calibration](docs/risk-calibration.md) for calibration workflow and experiment results, and [Validation Report](docs/validation-report.md) for full methodology.
 
 ### Decoding Strategies
 
@@ -797,7 +794,7 @@ The manual decoder loop supports **greedy decoding**, **sampling** (temperature,
 
 ### GPU Overhead Benchmarks
 
-The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on CPU. For production-scale GPU models and how to measure, see [GPU benchmarks](docs/gpu-benchmarks.md). Overhead is typically dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
+See [GPU benchmarks](docs/gpu-benchmarks.md) for production-scale GPU models and how to measure. Overhead is typically dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
 
 ## Requirements
 

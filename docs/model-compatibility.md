@@ -2,6 +2,22 @@
 
 CoreVital is tested with production-oriented open-weight models. This document covers supported architectures, attention capture, quantization, and model-specific notes.
 
+## Validated models (benchmark experiment)
+
+The following models were used in the **validation experiment** (signals vs. task correctness on GSM8K and HumanEval under grouped held-out evaluation). All were run at **full precision** (no quantization). For full methodology, accuracy, calibration, and model-specific findings, see the [Validation Report](validation-report.md).
+
+| Model | Quantization | Benchmarks | Notes |
+|-------|--------------|------------|--------|
+| **Llama-3.1-8B** | Full | GSM8K, HumanEval | CausalLM; SDPA/eager as needed for attention capture. |
+| **Qwen-2.5-7B** | Full | GSM8K, HumanEval | Strong predictive power on HumanEval (e.g. T6 AUROC 0.90; top signals: compound_density_per_100t, l2_norm_slope). |
+| **Mistral-7B** | Full | GSM8K, HumanEval | High **format-failure** rate on GSM8K (missing `####`); format failure is predictable from CoreVital signals. |
+| **Mixtral-8x7B** | Full | GSM8K, HumanEval | MoE; high format-failure rate on GSM8K; internal-signal distributions differ from dense models (e.g. collapsed_rate_mean, risk_score). |
+
+**Model-specific takeaways:**
+
+- **Format failure (GSM8K):** Mistral and Mixtral have the highest rates (72.2% and 62.1% in the experiment); Llama and Qwen are lower (17.9%, 4.5%). CoreVital signals predict format failure well for Mistral and Mixtral (see Validation Report §2 Format failure).
+- **Calibration:** The built-in `risk_score` and `failure_risk` are **heuristic, not production-calibrated**. The experiment evaluated a pooled data-driven failure model (grouped-CV AUROC ~0.744); **per-model evaluation (step 6)** shows the pooled model does not uniformly outperform the heuristic in every (model, dataset) cell—see [Validation Report](validation-report.md) §3 and §5.
+
 ## Tested Models
 
 | Family | Example model IDs | Notes |
@@ -9,7 +25,7 @@ CoreVital is tested with production-oriented open-weight models. This document c
 | **Llama 3** | `meta-llama/Llama-3.2-1B`, `meta-llama/Llama-3.1-8B-Instruct` | CausalLM; SDPA by default -- for full attention capture use `attn_implementation="eager"` when loading. |
 | **Mistral** | `mistralai/Mistral-7B-v0.1`, `mistralai/Mistral-7B-Instruct-v0.2` | CausalLM; standard attention. |
 | **Mixtral** | `mistralai/Mixtral-8x7B-v0.1`, `mistralai/Mixtral-8x7B-Instruct-v0.1` | MoE CausalLM; higher memory. |
-| **Qwen2** | — | **Not currently supported.** With eager attention + 4-bit, Qwen2 can produce invalid logits and trigger CUDA asserts during sampling. Support is planned via flex_attention (see roadmap). |
+| **Qwen2** | `Qwen2.5-7B-Instruct` (full in experiment) | The **validation experiment** ran Qwen-2.5-7B at **full precision** on GSM8K and HumanEval—see [Validation Report](validation-report.md). With eager attention + 4-bit, Qwen2 can produce invalid logits and trigger CUDA asserts; support for other configs is planned (e.g. flex_attention). |
 | **GPT-2** | `gpt2` | CausalLM; used for CI smoke tests (small, no gating). |
 | **T5 / Flan-T5** | `google/flan-t5-small` | Seq2Seq; full encoder/decoder/cross-attention support. |
 
@@ -80,5 +96,6 @@ Use these in the dashboard’s Attention Explorer or in your own scripts. Layers
 
 ## References
 
+- **Validation experiment (models and benchmarks):** [Validation Report](validation-report.md) — Llama-3.1-8B, Qwen-2.5-7B, Mistral-7B, Mixtral-8x7B (full precision) on GSM8K and HumanEval; model-specific findings and calibration.
 - Phase-1 metrics research: [Phase1 metrics analysis](Phase1%20metrics%20analysis.md)
 - Design decisions: [Design Journey](design-journey.md)

@@ -25,6 +25,7 @@ model:
 
 device:
   requested: "auto"  # auto, cpu, cuda
+  report_on_gpu: false  # When true: keep report tensors on GPU (e.g. RunPod weak CPU). Default: offload to CPU to leave GPU free.
 
 generation:
   max_new_tokens: 20
