@@ -105,15 +105,7 @@ flowchart TD
 
 ## Measured Overhead
 
-All measurements on CPU, `--perf` mode, excluding model load time:
-
-| Model | Layers | Steps | Inference | Report build | Prompt telemetry | Total overhead |
-|-------|--------|-------|-----------|-------------|-----------------|---------------|
-| flan-t5-small | 8 | 8 | 709 ms | 164 ms | -- | +23% |
-| Phi-3-mini-4k | 32 | 50 | 3,347 ms | 1,652 ms | 687 ms | +70% |
-| Llama-3.1-8B | 32 | 50 | 4,183 ms | 1,578 ms | 1,084 ms | +64% |
-
-Report building scales as O(steps x layers x heads). For production use, `--capture summary` skips per-layer data and drops overhead to under 5%. `--capture on_risk` records a full trace only when risk exceeds a threshold.
+For overhead and performance numbers on real GPU models (Llama, Mistral, Mixtral, Qwen, etc.), how to measure with `--perf`, and optimization levers like `--capture summary` and `--capture on_risk`, see **[GPU benchmarks](docs/gpu-benchmarks.md)**.
 
 ## Quick Start
 
@@ -488,7 +480,7 @@ export COREVITAL_GENERATION_SEED=123
 
 ## Performance
 
-See [Measured Overhead](#measured-overhead) for real numbers. Key optimization levers:
+See [GPU benchmarks](docs/gpu-benchmarks.md) for real numbers. Key optimization levers:
 
 - **`--capture summary`**: Skips per-layer data; overhead drops to under 5%.
 - **`--capture on_risk`**: Summary by default, full trace only when risk exceeds threshold.
@@ -802,7 +794,7 @@ The manual decoder loop supports **greedy decoding**, **sampling** (temperature,
 
 ### GPU Overhead Benchmarks
 
-The [Measured Overhead](#measured-overhead) table reports numbers for GPT-2 on CPU. For production-scale GPU models and how to measure, see [GPU benchmarks](docs/gpu-benchmarks.md). Overhead is typically dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
+See [GPU benchmarks](docs/gpu-benchmarks.md) for production-scale GPU models and how to measure. Overhead is typically dominated by `output_attentions=True` (attention weight materialization) rather than CoreVital's summary computation.
 
 ## Requirements
 
