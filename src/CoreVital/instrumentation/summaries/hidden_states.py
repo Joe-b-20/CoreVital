@@ -108,7 +108,7 @@ def compute_encoder_hidden_states_summaries(
         SummaryComputationError: If computation fails
     """
     try:
-        summaries = []
+        summaries: List[Dict[str, Any]] = []
         for layer_idx, hidden_state in enumerate(encoder_hidden_states):
             if hidden_state is None:
                 logger.debug(f"Encoder layer {layer_idx} hidden state is None")

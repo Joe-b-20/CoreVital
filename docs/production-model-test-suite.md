@@ -25,7 +25,7 @@ Prefer **instruct** (or chat) variants so that outputs are interpretable (good/b
 | Llama 3  | Llama-3.2-1B/3B        | meta-llama/Llama-3.2-1B-Instruct (or 3B-Instruct) |
 | Mistral  | Mistral-7B-v0.1        | mistralai/Mistral-7B-Instruct-v0.2        |
 | Mixtral  | Mixtral-8x7B-v0.1      | mistralai/Mixtral-8x7B-Instruct-v0.1      |
-| Qwen2    | Qwen2-0.5B/7B         | Qwen/Qwen2-0.5B-Instruct or Qwen2-7B-Instruct |
+| Qwen2    | Qwen2-0.5B/7B         | Qwen/Qwen2.5-7B-Instruct (or Qwen2-0.5B-Instruct for lighter runs) |
 
 Use the same list as in `docs/model-compatibility.md` and `tests/test_models_production.py`, but **instruct** IDs for this suite.
 

@@ -1,0 +1,114 @@
+{
+  "description": "Risk score calibration and saturation analysis",
+  "scores_analyzed": [
+    "risk_score",
+    "failure_risk"
+  ],
+  "distributions": [
+    {
+      "score": "risk_score",
+      "model": "llama",
+      "n": 3281,
+      "n_unique": 1948,
+      "pct_zero": 0.24382810118866197,
+      "pct_one": 0.24382810118866197,
+      "mean": 0.40179655718900986,
+      "std": 0.1143340815488441,
+      "median": 0.4209165982649239,
+      "p10": 0.4,
+      "p90": 0.45424573914619665
+    },
+    {
+      "score": "risk_score",
+      "model": "mistral7b",
+      "n": 2195,
+      "n_unique": 78,
+      "pct_zero": 0.0,
+      "pct_one": 96.08200455580865,
+      "mean": 0.9906216372445802,
+      "std": 0.04833164368061436,
+      "median": 1.0,
+      "p10": 1.0,
+      "p90": 1.0
+    },
+    {
+      "score": "risk_score",
+      "model": "mixtral",
+      "n": 2378,
+      "n_unique": 127,
+      "pct_zero": 0.0,
+      "pct_one": 93.90243902439023,
+      "mean": 0.9858881926781228,
+      "std": 0.057944270726301435,
+      "median": 1.0,
+      "p10": 1.0,
+      "p90": 1.0
+    },
+    {
+      "score": "risk_score",
+      "model": "qwen",
+      "n": 3549,
+      "n_unique": 2783,
+      "pct_zero": 0.39447731755424065,
+      "pct_one": 0.0,
+      "mean": 0.41510107912842065,
+      "std": 0.11882370646846412,
+      "median": 0.4285406543650116,
+      "p10": 0.4,
+      "p90": 0.5161794653428688
+    },
+    {
+      "score": "failure_risk",
+      "model": "llama",
+      "n": 3281,
+      "n_unique": 5,
+      "pct_zero": 72.44742456568119,
+      "pct_one": 0.0,
+      "mean": 0.15056385248399878,
+      "std": 0.24925587846439307,
+      "median": 0.0,
+      "p10": 0.0,
+      "p90": 0.5
+    },
+    {
+      "score": "failure_risk",
+      "model": "mistral7b",
+      "n": 2195,
+      "n_unique": 2,
+      "pct_zero": 0.0,
+      "pct_one": 0.0,
+      "mean": 0.6004555808656037,
+      "std": 0.006735814938605802,
+      "median": 0.6,
+      "p10": 0.6,
+      "p90": 0.6
+    },
+    {
+      "score": "failure_risk",
+      "model": "mixtral",
+      "n": 2378,
+      "n_unique": 3,
+      "pct_zero": 0.0,
+      "pct_one": 0.0,
+      "mean": 0.6013877207737595,
+      "std": 0.016981027318361975,
+      "median": 0.6,
+      "p10": 0.6,
+      "p90": 0.6
+    },
+    {
+      "score": "failure_risk",
+      "model": "qwen",
+      "n": 3549,
+      "n_unique": 4,
+      "pct_zero": 60.60862214708369,
+      "pct_one": 0.0,
+      "mean": 0.2034094111017188,
+      "std": 0.2547014224122521,
+      "median": 0.0,
+      "p10": 0.0,
+      "p90": 0.5
+    }
+  ],
+  "calibration_available": true
+}

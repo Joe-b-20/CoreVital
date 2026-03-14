@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-EXPERIMENT_DIR = Path.home() / "experiment"
+EXPERIMENT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = EXPERIMENT_DIR / "data"
 RESULTS_DIR = EXPERIMENT_DIR / "results"
 LOGS_DIR = EXPERIMENT_DIR / "logs"

@@ -1,0 +1,167 @@
+%% Validation Experiment Flow — Pass@k validation on GSM8K/HumanEval
+%% Shows the complete pipeline from data generation to findings
+%% Ref: experiment/README.md, docs/validation-report.md, experiment/scripts/
+%%{init: {'theme':'dark', 'themeVariables': {'primaryColor':'#1e3a5f', 'primaryTextColor':'#e2e8f0', 'lineColor':'#60a5fa', 'clusterBkg':'#1e293b', 'clusterBorder':'#475569'}}}%%
+
+flowchart TB
+
+    %% Input
+    START["Validation Experiment v2<br/>Why v2? Experiment 1 used greedy decoding<br/>(zero variance, zero signal) → failed"]
+
+    %% Design
+    subgraph DESIGN["Experiment Design"]
+        direction TB
+        D1["Pass@k: 10 runs per prompt<br/>5 @ temp 0.7, 5 @ temp 0.8"]
+        D2["Models: Llama-3.1-8B, Qwen-2.5-7B,<br/>Mistral-7B, Mixtral-8x7B"]
+        D3["Datasets: GSM8K (200 prompts, math)<br/>HumanEval (164 prompts, code)"]
+        D4["Total: 14,540 traces"]
+    end
+
+    START --> DESIGN
+
+    %% Pipeline
+    subgraph PIPELINE["Validation Pipeline"]
+        direction TB
+
+        subgraph GEN["1. Generate & Grade (run_experiment.py)"]
+            G1["For each (model, dataset, prompt):<br/>Run k=10 generations<br/>Capture full CoreVital trace"]
+            G2["Grade outputs:<br/>GSM8K: regex + numeric check<br/>HumanEval: sandboxed execution"]
+            G3["Output: grades.jsonl<br/>(14,540 labeled runs)"]
+            G1 --> G2 --> G3
+        end
+
+        subgraph EXT["2. Extract Features (extract_features.py)"]
+            E1["From 14,540 JSON traces:<br/>Extract 244 scalar features per run"]
+            E2["Build tables:<br/>- features.parquet (14,540 rows)<br/>- prompt_level.parquet (1,455 rows)<br/>- layer_long.parquet (450,752 rows)"]
+            E1 --> E2
+        end
+
+        subgraph ANA["3. Analyze (analyze.py)"]
+            A1["15 focus areas:<br/>- Metric correlation<br/>- MoE vs Dense<br/>- Self-consistency<br/>- Layer analysis<br/>- Difficulty profiling"]
+            A2["- Cross-model alignment<br/>- Ablation (T1-T6)<br/>- Ranking (best-of-k)<br/>- Confidence calibration<br/>- Outcome profiling"]
+            A3["- Temperature effects<br/>- Format failure<br/>- Signal redundancy<br/>- Difficulty-stratified"]
+            A4["Output: 15 summary.json files<br/>+ tables/*.csv + figures/*.png"]
+            A1 --> A4
+            A2 --> A4
+            A3 --> A4
+        end
+
+        subgraph CAL["4. Calibrate (calibrate_risk.py)"]
+            C1["Step 1: ECE + Platt (risk_score, failure_risk)"]
+            C2["Step 2: Build calibration profiles"]
+            C3["Step 3-4: Per-cell LR + consensus"]
+            C4["Step 5: Pooled failure model (6 features)"]
+            C5["Step 6: Per-model evaluation"]
+            C6["Output: step1-6 JSON files"]
+            C1 --> C2 --> C3 --> C4 --> C5 --> C6
+        end
+
+        GEN --> EXT --> ANA
+        EXT --> CAL
+    end
+
+    DESIGN --> PIPELINE
+
+    %% Findings
+    subgraph FINDINGS["Key Findings"]
+        direction TB
+
+        subgraph GOOD["✅ What Works"]
+            F1["Ablation AUROC: 0.60-0.90<br/>Best: Qwen/HumanEval (0.90)<br/>Worst: Qwen/GSM8K (0.60)"]
+            F2["Early-window features drive HumanEval<br/>(Qwen: 0.73→0.85 at T4)"]
+            F3["Models overconfident but CoreVital<br/>catches confident-wrong (AUROC 0.92)"]
+            F4["Three-way outcome signatures:<br/>correct/incorrect/format-fail distinct"]
+            F5["Temperature-robust: signals stable<br/>across temp 0.7 vs 0.8 (Δ=0.028)"]
+        end
+
+        subgraph BAD["❌ What's Broken"]
+            B1["risk_score saturates at 1.0<br/>Mistral: 96%, Mixtral: 94%"]
+            B2["Poor calibration: ECE 0.24-0.70<br/>Weak discrimination: AUROC 0.48-0.62"]
+            B3["failure_risk discrete (2-5 values)<br/>AUROC near chance"]
+            B4["Pooled step-5 model underperforms<br/>in 5/8 individual cells"]
+            B5["Format failure: Mistral 72%,<br/>Mixtral 62% on GSM8K"]
+        end
+
+        subgraph REC["📋 Recommendations"]
+            R1[" Per-model calibration (not pooled)"]
+            R2[" Confident-but-wrong detector"]
+            R3[" Per-outcome models (format vs incorrect)"]
+            R4[" Early-window features for code tasks"]
+            R5[" Run your own calibration workflow"]
+        end
+    end
+
+    PIPELINE --> FINDINGS
+
+    %% Outputs
+    subgraph OUTPUTS["Experiment Outputs"]
+        direction LR
+        OUT1["experiment/traces/<br/>(14,540 JSON files)"]
+        OUT2["experiment/results/<br/>(grades, features, tables)"]
+        OUT3["experiment/calibration/<br/>(step1-6 outputs)"]
+        OUT4["experiment/analysis/<br/>(15 focus areas)"]
+        OUT5["docs/validation-report.md<br/>(technical report)"]
+        OUT6["experiment/README.md<br/>(accessible summary)"]
+    end
+
+    FINDINGS --> OUTPUTS
+
+    %% Styling
+    style START fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style DESIGN fill:#1e3a5f15,stroke:#60a5fa
+    style D1 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style D2 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style D3 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+    style D4 fill:#1e3a5f,stroke:#60a5fa,color:#93c5fd
+
+    style PIPELINE fill:#065f4615,stroke:#10b981
+    style GEN fill:#065f4615,stroke:#10b981
+    style EXT fill:#065f4615,stroke:#10b981
+    style ANA fill:#065f4615,stroke:#10b981
+    style CAL fill:#065f4615,stroke:#10b981
+    style G1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style G2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style G3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style E1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style E2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style A1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style A2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style A3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style A4 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C4 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C5 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style C6 fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style FINDINGS fill:#0f172a,stroke:#334155
+    style GOOD fill:#065f4615,stroke:#10b981
+    style F1 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style F2 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style F3 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style F4 fill:#065f46,stroke:#10b981,color:#6ee7b7
+    style F5 fill:#065f46,stroke:#10b981,color:#6ee7b7
+
+    style BAD fill:#7f1d1d15,stroke:#f87171
+    style B1 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style B2 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style B3 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style B4 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+    style B5 fill:#7f1d1d,stroke:#f87171,color:#fecaca
+
+    style REC fill:#713f1215,stroke:#facc15
+    style R1 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style R2 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style R3 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style R4 fill:#713f12,stroke:#facc15,color:#fef9c3
+    style R5 fill:#713f12,stroke:#facc15,color:#fef9c3
+
+    style OUTPUTS fill:#92400e15,stroke:#f59e0b
+    style OUT1 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style OUT2 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style OUT3 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style OUT4 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style OUT5 fill:#92400e,stroke:#f59e0b,color:#fde68a
+    style OUT6 fill:#92400e,stroke:#f59e0b,color:#fde68a

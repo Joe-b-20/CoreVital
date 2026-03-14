@@ -1,0 +1,48 @@
+family_id,representative,representative_pp,family_size,members
+20,early10_surprisal_mean,0.6179976545778656,1,early10_surprisal_mean
+5,perplexity_max,0.6127253674815458,6,"perplexity_max, entropy_max, entropy_range, topk_mass_std, topk_mass_mean..."
+7,compound_density_per_100t,0.6100727313318783,1,compound_density_per_100t
+0,entropy_std,0.6068609496399291,12,"perplexity_mean, entropy_mean, surprisal_mean, entropy_std, entropy_p90..."
+13,concentration_min_mean,0.6017880946860078,2,"attn_entropy_norm_mean, concentration_min_mean"
+14,early50p_surprisal_slope,0.5987514941370307,3,"early50p_entropy_slope, early50p_margin_slope, early50p_surprisal_slope"
+1,early50p_surprisal_mean,0.5965447474546962,3,"early50p_entropy_mean, early50p_surprisal_mean, early50p_margin_mean"
+6,surprisal_max,0.5952180211233002,2,"surprisal_max, surprisal_range"
+24,concentration_max_mean,0.5940916165752146,1,concentration_max_mean
+18,early10_margin_mean,0.592410295719084,2,"early10_entropy_mean, early10_margin_mean"
+25,l2_norm_slope,0.5915072910654317,1,l2_norm_slope
+4,early25p_surprisal_mean,0.5911142018252092,3,"early25p_entropy_mean, early25p_surprisal_mean, early25p_margin_mean"
+11,focused_head_rate,0.5858001767499864,4,"l2_norm_last_layer_mean, focused_head_rate, focused_head_mean, hidden_std_last_layer_mean"
+23,focused_head_mean_zscore,0.5858001767499864,2,"collapsed_rate_mean_zscore, focused_head_mean_zscore"
+2,late50p_entropy_mean,0.585029858107016,3,"late50p_entropy_mean, late50p_surprisal_mean, late50p_margin_mean"
+22,early25p_surprisal_slope,0.5841072669124757,3,"early25p_entropy_slope, early25p_surprisal_slope, early25p_margin_slope"
+8,surprisal_slope,0.5819809486021672,4,"entropy_slope, margin_slope, surprisal_slope, entropy_early_late_delta"
+29,collapsed_rate_mean,0.5760769992535845,1,collapsed_rate_mean
+17,surprisal_early_late_delta,0.5749468499640107,2,"margin_early_late_delta, surprisal_early_late_delta"
+31,early10_surprisal_slope,0.5724900738366384,1,early10_surprisal_slope
+27,hidden_max_abs_last_layer_mean_zscore,0.5701433970725471,1,hidden_max_abs_last_layer_mean_zscore
+19,hidden_max_abs_last_layer_mean,0.5701433970725471,1,hidden_max_abs_last_layer_mean
+21,l2_norm_cross_layer_max,0.5687779378302943,1,l2_norm_cross_layer_max
+32,l2_norm_cross_layer_max_zscore,0.5687779378302943,1,l2_norm_cross_layer_max_zscore
+15,attn_entropy_norm_std,0.5635782619115369,1,attn_entropy_norm_std
+3,margin_diff_std,0.5619968142316683,1,margin_diff_std
+10,margin_range,0.5613696289489882,2,"margin_range, margin_min"
+30,hidden_std_last_layer_mean_zscore,0.5605270148496213,2,"l2_norm_last_layer_mean_zscore, hidden_std_last_layer_mean_zscore"
+12,warning_density_per_100t,0.5569897296888912,4,"warning_density_per_100t, failure_risk, n_warning_signals, failure_risk_is_zero"
+28,early10_entropy_slope,0.5339971843126824,2,"early10_entropy_slope, early10_margin_slope"
+9,risk_score,0.5339574738511156,3,"risk_score_is_one, mid_layer_anomaly, risk_score"
+16,high_entropy_frac,0.5332779079410457,2,"high_entropy_steps, high_entropy_frac"
+26,cs_confident_repetition_risk,0.5170264080107356,3,"cs_confident_repetition_risk, max_compound_severity, n_compound_signals"
+34,risk_score_is_zero,0.5017780098624588,1,risk_score_is_zero
+33,attention_collapse_detected,0.5016297300649271,1,attention_collapse_detected
+35,repetition_detected,0.5015460733526306,1,repetition_detected
+36,margin_p90,0.5003382949932341,1,margin_p90
+37,cs_degenerating_generation,0.5003382949932341,1,cs_degenerating_generation
+38,cs_attention_bottleneck,0.5,1,cs_attention_bottleneck
+39,cs_confident_confusion,0.5,1,cs_confident_confusion
+40,cs_context_loss,0.5,1,cs_context_loss
+41,entropy_min,0.5,1,entropy_min
+42,failure_risk_is_one,0.5,1,failure_risk_is_one
+43,inf_detected,0.5,1,inf_detected
+44,margin_max,0.5,1,margin_max
+45,nan_detected,0.5,1,nan_detected
+46,surprisal_min,0.5,1,surprisal_min

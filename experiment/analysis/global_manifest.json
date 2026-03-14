@@ -1,0 +1,812 @@
+{
+  "script": "analyze.py",
+  "timestamp": "2026-03-14T14:19:28.933777+00:00",
+  "inputs": {
+    "features": "experiment/results/features.parquet"
+  },
+  "outputs": [
+    "RESULTS_SUMMARY.md",
+    "RESULTS_SUMMARY_old.md",
+    "ablation/figures/ablation_curve_gsm8k.png",
+    "ablation/figures/ablation_curve_humaneval.png",
+    "ablation/summary.json",
+    "ablation/summary_old.json",
+    "ablation/tables/ablation_ablation_folds.csv",
+    "ablation/tables/ablation_ablation_summary.csv",
+    "confidence_calibration/figures/confidence_calibration_gsm8k.png",
+    "confidence_calibration/figures/confidence_calibration_humaneval.png",
+    "confidence_calibration/summary.json",
+    "confidence_calibration/tables/confidence_confidence_bins.csv",
+    "confidence_calibration/tables/confidence_confident_wrong_signals.csv",
+    "difficulty_stratified/figures/difficulty_stratified_gsm8k.png",
+    "difficulty_stratified/figures/difficulty_stratified_humaneval.png",
+    "difficulty_stratified/summary.json",
+    "difficulty_stratified/tables/difficulty_strat_band_variation.csv",
+    "difficulty_stratified/tables/difficulty_strat_stratified_results.csv",
+    "focus_01_metric_correlation/figures/focus1_correlation_gsm8k.png",
+    "focus_01_metric_correlation/figures/focus1_correlation_humaneval.png",
+    "focus_01_metric_correlation/figures/focus1_pred_power_gsm8k.png",
+    "focus_01_metric_correlation/figures/focus1_pred_power_humaneval.png",
+    "focus_01_metric_correlation/summary.json",
+    "focus_01_metric_correlation/tables/focus1_heatmap_correlation_gsm8k.csv",
+    "focus_01_metric_correlation/tables/focus1_heatmap_correlation_humaneval.csv",
+    "focus_01_metric_correlation/tables/focus1_heatmap_pred_power_gsm8k.csv",
+    "focus_01_metric_correlation/tables/focus1_heatmap_pred_power_humaneval.csv",
+    "focus_01_metric_correlation/tables/focus1_results.csv",
+    "focus_02_moe_vs_dense/figures/focus2_boxplots_gsm8k.png",
+    "focus_02_moe_vs_dense/figures/focus2_boxplots_humaneval.png",
+    "focus_02_moe_vs_dense/figures/focus2_layer_entropy_gsm8k.png",
+    "focus_02_moe_vs_dense/figures/focus2_layer_entropy_humaneval.png",
+    "focus_02_moe_vs_dense/summary.json",
+    "focus_02_moe_vs_dense/tables/focus2_comparison.csv",
+    "focus_02_moe_vs_dense/tables/focus2_correctness_stratified.csv",
+    "focus_02_moe_vs_dense/tables/focus2_layer_profile_gsm8k.csv",
+    "focus_02_moe_vs_dense/tables/focus2_layer_profile_humaneval.csv",
+    "focus_03_self_consistency/figures/focus3_entropy_mean_divergence_gsm8k.png",
+    "focus_03_self_consistency/figures/focus3_entropy_mean_divergence_humaneval.png",
+    "focus_03_self_consistency/figures/focus3_margin_mean_divergence_gsm8k.png",
+    "focus_03_self_consistency/figures/focus3_margin_mean_divergence_humaneval.png",
+    "focus_03_self_consistency/summary.json",
+    "focus_03_self_consistency/tables/focus3_delta_summary.csv",
+    "focus_03_self_consistency/tables/focus3_dispersion.csv",
+    "focus_03_self_consistency/tables/focus3_divergence.csv",
+    "focus_03_self_consistency/tables/focus3_temperature_sensitivity.csv",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_llama_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_llama_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mistral7b_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mistral7b_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mixtral_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mixtral_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_llama_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_llama_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mistral7b_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mistral7b_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mixtral_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mixtral_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_layers_llama_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_layers_llama_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_layers_mistral7b_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_layers_mistral7b_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_layers_mixtral_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_layers_mixtral_humaneval.png",
+    "focus_04_layer_analysis/figures/focus4_layers_qwen_gsm8k.png",
+    "focus_04_layer_analysis/figures/focus4_layers_qwen_humaneval.png",
+    "focus_04_layer_analysis/summary.json",
+    "focus_04_layer_analysis/tables/focus4_layer_results.csv",
+    "focus_05_difficulty/figures/focus5_difficulty_corr_gsm8k.png",
+    "focus_05_difficulty/figures/focus5_difficulty_corr_humaneval.png",
+    "focus_05_difficulty/summary.json",
+    "focus_05_difficulty/tables/focus5_difficulty_correlations.csv",
+    "focus_05_difficulty/tables/focus5_difficulty_correlations_pooled.csv",
+    "focus_05_difficulty/tables/focus5_hardest_easiest.csv",
+    "focus_05_difficulty/tables/focus5_heatmap_gsm8k.csv",
+    "focus_05_difficulty/tables/focus5_heatmap_humaneval.csv",
+    "focus_05_difficulty/tables/focus5_invariance_check.csv",
+    "focus_06_cross_model/figures/focus6_agreement_gsm8k.png",
+    "focus_06_cross_model/figures/focus6_agreement_humaneval.png",
+    "focus_06_cross_model/summary.json",
+    "focus_06_cross_model/tables/focus6_difficulty_agreement.csv",
+    "focus_06_cross_model/tables/focus6_difficulty_corr_gsm8k.csv",
+    "focus_06_cross_model/tables/focus6_difficulty_corr_humaneval.csv",
+    "focus_06_cross_model/tables/focus6_signal_alignment.csv",
+    "format_failure/summary.json",
+    "format_failure/tables/ff_length_comparison.csv",
+    "format_failure/tables/ff_prevalence.csv",
+    "format_failure/tables/ff_signal_association.csv",
+    "global_manifest.json",
+    "key_findings.json",
+    "key_findings_old.json",
+    "outcome_profiling/figures/outcome_heatmap_llama.png",
+    "outcome_profiling/figures/outcome_heatmap_mistral7b.png",
+    "outcome_profiling/figures/outcome_heatmap_mixtral.png",
+    "outcome_profiling/figures/outcome_heatmap_qwen.png",
+    "outcome_profiling/figures/outcome_profiles_llama.png",
+    "outcome_profiling/figures/outcome_profiles_mistral7b.png",
+    "outcome_profiling/figures/outcome_profiles_mixtral.png",
+    "outcome_profiling/figures/outcome_profiles_qwen.png",
+    "outcome_profiling/summary.json",
+    "outcome_profiling/tables/outcome_distributions.csv",
+    "outcome_profiling/tables/outcome_heatmap_llama.csv",
+    "outcome_profiling/tables/outcome_heatmap_mistral7b.csv",
+    "outcome_profiling/tables/outcome_heatmap_mixtral.csv",
+    "outcome_profiling/tables/outcome_heatmap_qwen.csv",
+    "outcome_profiling/tables/outcome_one_vs_rest_auroc.csv",
+    "outcome_profiling/tables/outcome_outcome_profiles.csv",
+    "outcome_profiling/tables/outcome_signal_specificity.csv",
+    "ranking/figures/ranking_lift_gsm8k.png",
+    "ranking/figures/ranking_lift_humaneval.png",
+    "ranking/summary.json",
+    "ranking/tables/ranking_ranking_by_temperature.csv",
+    "ranking/tables/ranking_ranking_results.csv",
+    "risk_calibration/figures/calibration_failure_risk.png",
+    "risk_calibration/figures/calibration_risk_score.png",
+    "risk_calibration/summary.json",
+    "risk_calibration/tables/risk_cal_calibration.csv",
+    "risk_calibration/tables/risk_cal_score_distributions.csv",
+    "signal_redundancy/figures/redundancy_corr_heatmap.png",
+    "signal_redundancy/summary.json",
+    "signal_redundancy/tables/redundancy_correlation_top30.csv",
+    "signal_redundancy/tables/redundancy_families.csv",
+    "signal_redundancy/tables/redundancy_family_summary.csv",
+    "temperature_effects/figures/temperature_pp_scatter_gsm8k.png",
+    "temperature_effects/figures/temperature_pp_scatter_humaneval.png",
+    "temperature_effects/summary.json",
+    "temperature_effects/tables/temperature_pp_by_temperature.csv",
+    "temperature_effects/tables/temperature_robustness.csv",
+    "temperature_effects/tables/temperature_signal_shift.csv"
+  ],
+  "row_counts": {
+    "artifacts": 133
+  },
+  "artifacts": [
+    {
+      "path": "RESULTS_SUMMARY.md",
+      "size_bytes": 4753,
+      "type": ".md"
+    },
+    {
+      "path": "RESULTS_SUMMARY_old.md",
+      "size_bytes": 3223,
+      "type": ".md"
+    },
+    {
+      "path": "ablation/figures/ablation_curve_gsm8k.png",
+      "size_bytes": 148250,
+      "type": ".png"
+    },
+    {
+      "path": "ablation/figures/ablation_curve_humaneval.png",
+      "size_bytes": 134932,
+      "type": ".png"
+    },
+    {
+      "path": "ablation/summary.json",
+      "size_bytes": 19448,
+      "type": ".json"
+    },
+    {
+      "path": "ablation/summary_old.json",
+      "size_bytes": 19448,
+      "type": ".json"
+    },
+    {
+      "path": "ablation/tables/ablation_ablation_folds.csv",
+      "size_bytes": 19527,
+      "type": ".csv"
+    },
+    {
+      "path": "ablation/tables/ablation_ablation_summary.csv",
+      "size_bytes": 7166,
+      "type": ".csv"
+    },
+    {
+      "path": "confidence_calibration/figures/confidence_calibration_gsm8k.png",
+      "size_bytes": 76307,
+      "type": ".png"
+    },
+    {
+      "path": "confidence_calibration/figures/confidence_calibration_humaneval.png",
+      "size_bytes": 66727,
+      "type": ".png"
+    },
+    {
+      "path": "confidence_calibration/summary.json",
+      "size_bytes": 2122,
+      "type": ".json"
+    },
+    {
+      "path": "confidence_calibration/tables/confidence_confidence_bins.csv",
+      "size_bytes": 3334,
+      "type": ".csv"
+    },
+    {
+      "path": "confidence_calibration/tables/confidence_confident_wrong_signals.csv",
+      "size_bytes": 66178,
+      "type": ".csv"
+    },
+    {
+      "path": "difficulty_stratified/figures/difficulty_stratified_gsm8k.png",
+      "size_bytes": 93385,
+      "type": ".png"
+    },
+    {
+      "path": "difficulty_stratified/figures/difficulty_stratified_humaneval.png",
+      "size_bytes": 101863,
+      "type": ".png"
+    },
+    {
+      "path": "difficulty_stratified/summary.json",
+      "size_bytes": 1738,
+      "type": ".json"
+    },
+    {
+      "path": "difficulty_stratified/tables/difficulty_strat_band_variation.csv",
+      "size_bytes": 12771,
+      "type": ".csv"
+    },
+    {
+      "path": "difficulty_stratified/tables/difficulty_strat_stratified_results.csv",
+      "size_bytes": 27011,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_01_metric_correlation/figures/focus1_correlation_gsm8k.png",
+      "size_bytes": 304130,
+      "type": ".png"
+    },
+    {
+      "path": "focus_01_metric_correlation/figures/focus1_correlation_humaneval.png",
+      "size_bytes": 338772,
+      "type": ".png"
+    },
+    {
+      "path": "focus_01_metric_correlation/figures/focus1_pred_power_gsm8k.png",
+      "size_bytes": 317348,
+      "type": ".png"
+    },
+    {
+      "path": "focus_01_metric_correlation/figures/focus1_pred_power_humaneval.png",
+      "size_bytes": 341333,
+      "type": ".png"
+    },
+    {
+      "path": "focus_01_metric_correlation/summary.json",
+      "size_bytes": 6471,
+      "type": ".json"
+    },
+    {
+      "path": "focus_01_metric_correlation/tables/focus1_heatmap_correlation_gsm8k.csv",
+      "size_bytes": 2515,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_01_metric_correlation/tables/focus1_heatmap_correlation_humaneval.csv",
+      "size_bytes": 2605,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_01_metric_correlation/tables/focus1_heatmap_pred_power_gsm8k.csv",
+      "size_bytes": 2342,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_01_metric_correlation/tables/focus1_heatmap_pred_power_humaneval.csv",
+      "size_bytes": 2439,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_01_metric_correlation/tables/focus1_results.csv",
+      "size_bytes": 127366,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/figures/focus2_boxplots_gsm8k.png",
+      "size_bytes": 181531,
+      "type": ".png"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/figures/focus2_boxplots_humaneval.png",
+      "size_bytes": 185383,
+      "type": ".png"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/figures/focus2_layer_entropy_gsm8k.png",
+      "size_bytes": 201216,
+      "type": ".png"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/figures/focus2_layer_entropy_humaneval.png",
+      "size_bytes": 210737,
+      "type": ".png"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/summary.json",
+      "size_bytes": 1123,
+      "type": ".json"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/tables/focus2_comparison.csv",
+      "size_bytes": 7020,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/tables/focus2_correctness_stratified.csv",
+      "size_bytes": 1834,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/tables/focus2_layer_profile_gsm8k.csv",
+      "size_bytes": 4402,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_02_moe_vs_dense/tables/focus2_layer_profile_humaneval.csv",
+      "size_bytes": 4909,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_03_self_consistency/figures/focus3_entropy_mean_divergence_gsm8k.png",
+      "size_bytes": 126003,
+      "type": ".png"
+    },
+    {
+      "path": "focus_03_self_consistency/figures/focus3_entropy_mean_divergence_humaneval.png",
+      "size_bytes": 98367,
+      "type": ".png"
+    },
+    {
+      "path": "focus_03_self_consistency/figures/focus3_margin_mean_divergence_gsm8k.png",
+      "size_bytes": 124497,
+      "type": ".png"
+    },
+    {
+      "path": "focus_03_self_consistency/figures/focus3_margin_mean_divergence_humaneval.png",
+      "size_bytes": 106194,
+      "type": ".png"
+    },
+    {
+      "path": "focus_03_self_consistency/summary.json",
+      "size_bytes": 2333,
+      "type": ".json"
+    },
+    {
+      "path": "focus_03_self_consistency/tables/focus3_delta_summary.csv",
+      "size_bytes": 68444,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_03_self_consistency/tables/focus3_dispersion.csv",
+      "size_bytes": 12069744,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_03_self_consistency/tables/focus3_divergence.csv",
+      "size_bytes": 6055060,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_03_self_consistency/tables/focus3_temperature_sensitivity.csv",
+      "size_bytes": 5004,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_llama_gsm8k.png",
+      "size_bytes": 105046,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_llama_humaneval.png",
+      "size_bytes": 104810,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mistral7b_gsm8k.png",
+      "size_bytes": 117014,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mistral7b_humaneval.png",
+      "size_bytes": 114082,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mixtral_gsm8k.png",
+      "size_bytes": 117848,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_mixtral_humaneval.png",
+      "size_bytes": 103978,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_gsm8k.png",
+      "size_bytes": 109618,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_attn_entropy_profile_qwen_humaneval.png",
+      "size_bytes": 111519,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_llama_gsm8k.png",
+      "size_bytes": 60323,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_llama_humaneval.png",
+      "size_bytes": 60475,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mistral7b_gsm8k.png",
+      "size_bytes": 57805,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mistral7b_humaneval.png",
+      "size_bytes": 58360,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mixtral_gsm8k.png",
+      "size_bytes": 69542,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_mixtral_humaneval.png",
+      "size_bytes": 70997,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_gsm8k.png",
+      "size_bytes": 68256,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_l2_norm_profile_qwen_humaneval.png",
+      "size_bytes": 76749,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_llama_gsm8k.png",
+      "size_bytes": 136232,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_llama_humaneval.png",
+      "size_bytes": 122831,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_mistral7b_gsm8k.png",
+      "size_bytes": 125712,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_mistral7b_humaneval.png",
+      "size_bytes": 120268,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_mixtral_gsm8k.png",
+      "size_bytes": 115067,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_mixtral_humaneval.png",
+      "size_bytes": 133381,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_qwen_gsm8k.png",
+      "size_bytes": 102764,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/figures/focus4_layers_qwen_humaneval.png",
+      "size_bytes": 98290,
+      "type": ".png"
+    },
+    {
+      "path": "focus_04_layer_analysis/summary.json",
+      "size_bytes": 3387,
+      "type": ".json"
+    },
+    {
+      "path": "focus_04_layer_analysis/tables/focus4_layer_results.csv",
+      "size_bytes": 74937,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_05_difficulty/figures/focus5_difficulty_corr_gsm8k.png",
+      "size_bytes": 165324,
+      "type": ".png"
+    },
+    {
+      "path": "focus_05_difficulty/figures/focus5_difficulty_corr_humaneval.png",
+      "size_bytes": 163862,
+      "type": ".png"
+    },
+    {
+      "path": "focus_05_difficulty/summary.json",
+      "size_bytes": 1344,
+      "type": ".json"
+    },
+    {
+      "path": "focus_05_difficulty/tables/focus5_difficulty_correlations.csv",
+      "size_bytes": 6996,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_05_difficulty/tables/focus5_difficulty_correlations_pooled.csv",
+      "size_bytes": 1622,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_05_difficulty/tables/focus5_hardest_easiest.csv",
+      "size_bytes": 1337,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_05_difficulty/tables/focus5_heatmap_gsm8k.csv",
+      "size_bytes": 1150,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_05_difficulty/tables/focus5_heatmap_humaneval.csv",
+      "size_bytes": 1144,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_05_difficulty/tables/focus5_invariance_check.csv",
+      "size_bytes": 1055745,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_06_cross_model/figures/focus6_agreement_gsm8k.png",
+      "size_bytes": 70794,
+      "type": ".png"
+    },
+    {
+      "path": "focus_06_cross_model/figures/focus6_agreement_humaneval.png",
+      "size_bytes": 71547,
+      "type": ".png"
+    },
+    {
+      "path": "focus_06_cross_model/summary.json",
+      "size_bytes": 10513,
+      "type": ".json"
+    },
+    {
+      "path": "focus_06_cross_model/tables/focus6_difficulty_agreement.csv",
+      "size_bytes": 603,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_06_cross_model/tables/focus6_difficulty_corr_gsm8k.csv",
+      "size_bytes": 318,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_06_cross_model/tables/focus6_difficulty_corr_humaneval.csv",
+      "size_bytes": 314,
+      "type": ".csv"
+    },
+    {
+      "path": "focus_06_cross_model/tables/focus6_signal_alignment.csv",
+      "size_bytes": 2694,
+      "type": ".csv"
+    },
+    {
+      "path": "format_failure/summary.json",
+      "size_bytes": 2833,
+      "type": ".json"
+    },
+    {
+      "path": "format_failure/tables/ff_length_comparison.csv",
+      "size_bytes": 294,
+      "type": ".csv"
+    },
+    {
+      "path": "format_failure/tables/ff_prevalence.csv",
+      "size_bytes": 275,
+      "type": ".csv"
+    },
+    {
+      "path": "format_failure/tables/ff_signal_association.csv",
+      "size_bytes": 43030,
+      "type": ".csv"
+    },
+    {
+      "path": "global_manifest.json",
+      "size_bytes": 22417,
+      "type": ".json"
+    },
+    {
+      "path": "key_findings.json",
+      "size_bytes": 79212,
+      "type": ".json"
+    },
+    {
+      "path": "key_findings_old.json",
+      "size_bytes": 63035,
+      "type": ".json"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_heatmap_llama.png",
+      "size_bytes": 243377,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_heatmap_mistral7b.png",
+      "size_bytes": 251713,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_heatmap_mixtral.png",
+      "size_bytes": 257036,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_heatmap_qwen.png",
+      "size_bytes": 239235,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_profiles_llama.png",
+      "size_bytes": 77146,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_profiles_mistral7b.png",
+      "size_bytes": 119362,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_profiles_mixtral.png",
+      "size_bytes": 107174,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/figures/outcome_profiles_qwen.png",
+      "size_bytes": 114976,
+      "type": ".png"
+    },
+    {
+      "path": "outcome_profiling/summary.json",
+      "size_bytes": 7437,
+      "type": ".json"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_distributions.csv",
+      "size_bytes": 33655,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_heatmap_llama.csv",
+      "size_bytes": 1580,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_heatmap_mistral7b.csv",
+      "size_bytes": 1622,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_heatmap_mixtral.csv",
+      "size_bytes": 1642,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_heatmap_qwen.csv",
+      "size_bytes": 1546,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_one_vs_rest_auroc.csv",
+      "size_bytes": 90541,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_outcome_profiles.csv",
+      "size_bytes": 25414,
+      "type": ".csv"
+    },
+    {
+      "path": "outcome_profiling/tables/outcome_signal_specificity.csv",
+      "size_bytes": 56622,
+      "type": ".csv"
+    },
+    {
+      "path": "ranking/figures/ranking_lift_gsm8k.png",
+      "size_bytes": 202635,
+      "type": ".png"
+    },
+    {
+      "path": "ranking/figures/ranking_lift_humaneval.png",
+      "size_bytes": 210066,
+      "type": ".png"
+    },
+    {
+      "path": "ranking/summary.json",
+      "size_bytes": 4304,
+      "type": ".json"
+    },
+    {
+      "path": "ranking/tables/ranking_ranking_by_temperature.csv",
+      "size_bytes": 6883,
+      "type": ".csv"
+    },
+    {
+      "path": "ranking/tables/ranking_ranking_results.csv",
+      "size_bytes": 95756,
+      "type": ".csv"
+    },
+    {
+      "path": "risk_calibration/figures/calibration_failure_risk.png",
+      "size_bytes": 61143,
+      "type": ".png"
+    },
+    {
+      "path": "risk_calibration/figures/calibration_risk_score.png",
+      "size_bytes": 57756,
+      "type": ".png"
+    },
+    {
+      "path": "risk_calibration/summary.json",
+      "size_bytes": 2572,
+      "type": ".json"
+    },
+    {
+      "path": "risk_calibration/tables/risk_cal_calibration.csv",
+      "size_bytes": 1856,
+      "type": ".csv"
+    },
+    {
+      "path": "risk_calibration/tables/risk_cal_score_distributions.csv",
+      "size_bytes": 924,
+      "type": ".csv"
+    },
+    {
+      "path": "signal_redundancy/figures/redundancy_corr_heatmap.png",
+      "size_bytes": 262250,
+      "type": ".png"
+    },
+    {
+      "path": "signal_redundancy/summary.json",
+      "size_bytes": 2428,
+      "type": ".json"
+    },
+    {
+      "path": "signal_redundancy/tables/redundancy_correlation_top30.csv",
+      "size_bytes": 18082,
+      "type": ".csv"
+    },
+    {
+      "path": "signal_redundancy/tables/redundancy_families.csv",
+      "size_bytes": 6441,
+      "type": ".csv"
+    },
+    {
+      "path": "signal_redundancy/tables/redundancy_family_summary.csv",
+      "size_bytes": 3874,
+      "type": ".csv"
+    },
+    {
+      "path": "temperature_effects/figures/temperature_pp_scatter_gsm8k.png",
+      "size_bytes": 83012,
+      "type": ".png"
+    },
+    {
+      "path": "temperature_effects/figures/temperature_pp_scatter_humaneval.png",
+      "size_bytes": 75861,
+      "type": ".png"
+    },
+    {
+      "path": "temperature_effects/summary.json",
+      "size_bytes": 306,
+      "type": ".json"
+    },
+    {
+      "path": "temperature_effects/tables/temperature_pp_by_temperature.csv",
+      "size_bytes": 9597,
+      "type": ".csv"
+    },
+    {
+      "path": "temperature_effects/tables/temperature_robustness.csv",
+      "size_bytes": 9034,
+      "type": ".csv"
+    },
+    {
+      "path": "temperature_effects/tables/temperature_signal_shift.csv",
+      "size_bytes": 36369,
+      "type": ".csv"
+    }
+  ]
+}

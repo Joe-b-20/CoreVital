@@ -68,3 +68,17 @@ docs/issues-and-fixes.md
 # --- Refactor Tracker ---
 REFACTOR_TRACKER.md
 CHANGELOG.md
+
+# --- Experiment Data ---
+# Raw traces (run_experiment.py): very large, regenerable
+experiment/traces
+# Baseline profiles (calibrate_risk.py step 2): ~180MB each, regenerable
+experiment/calibration/profile_*.json
+# Feature tables and grades: regenerable via extract_features.py (~46MB)
+experiment/results/*.parquet
+experiment/results/grades.jsonl
+
+# --- Local Documentation (not for repo) ---
+local_docs
+
+COMMIT_MSG.txt

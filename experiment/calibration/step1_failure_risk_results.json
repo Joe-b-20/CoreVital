@@ -1,0 +1,770 @@
+{
+  "llama/gsm8k": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 1641,
+    "n_prompt_groups": 200,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.19926873857404023,
+    "ece_raw_grouped_cv": 0.2514929920780012,
+    "auroc_raw_grouped_cv": 0.5040635080222865,
+    "fold_ece_raw": {
+      "mean": 0.25143102636881337,
+      "std": 0.011978868541116499,
+      "ci95": 0.010499941225776327,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.5041653211113443,
+      "std": 0.019541531595221377,
+      "ci95": 0.017128907668298964,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 1321,
+        "n_test": 320,
+        "ece_raw": 0.25656249999999997,
+        "auroc_raw": 0.48751131221719457,
+        "ece_calibrated": 0.0017046515655749872,
+        "auroc_calibrated": 0.5124886877828054,
+        "platt_a": -0.16844179388139213,
+        "platt_b": -1.345011834737924
+      },
+      {
+        "fold": 1,
+        "n_train": 1306,
+        "n_test": 335,
+        "ece_raw": 0.26059701492537307,
+        "auroc_raw": 0.4932193732193732,
+        "ece_calibrated": 0.014247146422617887,
+        "auroc_calibrated": 0.5067806267806269,
+        "platt_a": -0.16540480598438875,
+        "platt_b": -1.3335909726965776
+      },
+      {
+        "fold": 2,
+        "n_train": 1317,
+        "n_test": 324,
+        "ece_raw": 0.2564814814814815,
+        "auroc_raw": 0.5003267003267003,
+        "ece_calibrated": 0.01183555798971065,
+        "auroc_calibrated": 0.4996732996732997,
+        "platt_a": -0.17206948836656813,
+        "platt_b": -1.3435722632680807
+      },
+      {
+        "fold": 3,
+        "n_train": 1317,
+        "n_test": 324,
+        "ece_raw": 0.23055555555555554,
+        "auroc_raw": 0.5375111375111375,
+        "ece_calibrated": 0.034526612551340236,
+        "auroc_calibrated": 0.46248886248886245,
+        "platt_a": -0.21383723066955984,
+        "platt_b": -1.3360150580712822
+      },
+      {
+        "fold": 4,
+        "n_train": 1303,
+        "n_test": 338,
+        "ece_raw": 0.2529585798816568,
+        "auroc_raw": 0.5022580822823154,
+        "ece_calibrated": 0.016817029509699814,
+        "auroc_calibrated": 0.49774191771768467,
+        "platt_a": -0.1766006530031925,
+        "platt_b": -1.338424755422289
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.015858489812394894,
+    "auroc_calibrated_grouped_cv": 0.4902950581598313,
+    "fold_ece_calibrated": {
+      "mean": 0.015826199607788714,
+      "std": 0.011921869995390359,
+      "ci95": 0.010449979797614315,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.49583467888865573,
+      "std": 0.01954153159522139,
+      "ci95": 0.01712890766829897,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": -0.17931904360120982,
+    "platt_b_full_fit": -1.3393374723907787
+  },
+  "llama/humaneval": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 1640,
+    "n_prompt_groups": 164,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.7201219512195122,
+    "ece_raw_grouped_cv": 0.6064024390243902,
+    "auroc_raw_grouped_cv": 0.4944205549375645,
+    "fold_ece_raw": {
+      "mean": 0.608558712121212,
+      "std": 0.01165146912672676,
+      "ci95": 0.010212962985999649,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.49429449987642826,
+      "std": 0.017211077874676555,
+      "ci95": 0.015086174916777197,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.598181818181818,
+        "auroc_raw": 0.49725977347460726,
+        "ece_calibrated": 0.0024074770750609487,
+        "auroc_calibrated": 0.49725977347460726,
+        "platt_a": 0.055526496050286055,
+        "platt_b": 0.9317403458050334
+      },
+      {
+        "fold": 1,
+        "n_train": 1320,
+        "n_test": 320,
+        "ece_raw": 0.6021875,
+        "auroc_raw": 0.5034541062801933,
+        "ece_calibrated": 0.0006101930185445914,
+        "auroc_calibrated": 0.5034541062801933,
+        "platt_a": 0.05373045980913268,
+        "platt_b": 0.93482112435101
+      },
+      {
+        "fold": 2,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.6009090909090908,
+        "auroc_raw": 0.466426205707545,
+        "ece_calibrated": 0.0014672883200683717,
+        "auroc_calibrated": 0.466426205707545,
+        "platt_a": 0.09264042888110412,
+        "platt_b": 0.9319416759778213
+      },
+      {
+        "fold": 3,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.6251515151515152,
+        "auroc_raw": 0.5119545726240287,
+        "ece_calibrated": 0.006526214325916713,
+        "auroc_calibrated": 0.5119545726240287,
+        "platt_a": 0.047098036244642885,
+        "platt_b": 0.9283999212874742
+      },
+      {
+        "fold": 4,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.6163636363636363,
+        "auroc_raw": 0.492377841295767,
+        "ece_calibrated": 0.001225198691174434,
+        "auroc_calibrated": 0.492377841295767,
+        "platt_a": 0.06925833338974495,
+        "platt_b": 0.9339289989196116
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.0011367900504135608,
+    "auroc_calibrated_grouped_cv": 0.49192829827386786,
+    "fold_ece_calibrated": {
+      "mean": 0.0024472742861530116,
+      "std": 0.0023700234441541425,
+      "ci95": 0.002077417143523561,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.49429449987642826,
+      "std": 0.017211077874676555,
+      "ci95": 0.015086174916777197,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": 0.06361768068756239,
+    "platt_b_full_fit": 0.9321628728597497
+  },
+  "mistral7b/gsm8k": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 555,
+    "n_prompt_groups": 165,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.4252252252252252,
+    "ece_raw_grouped_cv": 0.0007207207207207206,
+    "auroc_raw_grouped_cv": 0.5005512459486743,
+    "fold_ece_raw": {
+      "mean": 0.0017843925985518907,
+      "std": 0.002733675149199689,
+      "ci95": 0.002396171917108855,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.5005891980360065,
+      "std": 0.006530872981952868,
+      "ci95": 0.005724562568504841,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 442,
+        "n_test": 113,
+        "ece_raw": 0.006194690265486726,
+        "auroc_raw": 0.49230769230769234,
+        "ece_calibrated": 0.0006138477212735971,
+        "auroc_calibrated": 0.5076923076923077,
+        "platt_a": -0.13023500243600114,
+        "platt_b": -0.2224183406259822
+      },
+      {
+        "fold": 1,
+        "n_train": 443,
+        "n_test": 112,
+        "ece_raw": 0.0,
+        "auroc_raw": 0.5,
+        "ece_calibrated": 0.007039389903591098,
+        "auroc_calibrated": 0.5,
+        "platt_a": -0.1297639384550755,
+        "platt_b": -0.2175421585221256
+      },
+      {
+        "fold": 2,
+        "n_train": 444,
+        "n_test": 111,
+        "ece_raw": 0.0,
+        "auroc_raw": 0.5,
+        "ece_calibrated": 0.002298521322497027,
+        "auroc_calibrated": 0.5,
+        "platt_a": -0.13149029703155926,
+        "platt_b": -0.22043309633142724
+      },
+      {
+        "fold": 3,
+        "n_train": 446,
+        "n_test": 109,
+        "ece_raw": 0.0,
+        "auroc_raw": 0.5,
+        "ece_calibrated": 0.007378398842535772,
+        "auroc_calibrated": 0.5,
+        "platt_a": -0.13492289861925377,
+        "platt_b": -0.2261810346120256
+      },
+      {
+        "fold": 4,
+        "n_train": 445,
+        "n_test": 110,
+        "ece_raw": 0.0027272727272727275,
+        "auroc_raw": 0.5106382978723404,
+        "ece_calibrated": 0.0026013615725888894,
+        "auroc_calibrated": 0.48936170212765956,
+        "platt_a": -0.13567736630606175,
+        "platt_b": -0.22209616659723
+      }
+    ],
+    "ece_calibrated_grouped_cv": 4.0571318346172e-05,
+    "auroc_calibrated_grouped_cv": 0.4959154667658466,
+    "fold_ece_calibrated": {
+      "mean": 0.003986303872497277,
+      "std": 0.0030400566689252682,
+      "ci95": 0.002664727159930041,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.49941080196399346,
+      "std": 0.00653087298195289,
+      "ci95": 0.005724562568504859,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": -0.13242390686640407,
+    "platt_b_full_fit": -0.22173888153957114
+  },
+  "mistral7b/humaneval": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 1640,
+    "n_prompt_groups": 164,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.9365853658536586,
+    "ece_raw_grouped_cv": 0.0014634146341463417,
+    "auroc_raw_grouped_cv": 0.5026041666666666,
+    "fold_ece_raw": {
+      "mean": 0.001465909090909091,
+      "std": 0.0008198373402467167,
+      "ci95": 0.0007186191131274388,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.5026126512495269,
+      "std": 0.001472714016118957,
+      "ci95": 0.0012908907513718138,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.0009090909090909092,
+        "auroc_raw": 0.5016129032258064,
+        "ece_calibrated": 0.013282343667679886,
+        "auroc_calibrated": 0.5016129032258064,
+        "platt_a": 1.1166263557922573,
+        "platt_b": 1.858140295004505
+      },
+      {
+        "fold": 1,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.0009090909090909092,
+        "auroc_raw": 0.5016129032258064,
+        "ece_calibrated": 0.013282343667679886,
+        "auroc_calibrated": 0.5016129032258064,
+        "platt_a": 1.116626355792258,
+        "platt_b": 1.858140295004505
+      },
+      {
+        "fold": 2,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.0009090909090909092,
+        "auroc_raw": 0.5016181229773463,
+        "ece_calibrated": 0.00963390943532394,
+        "auroc_calibrated": 0.5016181229773463,
+        "platt_a": 1.1206218057258337,
+        "platt_b": 1.8648101010488756
+      },
+      {
+        "fold": 3,
+        "n_train": 1320,
+        "n_test": 320,
+        "ece_raw": 0.0018750000000000004,
+        "auroc_raw": 0.5033333333333333,
+        "ece_calibrated": 0.01096876791030521,
+        "auroc_calibrated": 0.5033333333333333,
+        "platt_a": 1.1189931609221062,
+        "platt_b": 1.8625244284902842
+      },
+      {
+        "fold": 4,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.0027272727272727284,
+        "auroc_raw": 0.504885993485342,
+        "ece_calibrated": 0.0022943410011758703,
+        "auroc_calibrated": 0.504885993485342,
+        "platt_a": 1.1283392013771807,
+        "platt_b": 1.8785142144840463
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.009885777558543363,
+    "auroc_calibrated_grouped_cv": 0.48781800881410253,
+    "fold_ece_calibrated": {
+      "mean": 0.009892341136432958,
+      "std": 0.004526017065885164,
+      "ci95": 0.003967228876044201,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.5026126512495269,
+      "std": 0.001472714016118957,
+      "ci95": 0.0012908907513718138,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": 1.1202276953042185,
+    "platt_b_full_fit": 1.8644045253194972
+  },
+  "mixtral/gsm8k": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 758,
+    "n_prompt_groups": 165,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.2941952506596306,
+    "ece_raw_grouped_cv": 0.00079155672823219,
+    "auroc_raw_grouped_cv": 0.5044843049327354,
+    "fold_ece_raw": {
+      "mean": 0.0007947368421052633,
+      "std": 0.0010882780115719119,
+      "ci95": 0.0009539177360188943,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.504547803617571,
+      "std": 0.006230016494025328,
+      "ci95": 0.005460850229581534,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 600,
+        "n_test": 158,
+        "ece_raw": 0.0,
+        "auroc_raw": 0.5,
+        "ece_calibrated": 0.003874616881719528,
+        "auroc_calibrated": 0.5,
+        "platt_a": -0.38313577728530623,
+        "platt_b": -0.6481120815463715
+      },
+      {
+        "fold": 1,
+        "n_train": 606,
+        "n_test": 152,
+        "ece_raw": 0.001973684210526316,
+        "auroc_raw": 0.5111111111111111,
+        "ece_calibrated": 0.0021818364341888996,
+        "auroc_calibrated": 0.4888888888888889,
+        "platt_a": -0.38456469699639495,
+        "platt_b": -0.6456682177136567
+      },
+      {
+        "fold": 2,
+        "n_train": 609,
+        "n_test": 149,
+        "ece_raw": 0.0,
+        "auroc_raw": 0.5,
+        "ece_calibrated": 0.0011204437818275181,
+        "auroc_calibrated": 0.5,
+        "platt_a": -0.3819514837695777,
+        "platt_b": -0.645989972835063
+      },
+      {
+        "fold": 3,
+        "n_train": 608,
+        "n_test": 150,
+        "ece_raw": 0.0020000000000000005,
+        "auroc_raw": 0.5116279069767442,
+        "ece_calibrated": 0.009521890899127472,
+        "auroc_calibrated": 0.4883720930232558,
+        "platt_a": -0.379661309291425,
+        "platt_b": -0.6374662794761583
+      },
+      {
+        "fold": 4,
+        "n_train": 609,
+        "n_test": 149,
+        "ece_raw": 0.0,
+        "auroc_raw": 0.5,
+        "ece_calibrated": 0.0011204437818274626,
+        "auroc_calibrated": 0.5,
+        "platt_a": -0.38195148376957755,
+        "platt_b": -0.6459899728350629
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.00019863163928252048,
+    "auroc_calibrated_grouped_cv": 0.4902854029588031,
+    "fold_ece_calibrated": {
+      "mean": 0.003563846355738176,
+      "std": 0.00351586606686308,
+      "ci95": 0.0030817924859139413,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.49545219638242893,
+      "std": 0.006230016494025344,
+      "ci95": 0.005460850229581547,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": -0.3822478425731448,
+    "platt_b_full_fit": -0.6446330186954198
+  },
+  "mixtral/humaneval": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 1620,
+    "n_prompt_groups": 162,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.9586419753086419,
+    "ece_raw_grouped_cv": 0.0027777777777777783,
+    "auroc_raw_grouped_cv": 0.506117192530586,
+    "fold_ece_raw": {
+      "mean": 0.002778409090909091,
+      "std": 0.0009878396447208816,
+      "ci95": 0.000865879625814332,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.5061166107952073,
+      "std": 0.002408917524922237,
+      "ci95": 0.002111509308463333,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 1290,
+        "n_test": 330,
+        "ece_raw": 0.0024242424242424242,
+        "auroc_raw": 0.5063291139240507,
+        "ece_calibrated": 0.013672262850400463,
+        "auroc_calibrated": 0.5063291139240507,
+        "platt_a": 1.247838415749672,
+        "platt_b": 2.071602214522568
+      },
+      {
+        "fold": 1,
+        "n_train": 1300,
+        "n_test": 320,
+        "ece_raw": 0.0021875,
+        "auroc_raw": 0.504885993485342,
+        "ece_calibrated": 0.015853561896621238,
+        "auroc_calibrated": 0.504885993485342,
+        "platt_a": 1.2454871884619776,
+        "platt_b": 2.0667357261935413
+      },
+      {
+        "fold": 2,
+        "n_train": 1290,
+        "n_test": 330,
+        "ece_raw": 0.003030303030303031,
+        "auroc_raw": 0.5063492063492063,
+        "ece_calibrated": 0.010120186903460504,
+        "auroc_calibrated": 0.5063492063492063,
+        "platt_a": 1.252728428487609,
+        "platt_b": 2.079165372426632
+      },
+      {
+        "fold": 3,
+        "n_train": 1300,
+        "n_test": 320,
+        "ece_raw": 0.0018750000000000004,
+        "auroc_raw": 0.5032467532467533,
+        "ece_calibrated": 0.019596557846038087,
+        "auroc_calibrated": 0.5032467532467533,
+        "platt_a": 1.2412908427736882,
+        "platt_b": 2.0587108189639065
+      },
+      {
+        "fold": 4,
+        "n_train": 1300,
+        "n_test": 320,
+        "ece_raw": 0.004375,
+        "auroc_raw": 0.509771986970684,
+        "ece_calibrated": 0.01575041733186011,
+        "auroc_calibrated": 0.509771986970684,
+        "platt_a": 1.2448105372370517,
+        "platt_b": 2.0673480601652963
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.014960296470753365,
+    "auroc_calibrated_grouped_cv": 0.48782808430481206,
+    "fold_ece_calibrated": {
+      "mean": 0.01499859736567608,
+      "std": 0.003463938873376804,
+      "ci95": 0.003036276293983632,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.5061166107952073,
+      "std": 0.002408917524922237,
+      "ci95": 0.002111509308463333,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": 1.2464108920998587,
+    "platt_b_full_fit": 2.0686792576162056
+  },
+  "qwen/gsm8k": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 1909,
+    "n_prompt_groups": 200,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.7574646411733892,
+    "ece_raw_grouped_cv": 0.5499738082765846,
+    "auroc_raw_grouped_cv": 0.4798229419654726,
+    "fold_ece_raw": {
+      "mean": 0.551628511983162,
+      "std": 0.011215868888203882,
+      "ci95": 0.009831142542213556,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.47962734164595117,
+      "std": 0.023037533959666876,
+      "ci95": 0.020193288851367813,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 1521,
+        "n_test": 388,
+        "ece_raw": 0.5453608247422681,
+        "auroc_raw": 0.5083348302496856,
+        "ece_calibrated": 0.000388524409397184,
+        "auroc_calibrated": 0.5083348302496856,
+        "platt_a": 0.06957213994346893,
+        "platt_b": 1.1136663915041194
+      },
+      {
+        "fold": 1,
+        "n_train": 1533,
+        "n_test": 376,
+        "ece_raw": 0.5476063829787234,
+        "auroc_raw": 0.46385193753614806,
+        "ece_calibrated": 0.0027184677408435,
+        "auroc_calibrated": 0.46385193753614806,
+        "platt_a": 0.11219937274720614,
+        "platt_b": 1.1029317102043523
+      },
+      {
+        "fold": 2,
+        "n_train": 1529,
+        "n_test": 380,
+        "ece_raw": 0.5415789473684212,
+        "auroc_raw": 0.45005807200929154,
+        "ece_calibrated": 0.0007868786536056049,
+        "auroc_calibrated": 0.45005807200929154,
+        "platt_a": 0.1273326611021564,
+        "platt_b": 1.1040028389823078
+      },
+      {
+        "fold": 3,
+        "n_train": 1537,
+        "n_test": 372,
+        "ece_raw": 0.5701612903225806,
+        "auroc_raw": 0.48363380391850147,
+        "ece_calibrated": 0.00015401307528140062,
+        "auroc_calibrated": 0.48363380391850147,
+        "platt_a": 0.0983136715058015,
+        "platt_b": 1.1077609433603763
+      },
+      {
+        "fold": 4,
+        "n_train": 1516,
+        "n_test": 393,
+        "ece_raw": 0.5534351145038168,
+        "auroc_raw": 0.49225806451612897,
+        "ece_calibrated": 0.009820425876440497,
+        "auroc_calibrated": 0.49225806451612897,
+        "platt_a": 0.0846936053063797,
+        "platt_b": 1.0999148843604878
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.002351546749495337,
+    "auroc_calibrated_grouped_cv": 0.47163247687073,
+    "fold_ece_calibrated": {
+      "mean": 0.0027736619511136372,
+      "std": 0.004066899230892824,
+      "ci95": 0.0035647943500638425,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.47962734164595117,
+      "std": 0.023037533959666876,
+      "ci95": 0.020193288851367813,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": 0.0984793155178235,
+    "platt_b_full_fit": 1.1056437415304914
+  },
+  "qwen/humaneval": {
+    "score_column": "failure_risk",
+    "evaluation_protocol": "Grouped held-out CV by question_id; Platt scaling fit on train folds and scored on held-out prompts.",
+    "n_samples": 1640,
+    "n_prompt_groups": 164,
+    "splitter": "StratifiedGroupKFold",
+    "n_folds": 5,
+    "failure_rate": 0.901219512195122,
+    "ece_raw_grouped_cv": 0.7048780487804878,
+    "auroc_raw_grouped_cv": 0.4467937152307924,
+    "fold_ece_raw": {
+      "mean": 0.7048004679144385,
+      "std": 0.015332600813722867,
+      "ci95": 0.013439617175010346,
+      "n_folds": 5
+    },
+    "fold_auroc_raw": {
+      "mean": 0.44659566715891713,
+      "std": 0.045546439469473975,
+      "ci95": 0.03992321443643471,
+      "n_folds": 5
+    },
+    "folds": [
+      {
+        "fold": 0,
+        "n_train": 1300,
+        "n_test": 340,
+        "ece_raw": 0.7032352941176471,
+        "auroc_raw": 0.43661091887735487,
+        "ece_calibrated": 0.010145998597405084,
+        "auroc_calibrated": 0.43661091887735487,
+        "platt_a": 0.23738950862429276,
+        "platt_b": 2.043951197552552
+      },
+      {
+        "fold": 1,
+        "n_train": 1320,
+        "n_test": 320,
+        "ece_raw": 0.7084374999999999,
+        "auroc_raw": 0.39794921875,
+        "ece_calibrated": 0.01020794721898706,
+        "auroc_calibrated": 0.39794921875,
+        "platt_a": 0.25905908502000147,
+        "platt_b": 2.040685262065932
+      },
+      {
+        "fold": 2,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.7281818181818183,
+        "auroc_raw": 0.5132655201342282,
+        "ece_calibrated": 0.014617848786992793,
+        "auroc_calibrated": 0.5132655201342282,
+        "platt_a": 0.20486566786511423,
+        "platt_b": 2.039786636727695
+      },
+      {
+        "fold": 3,
+        "n_train": 1310,
+        "n_test": 330,
+        "ece_raw": 0.6972727272727273,
+        "auroc_raw": 0.46860095389507156,
+        "ece_calibrated": 0.020539916502064468,
+        "auroc_calibrated": 0.46860095389507156,
+        "platt_a": 0.22160190281794934,
+        "platt_b": 2.0525313099083107
+      },
+      {
+        "fold": 4,
+        "n_train": 1320,
+        "n_test": 320,
+        "ece_raw": 0.686875,
+        "auroc_raw": 0.416551724137931,
+        "ece_calibrated": 0.017031809158464917,
+        "auroc_calibrated": 0.416551724137931,
+        "platt_a": 0.234258421193966,
+        "platt_b": 2.0328470121788165
+      }
+    ],
+    "ece_calibrated_grouped_cv": 0.013815870230761923,
+    "auroc_calibrated_grouped_cv": 0.4354295093469654,
+    "fold_ece_calibrated": {
+      "mean": 0.014508704052782864,
+      "std": 0.004480044748367988,
+      "ci95": 0.00392693236303997,
+      "n_folds": 5
+    },
+    "fold_auroc_calibrated": {
+      "mean": 0.44659566715891713,
+      "std": 0.045546439469473975,
+      "ci95": 0.03992321443643471,
+      "n_folds": 5
+    },
+    "platt_a_full_fit": 0.23146513442168687,
+    "platt_b_full_fit": 2.0419157109312063
+  }
+}

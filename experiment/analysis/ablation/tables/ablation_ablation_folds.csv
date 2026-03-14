@@ -1,0 +1,241 @@
+model,dataset,tier,fold,auroc,splitter,n_prompt_groups
+llama,gsm8k,T1: entropy_only,0,0.5868778280542987,StratifiedGroupKFold,200
+llama,gsm8k,T1: entropy_only,1,0.6103133903133903,StratifiedGroupKFold,200
+llama,gsm8k,T1: entropy_only,2,0.6441936441936442,StratifiedGroupKFold,200
+llama,gsm8k,T1: entropy_only,3,0.5326997326997327,StratifiedGroupKFold,200
+llama,gsm8k,T1: entropy_only,4,0.5434267775513577,StratifiedGroupKFold,200
+llama,gsm8k,T2: confidence_baseline,0,0.5991251885369533,StratifiedGroupKFold,200
+llama,gsm8k,T2: confidence_baseline,1,0.6089173789173788,StratifiedGroupKFold,200
+llama,gsm8k,T2: confidence_baseline,2,0.6346599346599346,StratifiedGroupKFold,200
+llama,gsm8k,T2: confidence_baseline,3,0.5462429462429462,StratifiedGroupKFold,200
+llama,gsm8k,T2: confidence_baseline,4,0.625075728369224,StratifiedGroupKFold,200
+llama,gsm8k,T3: + prompt_signals,0,0.5680241327300151,StratifiedGroupKFold,200
+llama,gsm8k,T3: + prompt_signals,1,0.46239316239316247,StratifiedGroupKFold,200
+llama,gsm8k,T3: + prompt_signals,2,0.537154737154737,StratifiedGroupKFold,200
+llama,gsm8k,T3: + prompt_signals,3,0.5951885951885951,StratifiedGroupKFold,200
+llama,gsm8k,T3: + prompt_signals,4,0.6278294872500964,StratifiedGroupKFold,200
+llama,gsm8k,T4: + early_window,0,0.5703167420814479,StratifiedGroupKFold,200
+llama,gsm8k,T4: + early_window,1,0.5892877492877493,StratifiedGroupKFold,200
+llama,gsm8k,T4: + early_window,2,0.6594594594594595,StratifiedGroupKFold,200
+llama,gsm8k,T4: + early_window,3,0.5784377784377784,StratifiedGroupKFold,200
+llama,gsm8k,T4: + early_window,4,0.6881643443300104,StratifiedGroupKFold,200
+llama,gsm8k,T5: + health_signals,0,0.5773152337858221,StratifiedGroupKFold,200
+llama,gsm8k,T5: + health_signals,1,0.5888319088319088,StratifiedGroupKFold,200
+llama,gsm8k,T5: + health_signals,2,0.6526878526878527,StratifiedGroupKFold,200
+llama,gsm8k,T5: + health_signals,3,0.5644193644193644,StratifiedGroupKFold,200
+llama,gsm8k,T5: + health_signals,4,0.6913587046318224,StratifiedGroupKFold,200
+llama,gsm8k,T6: full_corevital,0,0.6241930618401207,StratifiedGroupKFold,200
+llama,gsm8k,T6: full_corevital,1,0.6133333333333333,StratifiedGroupKFold,200
+llama,gsm8k,T6: full_corevital,2,0.6752004752004751,StratifiedGroupKFold,200
+llama,gsm8k,T6: full_corevital,3,0.59002079002079,StratifiedGroupKFold,200
+llama,gsm8k,T6: full_corevital,4,0.6731838960180648,StratifiedGroupKFold,200
+llama,humaneval,T1: entropy_only,0,0.49155096821337224,StratifiedGroupKFold,164
+llama,humaneval,T1: entropy_only,1,0.5019806763285024,StratifiedGroupKFold,164
+llama,humaneval,T1: entropy_only,2,0.5202577015561907,StratifiedGroupKFold,164
+llama,humaneval,T1: entropy_only,3,0.5307830245068739,StratifiedGroupKFold,164
+llama,humaneval,T1: entropy_only,4,0.5348895240687809,StratifiedGroupKFold,164
+llama,humaneval,T2: confidence_baseline,0,0.4841523565948118,StratifiedGroupKFold,164
+llama,humaneval,T2: confidence_baseline,1,0.4763043478260869,StratifiedGroupKFold,164
+llama,humaneval,T2: confidence_baseline,2,0.4936935710720929,StratifiedGroupKFold,164
+llama,humaneval,T2: confidence_baseline,3,0.5230355418639938,StratifiedGroupKFold,164
+llama,humaneval,T2: confidence_baseline,4,0.5235243410008621,StratifiedGroupKFold,164
+llama,humaneval,T3: + prompt_signals,0,0.5381576543660942,StratifiedGroupKFold,164
+llama,humaneval,T3: + prompt_signals,1,0.48731884057971014,StratifiedGroupKFold,164
+llama,humaneval,T3: + prompt_signals,2,0.5235470259970056,StratifiedGroupKFold,164
+llama,humaneval,T3: + prompt_signals,3,0.6448572348153939,StratifiedGroupKFold,164
+llama,humaneval,T3: + prompt_signals,4,0.5691211832493988,StratifiedGroupKFold,164
+llama,humaneval,T4: + early_window,0,0.5028315674095725,StratifiedGroupKFold,164
+llama,humaneval,T4: + early_window,1,0.5444444444444444,StratifiedGroupKFold,164
+llama,humaneval,T4: + early_window,2,0.5637675241595209,StratifiedGroupKFold,164
+llama,humaneval,T4: + early_window,3,0.635523472343556,StratifiedGroupKFold,164
+llama,humaneval,T4: + early_window,4,0.5779683317453835,StratifiedGroupKFold,164
+llama,humaneval,T5: + health_signals,0,0.5179028132992327,StratifiedGroupKFold,164
+llama,humaneval,T5: + health_signals,1,0.5244444444444445,StratifiedGroupKFold,164
+llama,humaneval,T5: + health_signals,2,0.58350347080441,StratifiedGroupKFold,164
+llama,humaneval,T5: + health_signals,3,0.5924870108970527,StratifiedGroupKFold,164
+llama,humaneval,T5: + health_signals,4,0.5892200898325847,StratifiedGroupKFold,164
+llama,humaneval,T6: full_corevital,0,0.6311655096821337,StratifiedGroupKFold,164
+llama,humaneval,T6: full_corevital,1,0.5557487922705314,StratifiedGroupKFold,164
+llama,humaneval,T6: full_corevital,2,0.6263781135157206,StratifiedGroupKFold,164
+llama,humaneval,T6: full_corevital,3,0.6290404156512943,StratifiedGroupKFold,164
+llama,humaneval,T6: full_corevital,4,0.6246540538088108,StratifiedGroupKFold,164
+mistral7b,gsm8k,T1: entropy_only,0,0.6384615384615385,StratifiedGroupKFold,165
+mistral7b,gsm8k,T1: entropy_only,1,0.669885433715221,StratifiedGroupKFold,165
+mistral7b,gsm8k,T1: entropy_only,2,0.6838430851063829,StratifiedGroupKFold,165
+mistral7b,gsm8k,T1: entropy_only,3,0.518188057652711,StratifiedGroupKFold,165
+mistral7b,gsm8k,T1: entropy_only,4,0.5808848362039851,StratifiedGroupKFold,165
+mistral7b,gsm8k,T2: confidence_baseline,0,0.6735576923076924,StratifiedGroupKFold,165
+mistral7b,gsm8k,T2: confidence_baseline,1,0.6975450081833061,StratifiedGroupKFold,165
+mistral7b,gsm8k,T2: confidence_baseline,2,0.6379654255319149,StratifiedGroupKFold,165
+mistral7b,gsm8k,T2: confidence_baseline,3,0.5279684282772821,StratifiedGroupKFold,165
+mistral7b,gsm8k,T2: confidence_baseline,4,0.6543397500844309,StratifiedGroupKFold,165
+mistral7b,gsm8k,T3: + prompt_signals,0,0.71875,StratifiedGroupKFold,165
+mistral7b,gsm8k,T3: + prompt_signals,1,0.7482815057283143,StratifiedGroupKFold,165
+mistral7b,gsm8k,T3: + prompt_signals,2,0.6150265957446809,StratifiedGroupKFold,165
+mistral7b,gsm8k,T3: + prompt_signals,3,0.547700754975978,StratifiedGroupKFold,165
+mistral7b,gsm8k,T3: + prompt_signals,4,0.7516041877744004,StratifiedGroupKFold,165
+mistral7b,gsm8k,T4: + early_window,0,0.7407051282051282,StratifiedGroupKFold,165
+mistral7b,gsm8k,T4: + early_window,1,0.7168576104746318,StratifiedGroupKFold,165
+mistral7b,gsm8k,T4: + early_window,2,0.6299867021276596,StratifiedGroupKFold,165
+mistral7b,gsm8k,T4: + early_window,3,0.6352093342484557,StratifiedGroupKFold,165
+mistral7b,gsm8k,T4: + early_window,4,0.7906112799729821,StratifiedGroupKFold,165
+mistral7b,gsm8k,T5: + health_signals,0,0.7602564102564103,StratifiedGroupKFold,165
+mistral7b,gsm8k,T5: + health_signals,1,0.7220949263502455,StratifiedGroupKFold,165
+mistral7b,gsm8k,T5: + health_signals,2,0.6289893617021276,StratifiedGroupKFold,165
+mistral7b,gsm8k,T5: + health_signals,3,0.6352093342484557,StratifiedGroupKFold,165
+mistral7b,gsm8k,T5: + health_signals,4,0.7798041202296522,StratifiedGroupKFold,165
+mistral7b,gsm8k,T6: full_corevital,0,0.7125,StratifiedGroupKFold,165
+mistral7b,gsm8k,T6: full_corevital,1,0.7126022913256955,StratifiedGroupKFold,165
+mistral7b,gsm8k,T6: full_corevital,2,0.602061170212766,StratifiedGroupKFold,165
+mistral7b,gsm8k,T6: full_corevital,3,0.6019217570350035,StratifiedGroupKFold,165
+mistral7b,gsm8k,T6: full_corevital,4,0.7220533603512327,StratifiedGroupKFold,165
+mistral7b,humaneval,T1: entropy_only,0,0.6466129032258066,StratifiedGroupKFold,164
+mistral7b,humaneval,T1: entropy_only,1,0.4905645161290323,StratifiedGroupKFold,164
+mistral7b,humaneval,T1: entropy_only,2,0.48821081830790575,StratifiedGroupKFold,164
+mistral7b,humaneval,T1: entropy_only,3,0.45866666666666667,StratifiedGroupKFold,164
+mistral7b,humaneval,T1: entropy_only,4,0.3899589293301232,StratifiedGroupKFold,164
+mistral7b,humaneval,T2: confidence_baseline,0,0.4562096774193548,StratifiedGroupKFold,164
+mistral7b,humaneval,T2: confidence_baseline,1,0.5525806451612902,StratifiedGroupKFold,164
+mistral7b,humaneval,T2: confidence_baseline,2,0.49614732624441366,StratifiedGroupKFold,164
+mistral7b,humaneval,T2: confidence_baseline,3,0.51475,StratifiedGroupKFold,164
+mistral7b,humaneval,T2: confidence_baseline,4,0.5412122928763631,StratifiedGroupKFold,164
+mistral7b,humaneval,T3: + prompt_signals,0,0.5461290322580646,StratifiedGroupKFold,164
+mistral7b,humaneval,T3: + prompt_signals,1,0.4992741935483871,StratifiedGroupKFold,164
+mistral7b,humaneval,T3: + prompt_signals,2,0.43889659423640004,StratifiedGroupKFold,164
+mistral7b,humaneval,T3: + prompt_signals,3,0.5590833333333334,StratifiedGroupKFold,164
+mistral7b,humaneval,T3: + prompt_signals,4,0.5082849454751451,StratifiedGroupKFold,164
+mistral7b,humaneval,T4: + early_window,0,0.7225806451612904,StratifiedGroupKFold,164
+mistral7b,humaneval,T4: + early_window,1,0.8349999999999999,StratifiedGroupKFold,164
+mistral7b,humaneval,T4: + early_window,2,0.7301587301587302,StratifiedGroupKFold,164
+mistral7b,humaneval,T4: + early_window,3,0.8376666666666667,StratifiedGroupKFold,164
+mistral7b,humaneval,T4: + early_window,4,0.6671859509984421,StratifiedGroupKFold,164
+mistral7b,humaneval,T5: + health_signals,0,0.722741935483871,StratifiedGroupKFold,164
+mistral7b,humaneval,T5: + health_signals,1,0.8324193548387098,StratifiedGroupKFold,164
+mistral7b,humaneval,T5: + health_signals,2,0.7249190938511326,StratifiedGroupKFold,164
+mistral7b,humaneval,T5: + health_signals,3,0.8495,StratifiedGroupKFold,164
+mistral7b,humaneval,T5: + health_signals,4,0.6722843789831469,StratifiedGroupKFold,164
+mistral7b,humaneval,T6: full_corevital,0,0.7201612903225807,StratifiedGroupKFold,164
+mistral7b,humaneval,T6: full_corevital,1,0.8222580645161289,StratifiedGroupKFold,164
+mistral7b,humaneval,T6: full_corevital,2,0.7432578209277239,StratifiedGroupKFold,164
+mistral7b,humaneval,T6: full_corevital,3,0.8183333333333332,StratifiedGroupKFold,164
+mistral7b,humaneval,T6: full_corevital,4,0.7258178728225464,StratifiedGroupKFold,164
+mixtral,gsm8k,T1: entropy_only,0,0.5877899175771515,StratifiedGroupKFold,165
+mixtral,gsm8k,T1: entropy_only,1,0.6078920041536864,StratifiedGroupKFold,165
+mixtral,gsm8k,T1: entropy_only,2,0.6622294372294372,StratifiedGroupKFold,165
+mixtral,gsm8k,T1: entropy_only,3,0.6383394914149098,StratifiedGroupKFold,165
+mixtral,gsm8k,T1: entropy_only,4,0.5479437229437228,StratifiedGroupKFold,165
+mixtral,gsm8k,T2: confidence_baseline,0,0.5616254552424766,StratifiedGroupKFold,165
+mixtral,gsm8k,T2: confidence_baseline,1,0.6277258566978193,StratifiedGroupKFold,165
+mixtral,gsm8k,T2: confidence_baseline,2,0.6153679653679653,StratifiedGroupKFold,165
+mixtral,gsm8k,T2: confidence_baseline,3,0.6617039773962182,StratifiedGroupKFold,165
+mixtral,gsm8k,T2: confidence_baseline,4,0.47554112554112554,StratifiedGroupKFold,165
+mixtral,gsm8k,T3: + prompt_signals,0,0.5732221583285413,StratifiedGroupKFold,165
+mixtral,gsm8k,T3: + prompt_signals,1,0.5767393561786085,StratifiedGroupKFold,165
+mixtral,gsm8k,T3: + prompt_signals,2,0.505952380952381,StratifiedGroupKFold,165
+mixtral,gsm8k,T3: + prompt_signals,3,0.6004129537057161,StratifiedGroupKFold,165
+mixtral,gsm8k,T3: + prompt_signals,4,0.474025974025974,StratifiedGroupKFold,165
+mixtral,gsm8k,T4: + early_window,0,0.5489745064213148,StratifiedGroupKFold,165
+mixtral,gsm8k,T4: + early_window,1,0.5036344755970924,StratifiedGroupKFold,165
+mixtral,gsm8k,T4: + early_window,2,0.554978354978355,StratifiedGroupKFold,165
+mixtral,gsm8k,T4: + early_window,3,0.5863942621169311,StratifiedGroupKFold,165
+mixtral,gsm8k,T4: + early_window,4,0.4896103896103896,StratifiedGroupKFold,165
+mixtral,gsm8k,T5: + health_signals,0,0.5629672225416906,StratifiedGroupKFold,165
+mixtral,gsm8k,T5: + health_signals,1,0.502803738317757,StratifiedGroupKFold,165
+mixtral,gsm8k,T5: + health_signals,2,0.5261904761904761,StratifiedGroupKFold,165
+mixtral,gsm8k,T5: + health_signals,3,0.5709628341664854,StratifiedGroupKFold,165
+mixtral,gsm8k,T5: + health_signals,4,0.5196969696969697,StratifiedGroupKFold,165
+mixtral,gsm8k,T6: full_corevital,0,0.6958021851638873,StratifiedGroupKFold,165
+mixtral,gsm8k,T6: full_corevital,1,0.649221183800623,StratifiedGroupKFold,165
+mixtral,gsm8k,T6: full_corevital,2,0.6409090909090909,StratifiedGroupKFold,165
+mixtral,gsm8k,T6: full_corevital,3,0.655727015866116,StratifiedGroupKFold,165
+mixtral,gsm8k,T6: full_corevital,4,0.6090909090909092,StratifiedGroupKFold,165
+mixtral,humaneval,T1: entropy_only,0,0.6091772151898733,StratifiedGroupKFold,162
+mixtral,humaneval,T1: entropy_only,1,0.4828363818591832,StratifiedGroupKFold,162
+mixtral,humaneval,T1: entropy_only,2,0.4468783068783069,StratifiedGroupKFold,162
+mixtral,humaneval,T1: entropy_only,3,0.546672077922078,StratifiedGroupKFold,162
+mixtral,humaneval,T1: entropy_only,4,0.5808068153345026,StratifiedGroupKFold,162
+mixtral,humaneval,T2: confidence_baseline,0,0.617992766726944,StratifiedGroupKFold,162
+mixtral,humaneval,T2: confidence_baseline,1,0.6613630669005262,StratifiedGroupKFold,162
+mixtral,humaneval,T2: confidence_baseline,2,0.4733333333333333,StratifiedGroupKFold,162
+mixtral,humaneval,T2: confidence_baseline,3,0.5514069264069263,StratifiedGroupKFold,162
+mixtral,humaneval,T2: confidence_baseline,4,0.5507391631170133,StratifiedGroupKFold,162
+mixtral,humaneval,T3: + prompt_signals,0,0.5740280289330922,StratifiedGroupKFold,162
+mixtral,humaneval,T3: + prompt_signals,1,0.6740165372087197,StratifiedGroupKFold,162
+mixtral,humaneval,T3: + prompt_signals,2,0.4993650793650794,StratifiedGroupKFold,162
+mixtral,humaneval,T3: + prompt_signals,3,0.61620670995671,StratifiedGroupKFold,162
+mixtral,humaneval,T3: + prompt_signals,4,0.47331495865697815,StratifiedGroupKFold,162
+mixtral,humaneval,T4: + early_window,0,0.8026672694394212,StratifiedGroupKFold,162
+mixtral,humaneval,T4: + early_window,1,0.7068403908794789,StratifiedGroupKFold,162
+mixtral,humaneval,T4: + early_window,2,0.8279365079365079,StratifiedGroupKFold,162
+mixtral,humaneval,T4: + early_window,3,0.7719155844155845,StratifiedGroupKFold,162
+mixtral,humaneval,T4: + early_window,4,0.700826860435981,StratifiedGroupKFold,162
+mixtral,humaneval,T5: + health_signals,0,0.8033453887884268,StratifiedGroupKFold,162
+mixtral,humaneval,T5: + health_signals,1,0.7171135053871212,StratifiedGroupKFold,162
+mixtral,humaneval,T5: + health_signals,2,0.8393650793650793,StratifiedGroupKFold,162
+mixtral,humaneval,T5: + health_signals,3,0.8111471861471862,StratifiedGroupKFold,162
+mixtral,humaneval,T5: + health_signals,4,0.6990729140566274,StratifiedGroupKFold,162
+mixtral,humaneval,T6: full_corevital,0,0.883363471971067,StratifiedGroupKFold,162
+mixtral,humaneval,T6: full_corevital,1,0.7757454272112252,StratifiedGroupKFold,162
+mixtral,humaneval,T6: full_corevital,2,0.8251851851851852,StratifiedGroupKFold,162
+mixtral,humaneval,T6: full_corevital,3,0.8103354978354979,StratifiedGroupKFold,162
+mixtral,humaneval,T6: full_corevital,4,0.8053119518917564,StratifiedGroupKFold,162
+qwen,gsm8k,T1: entropy_only,0,0.49461110113166873,StratifiedGroupKFold,200
+qwen,gsm8k,T1: entropy_only,1,0.5787545787545787,StratifiedGroupKFold,200
+qwen,gsm8k,T1: entropy_only,2,0.5030909295268068,StratifiedGroupKFold,200
+qwen,gsm8k,T1: entropy_only,3,0.44419459544014706,StratifiedGroupKFold,200
+qwen,gsm8k,T1: entropy_only,4,0.47050179211469534,StratifiedGroupKFold,200
+qwen,gsm8k,T2: confidence_baseline,0,0.5923298006107419,StratifiedGroupKFold,200
+qwen,gsm8k,T2: confidence_baseline,1,0.5796992481203008,StratifiedGroupKFold,200
+qwen,gsm8k,T2: confidence_baseline,2,0.5545689558278071,StratifiedGroupKFold,200
+qwen,gsm8k,T2: confidence_baseline,3,0.5035196120605374,StratifiedGroupKFold,200
+qwen,gsm8k,T2: confidence_baseline,4,0.537741935483871,StratifiedGroupKFold,200
+qwen,gsm8k,T3: + prompt_signals,0,0.5820729297646847,StratifiedGroupKFold,200
+qwen,gsm8k,T3: + prompt_signals,1,0.6477154424522845,StratifiedGroupKFold,200
+qwen,gsm8k,T3: + prompt_signals,2,0.4621969952418418,StratifiedGroupKFold,200
+qwen,gsm8k,T3: + prompt_signals,3,0.40784482421493096,StratifiedGroupKFold,200
+qwen,gsm8k,T3: + prompt_signals,4,0.6111469534050179,StratifiedGroupKFold,200
+qwen,gsm8k,T4: + early_window,0,0.6511226872642357,StratifiedGroupKFold,200
+qwen,gsm8k,T4: + early_window,1,0.6354732986311934,StratifiedGroupKFold,200
+qwen,gsm8k,T4: + early_window,2,0.5163163613202952,StratifiedGroupKFold,200
+qwen,gsm8k,T4: + early_window,3,0.4869969887763482,StratifiedGroupKFold,200
+qwen,gsm8k,T4: + early_window,4,0.5992114695340501,StratifiedGroupKFold,200
+qwen,gsm8k,T5: + health_signals,0,0.6075085324232081,StratifiedGroupKFold,200
+qwen,gsm8k,T5: + health_signals,1,0.6415268941584731,StratifiedGroupKFold,200
+qwen,gsm8k,T5: + health_signals,2,0.5166160878198643,StratifiedGroupKFold,200
+qwen,gsm8k,T5: + health_signals,3,0.46959446247702474,StratifiedGroupKFold,200
+qwen,gsm8k,T5: + health_signals,4,0.5977060931899641,StratifiedGroupKFold,200
+qwen,gsm8k,T6: full_corevital,0,0.6350996946290641,StratifiedGroupKFold,200
+qwen,gsm8k,T6: full_corevital,1,0.6826682089839985,StratifiedGroupKFold,200
+qwen,gsm8k,T6: full_corevital,2,0.5772357723577236,StratifiedGroupKFold,200
+qwen,gsm8k,T6: full_corevital,3,0.5191818857299284,StratifiedGroupKFold,200
+qwen,gsm8k,T6: full_corevital,4,0.6022939068100359,StratifiedGroupKFold,200
+qwen,humaneval,T1: entropy_only,0,0.6562379853902346,StratifiedGroupKFold,164
+qwen,humaneval,T1: entropy_only,1,0.7441948784722223,StratifiedGroupKFold,164
+qwen,humaneval,T1: entropy_only,2,0.6922713926174497,StratifiedGroupKFold,164
+qwen,humaneval,T1: entropy_only,3,0.6697138314785372,StratifiedGroupKFold,164
+qwen,humaneval,T1: entropy_only,4,0.6661494252873563,StratifiedGroupKFold,164
+qwen,humaneval,T2: confidence_baseline,0,0.667964244521338,StratifiedGroupKFold,164
+qwen,humaneval,T2: confidence_baseline,1,0.74609375,StratifiedGroupKFold,164
+qwen,humaneval,T2: confidence_baseline,2,0.7615876677852349,StratifiedGroupKFold,164
+qwen,humaneval,T2: confidence_baseline,3,0.6933127980922098,StratifiedGroupKFold,164
+qwen,humaneval,T2: confidence_baseline,4,0.7994827586206897,StratifiedGroupKFold,164
+qwen,humaneval,T3: + prompt_signals,0,0.6578239138792772,StratifiedGroupKFold,164
+qwen,humaneval,T3: + prompt_signals,1,0.776584201388889,StratifiedGroupKFold,164
+qwen,humaneval,T3: + prompt_signals,2,0.7492135067114094,StratifiedGroupKFold,164
+qwen,humaneval,T3: + prompt_signals,3,0.6834260731319555,StratifiedGroupKFold,164
+qwen,humaneval,T3: + prompt_signals,4,0.7996551724137931,StratifiedGroupKFold,164
+qwen,humaneval,T4: + early_window,0,0.8056516724336795,StratifiedGroupKFold,164
+qwen,humaneval,T4: + early_window,1,0.8082682291666666,StratifiedGroupKFold,164
+qwen,humaneval,T4: + early_window,2,0.8621015100671141,StratifiedGroupKFold,164
+qwen,humaneval,T4: + early_window,3,0.8641693163751988,StratifiedGroupKFold,164
+qwen,humaneval,T4: + early_window,4,0.9142528735632184,StratifiedGroupKFold,164
+qwen,humaneval,T5: + health_signals,0,0.832468281430219,StratifiedGroupKFold,164
+qwen,humaneval,T5: + health_signals,1,0.7902560763888888,StratifiedGroupKFold,164
+qwen,humaneval,T5: + health_signals,2,0.8551803691275168,StratifiedGroupKFold,164
+qwen,humaneval,T5: + health_signals,3,0.8599960254372019,StratifiedGroupKFold,164
+qwen,humaneval,T5: + health_signals,4,0.9001149425287357,StratifiedGroupKFold,164
+qwen,humaneval,T6: full_corevital,0,0.9106113033448673,StratifiedGroupKFold,164
+qwen,humaneval,T6: full_corevital,1,0.8990885416666666,StratifiedGroupKFold,164
+qwen,humaneval,T6: full_corevital,2,0.9210360738255033,StratifiedGroupKFold,164
+qwen,humaneval,T6: full_corevital,3,0.8972575516693164,StratifiedGroupKFold,164
+qwen,humaneval,T6: full_corevital,4,0.8743678160919541,StratifiedGroupKFold,164

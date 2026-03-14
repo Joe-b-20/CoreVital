@@ -244,6 +244,12 @@ def create_parser() -> argparse.ArgumentParser:
         "When set, divergence scores are computed alongside heuristic risk.",
     )
     run_parser.add_argument(
+        "--report-on-gpu",
+        action="store_true",
+        dest="report_on_gpu",
+        help="Run report on GPU (default: offload to CPU). Use on weak-CPU hosts (e.g. RunPod).",
+    )
+    run_parser.add_argument(
         "--export-otel",
         action="store_true",
         help="Export run to OpenTelemetry (OTLP). Use --otel-endpoint or env. Requires CoreVital[otel].",
@@ -466,6 +472,9 @@ def run_command(args: argparse.Namespace) -> int:
                 if not Path(cal_path).exists():
                     raise FileNotFoundError(f"Calibration profile not found: {cal_path}")
                 config.calibration_profile = cal_path
+
+            # Report on GPU (default: offload to CPU to leave GPU free for inference)
+            config.device.report_on_gpu = getattr(args, "report_on_gpu", False)
 
             # OpenTelemetry export (optional)
             if getattr(args, "export_otel", False):

@@ -39,7 +39,7 @@ from tqdm import tqdm
 # Configuration
 # ---------------------------------------------------------------------------
 
-EXPERIMENT_DIR = Path.home() / "experiment"
+EXPERIMENT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = EXPERIMENT_DIR / "data"
 TRACES_DIR = EXPERIMENT_DIR / "traces"
 RESULTS_DIR = EXPERIMENT_DIR / "results"
@@ -51,7 +51,7 @@ MODELS = {
     "llama":     {"hf_id": "meta-llama/Llama-3.1-8B-Instruct", "quantize": None},
     "qwen":      {"hf_id": "Qwen/Qwen2.5-7B-Instruct",        "quantize": None},
     "mistral7b": {"hf_id": "mistralai/Mistral-7B-Instruct-v0.3", "quantize": None},
-    "mixtral":   {"hf_id": "mistralai/Mixtral-8x7B-Instruct-v0.1", "quantize": "8bit"},
+    "mixtral":   {"hf_id": "mistralai/Mixtral-8x7B-Instruct-v0.1", "quantize": None},
 }
 
 DATASETS = ["gsm8k", "humaneval"]
@@ -66,7 +66,7 @@ BASE_GEN_PARAMS = {
     "do_sample": True,
     "top_p": 0.95,
     "top_k": 50,
-    "max_new_tokens": 512,
+    "max_new_tokens": 768,
 }
 
 # ---------------------------------------------------------------------------
@@ -291,6 +291,10 @@ def make_config(model_spec: dict) -> "Config":
     config.device.requested = "auto"
     config.capture.capture_mode = "full"
     config.prompt_telemetry.enabled = True
+
+    # Qwen2.5 can produce inf/nan logits in float16 during sampling; use bfloat16
+    if "Qwen" in model_spec.get("hf_id", ""):
+        config.model.dtype = "bfloat16"
 
     # Sampling defaults (will be overridden per-run)
     config.generation.do_sample = True

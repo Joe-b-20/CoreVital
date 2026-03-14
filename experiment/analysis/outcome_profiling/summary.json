@@ -1,0 +1,266 @@
+{
+  "description": "Three-way outcome profiling: do correct, incorrect, and format-failure runs have distinct signal signatures, or is failure a single spectrum?",
+  "outcome_counts": {
+    "incorrect": 7980,
+    "correct": 3423,
+    "format_failure": 3137
+  },
+  "n_signals_tested": 95,
+  "n_one_vs_rest_results": 978,
+  "n_specificity_results": 326,
+  "key_finding_preview": "Signals that are specific to ONE outcome (high gap) indicate distinct failure modes. Signals that are strong for multiple outcomes indicate a shared failure spectrum.",
+  "top_specific_signals": [
+    {
+      "model": "llama",
+      "outcome": "correct",
+      "signal": "early10_surprisal_slope",
+      "best_pp": 0.556599604071185,
+      "specificity_gap": 0.025632436319090623
+    },
+    {
+      "model": "llama",
+      "outcome": "correct",
+      "signal": "l2_norm_slope",
+      "best_pp": 0.5398389398074008,
+      "specificity_gap": 0.006751630748070614
+    },
+    {
+      "model": "llama",
+      "outcome": "correct",
+      "signal": "repetition_detected",
+      "best_pp": 0.5014242380575622,
+      "specificity_gap": 0.00035308185162574723
+    },
+    {
+      "model": "llama",
+      "outcome": "incorrect",
+      "signal": "collapsed_rate_mean_zscore",
+      "best_pp": 0.7520827008923018,
+      "specificity_gap": 0.06545865162214659
+    },
+    {
+      "model": "llama",
+      "outcome": "incorrect",
+      "signal": "collapsed_rate_mean",
+      "best_pp": 0.7520827008923018,
+      "specificity_gap": 0.06545865162214659
+    },
+    {
+      "model": "llama",
+      "outcome": "incorrect",
+      "signal": "attn_entropy_norm_mean",
+      "best_pp": 0.7542770639142833,
+      "specificity_gap": 0.06168097601473321
+    },
+    {
+      "model": "llama",
+      "outcome": "format_failure",
+      "signal": "early10_entropy_mean",
+      "best_pp": 0.6799476007297863,
+      "specificity_gap": 0.10563550225606888
+    },
+    {
+      "model": "llama",
+      "outcome": "format_failure",
+      "signal": "early10_surprisal_mean",
+      "best_pp": 0.6314086591237301,
+      "specificity_gap": 0.09800892788533089
+    },
+    {
+      "model": "llama",
+      "outcome": "format_failure",
+      "signal": "early10_margin_mean",
+      "best_pp": 0.6848674609191606,
+      "specificity_gap": 0.09480617581216522
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "correct",
+      "signal": "concentration_min_mean",
+      "best_pp": 0.5665565101474069,
+      "specificity_gap": 0.052334883340220295
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "correct",
+      "signal": "entropy_std",
+      "best_pp": 0.5594136057631187,
+      "specificity_gap": 0.04693819207631433
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "correct",
+      "signal": "surprisal_max",
+      "best_pp": 0.5566982732837005,
+      "specificity_gap": 0.04478242475365679
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "incorrect",
+      "signal": "hidden_max_abs_last_layer_mean_zscore",
+      "best_pp": 0.8965205238760448,
+      "specificity_gap": 0.16840229168602283
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "incorrect",
+      "signal": "hidden_max_abs_last_layer_mean",
+      "best_pp": 0.8965205238760448,
+      "specificity_gap": 0.16840229168602283
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "incorrect",
+      "signal": "l2_norm_cross_layer_max_zscore",
+      "best_pp": 0.8749465272306302,
+      "specificity_gap": 0.15298376008955017
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "format_failure",
+      "signal": "l2_norm_slope",
+      "best_pp": 0.6950467797999542,
+      "specificity_gap": 0.09825763874145221
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "format_failure",
+      "signal": "warning_density_per_100t",
+      "best_pp": 0.6823341819643575,
+      "specificity_gap": 0.07006293072672964
+    },
+    {
+      "model": "mistral7b",
+      "outcome": "format_failure",
+      "signal": "entropy_slope",
+      "best_pp": 0.648797597559726,
+      "specificity_gap": 0.06437638171671067
+    },
+    {
+      "model": "mixtral",
+      "outcome": "correct",
+      "signal": "compound_density_per_100t",
+      "best_pp": 0.5399923273206827,
+      "specificity_gap": 0.02819321494663407
+    },
+    {
+      "model": "mixtral",
+      "outcome": "correct",
+      "signal": "late50p_entropy_mean",
+      "best_pp": 0.5224329548731972,
+      "specificity_gap": 0.015443481725918584
+    },
+    {
+      "model": "mixtral",
+      "outcome": "correct",
+      "signal": "late50p_surprisal_mean",
+      "best_pp": 0.5180764802106519,
+      "specificity_gap": 0.009310796014403877
+    },
+    {
+      "model": "mixtral",
+      "outcome": "incorrect",
+      "signal": "focused_head_mean_zscore",
+      "best_pp": 0.8973916805905688,
+      "specificity_gap": 0.14307358170404116
+    },
+    {
+      "model": "mixtral",
+      "outcome": "incorrect",
+      "signal": "focused_head_rate",
+      "best_pp": 0.8973916805905688,
+      "specificity_gap": 0.14307358170404116
+    },
+    {
+      "model": "mixtral",
+      "outcome": "incorrect",
+      "signal": "focused_head_mean",
+      "best_pp": 0.8973916805905688,
+      "specificity_gap": 0.14307358170404116
+    },
+    {
+      "model": "mixtral",
+      "outcome": "format_failure",
+      "signal": "topk_mass_mean",
+      "best_pp": 0.6160085607602703,
+      "specificity_gap": 0.0634322054953882
+    },
+    {
+      "model": "mixtral",
+      "outcome": "format_failure",
+      "signal": "topk_mass_std",
+      "best_pp": 0.613628145276955,
+      "specificity_gap": 0.06154456186967916
+    },
+    {
+      "model": "mixtral",
+      "outcome": "format_failure",
+      "signal": "n_warning_signals",
+      "best_pp": 0.5973505455944115,
+      "specificity_gap": 0.04361332770037363
+    },
+    {
+      "model": "qwen",
+      "outcome": "correct",
+      "signal": "entropy_range_approx",
+      "best_pp": 0.6873117081260365,
+      "specificity_gap": 0.07773661973150259
+    },
+    {
+      "model": "qwen",
+      "outcome": "correct",
+      "signal": "l2_norm_slope",
+      "best_pp": 0.6656318407960199,
+      "specificity_gap": 0.07129998318290276
+    },
+    {
+      "model": "qwen",
+      "outcome": "correct",
+      "signal": "entropy_max",
+      "best_pp": 0.6923544941956883,
+      "specificity_gap": 0.07073503269288428
+    },
+    {
+      "model": "qwen",
+      "outcome": "incorrect",
+      "signal": "topk_mass_std",
+      "best_pp": 0.6749676631078572,
+      "specificity_gap": 0.023783257139408542
+    },
+    {
+      "model": "qwen",
+      "outcome": "incorrect",
+      "signal": "topk_mass_mean",
+      "best_pp": 0.6763678935261256,
+      "specificity_gap": 0.023038772983907996
+    },
+    {
+      "model": "qwen",
+      "outcome": "incorrect",
+      "signal": "entropy_p90",
+      "best_pp": 0.6229597188362157,
+      "specificity_gap": 0.020912812557783766
+    },
+    {
+      "model": "qwen",
+      "outcome": "format_failure",
+      "signal": "concentration_min_mean",
+      "best_pp": 0.767979836449828,
+      "specificity_gap": 0.2273960370680459
+    },
+    {
+      "model": "qwen",
+      "outcome": "format_failure",
+      "signal": "concentration_max_mean",
+      "best_pp": 0.7594493418669243,
+      "specificity_gap": 0.21495988405912136
+    },
+    {
+      "model": "qwen",
+      "outcome": "format_failure",
+      "signal": "focused_head_rate",
+      "best_pp": 0.7198529844345567,
+      "specificity_gap": 0.19742312268754558
+    }
+  ]
+}

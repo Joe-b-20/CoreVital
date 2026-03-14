@@ -1,0 +1,9 @@
+model,dataset,n_runs,n_failures,failure_rate
+llama,gsm8k,2000,359,0.1795
+llama,humaneval,1640,0,0.0
+mistral7b,gsm8k,2000,1445,0.7225
+mistral7b,humaneval,1640,0,0.0
+mixtral,gsm8k,2000,1242,0.621
+mixtral,humaneval,1620,0,0.0
+qwen,gsm8k,2000,91,0.0455
+qwen,humaneval,1640,0,0.0

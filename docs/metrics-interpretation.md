@@ -6,6 +6,10 @@ This guide explains each metric CoreVital computes, how to interpret thresholds,
 
 CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K margin, top-K mass) and **aggregate** signals (health flags, risk score, compound signals, early warning, prompt surprisals, basin scores, attention collapse). This document covers definitions, typical ranges, and when to act.
 
+### Validation (experiment)
+
+A benchmark validation experiment tested CoreVital metrics on **GSM8K** and **HumanEval** with four models (Llama-3.1-8B, Qwen-2.5-7B, Mistral-7B, Mixtral-8x7B) under grouped held-out evaluation. **Findings are model- and task-dependent:** which signals predict correctness (predictive power, ablation AUROC) varies by model and dataset. See the [Validation Report](validation-report.md) and `experiment/analysis/key_findings.json` for evidence; numbers and signal examples in this doc align with that run where cited.
+
 ---
 
 ## Per-step metrics (timeline)
@@ -15,6 +19,8 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 **Definition:** Shannon entropy of the model's next-token probability distribution at each generation step.  
 **Formula:** `H = -Σ p_i log₂(p_i)` (Shannon entropy in bits).  
 **Research:** Standard information theory; see e.g. Shannon (1948).
+
+**Evidence (experiment):** In the validation experiment, entropy-derived signals (e.g. `entropy_mean`, `entropy_std`, `early50p_entropy_mean`, `entropy_slope`) showed direction-aware predictive power for correctness in a model- and task-dependent way; see [Validation Report](validation-report.md) §2 (Metric correlation, Focus 1) and `experiment/analysis/key_findings.json` (focus_01_metric_correlation). Entropy-only (single feature) was weak in some cells; early-window and run-varying entropy often added more lift in grouped ablations.
 
 | Range    | Interpretation |
 |----------|-----------------|
@@ -37,17 +43,23 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 **Definition:** -log₂(probability of actual token); how surprising the actually generated token was.  
 **Use:** Measures "cost" of the chosen token; spikes indicate unexpected choices.
 
+**Evidence (experiment):** Early-window surprisal signals (e.g. `early10_surprisal_mean`, `early25p_surprisal_slope`, `early50p_surprisal_slope`, `prompt_surprisal_mean`) were among the top predictors of correctness for several model/dataset cells in the validation experiment (Mistral/Mixtral on HumanEval; prompt-level difficulty). See [Validation Report](validation-report.md) §2 and `experiment/analysis/key_findings.json` (focus_01_metric_correlation, focus_05_difficulty).
+
 ### Top-K margin
 
 **Definition:** Difference between the probability of the top token and the second-most likely token.  
 **Use:** Small margin means the model was close to choosing another token; useful for confidence and calibration.  
 *Deprecated:* `top1_top2_margin` is the same quantity; prefer `top_k_margin` in config and schema.
 
+**Evidence (experiment):** `margin_mean` (and early-window variants such as `early10_margin_mean`) showed predictive power for correctness in several cells and is one of the six features in the experiment’s data-driven failure model (step 5). See [Validation Report](validation-report.md) §3 (Risk calibration) and `experiment/calibration/step5_proposed_risk_model.json`.
+
 ### Top-K mass (formerly voter_agreement)
 
 **Definition:** Sum of probabilities of the top-K tokens (default K=10). Previously exposed as `voter_agreement` (deprecated; still written for backward compatibility).  
 **Use:** High value means most probability mass is on a small set of candidates; low value means spread across many tokens. Used as a component in the risk score.  
 **Config key:** `topk_mass` in `logits.stats`.
+
+**Evidence (experiment):** `topk_mass_mean` is one of the six features selected for the validation experiment’s pooled failure model (step 5). See [Validation Report](validation-report.md) §3 and `experiment/calibration/step5_proposed_risk_model.json`.
 
 ### Top-K probs
 
@@ -69,11 +81,15 @@ CoreVital produces **per-step** metrics (entropy, perplexity, surprisal, top-K m
 | ~0.5     | Balanced attention across positions (middle third vs two boundary thirds). |
 | > 1.5     | Head focuses more on middle than boundaries. |
 
+**Evidence (experiment):** `basin_score_mean` is one of the six features in the validation experiment’s data-driven failure model (step 5). See [Validation Report](validation-report.md) §3 and `experiment/calibration/step5_proposed_risk_model.json`.
+
 **In the dashboard:** Sparse Attention tab shows a layers×heads basin heatmap and per-layer bar chart.
 
 ### Concentration min
 
 **Definition:** The minimum value, across all attention heads and query positions, of the maximum attention weight assigned to any single key. Low concentration_min means at least one head at one position has very diffuse (spread-out) attention, which may indicate an underperforming head.
+
+**Evidence (experiment):** `concentration_min_mean` and `concentration_max_mean` were among the top predictive signals for Qwen on HumanEval in the validation experiment (direction-aware predictive power ~0.85 and ~0.81). See [Validation Report](validation-report.md) §2 and `experiment/analysis/key_findings.json` (focus_01_metric_correlation).
 
 ### Entropy mean (raw)
 
@@ -139,6 +155,8 @@ These help distinguish benign clipping (tiny fraction affected) from severe inst
 ---
 
 ## Risk score (0–1)
+
+**Validation and production use:** The built-in **risk_score** is a **heuristic, research-grounded placeholder**. It was never intended to be production-calibrated out of the box. The validation experiment showed that raw risk has **poor calibration** (high ECE before Platt scaling) and only **modest pooled discrimination** as-is. A data-driven grouped held-out failure model (step 5) improves pooled AUROC and ECE; for production, use explicit calibration or a learned model and treat the heuristic score as **indicative only**. See [Risk and Threshold Calibration](risk-calibration.md) and the [Validation Report](validation-report.md) §3 and §5; see also *Mandatory messaging* in `experiment/VALIDATION_TRACKER.md`.
 
 ### Composite scoring
 
@@ -210,11 +228,15 @@ Compound signals detect multi-metric failure patterns that individual metrics mi
 
 Compound signals are reported in `extensions.compound_signals` and contribute to the risk score.
 
+**Evidence (experiment):** The compound-derived signal `compound_density_per_100t` was the top predictor of correctness for Qwen on HumanEval in the validation experiment (predictive power ~0.89). See [Validation Report](validation-report.md) §2 and `experiment/analysis/key_findings.json` (focus_01_metric_correlation).
+
 ---
 
 ## Early warning
 
-Early warning detects degradation patterns *before* they trip boolean health-flag thresholds. Unlike the risk score (which aggregates what already happened), early warning predicts whether the next N tokens are likely to fail.
+Early warning detects degradation patterns in timeline metrics (entropy accelerating, margin declining, etc.). Unlike the risk score (which aggregates what already happened), it is intended to surface trends that may precede failures—but it has **not** been validated as a reliable predictor of task failure.
+
+**Validation and production use:** The built-in **failure_risk** **was evaluated** in the validation experiment and did **not** behave like a reliable calibrated predictor of task failure. The trend detectors (entropy accelerating, margin declining, etc.) remain **theoretical / exploratory**. Use these signals for **debugging and research iteration**, not as production quality predictors. See [Validation Report](validation-report.md) §3 and §5 (Risk score and early warning) and `experiment/VALIDATION_TRACKER.md` (Mandatory messaging).
 
 ### Warning signals
 
@@ -337,3 +359,5 @@ The narrative is a 2–6 sentence human-readable summary of each run. It referen
 - [Visual Examples](visual-examples.md) — good vs bad runs in the dashboard.
 - [Model compatibility](model-compatibility.md) — architectures, sparse attention, thresholds.
 - [Risk and Threshold Calibration](risk-calibration.md) — ECE, Platt scaling, benchmark workflow.
+- [Validation Report](validation-report.md) — experiment evidence: metric correlation, ablation, risk calibration, mandatory messaging for risk_score and failure_risk.
+- `experiment/analysis/key_findings.json` — per-section findings (predictive power, which signals matter, model- and task-dependent).

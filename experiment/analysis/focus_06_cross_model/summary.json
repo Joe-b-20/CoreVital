@@ -1,0 +1,428 @@
+{
+  "description": "Cross-model behavioral alignment",
+  "difficulty_agreement": [
+    {
+      "dataset": "gsm8k",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.45346826164098875,
+      "n_questions": 165
+    },
+    {
+      "dataset": "gsm8k",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.32748781822361756,
+      "n_questions": 165
+    },
+    {
+      "dataset": "gsm8k",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.09646292637757689,
+      "n_questions": 200
+    },
+    {
+      "dataset": "gsm8k",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.4558457483885435,
+      "n_questions": 145
+    },
+    {
+      "dataset": "gsm8k",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.025895770238097967,
+      "n_questions": 165
+    },
+    {
+      "dataset": "gsm8k",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": -0.133960645627787,
+      "n_questions": 165
+    },
+    {
+      "dataset": "humaneval",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.3629443647995699,
+      "n_questions": 164
+    },
+    {
+      "dataset": "humaneval",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.2670237792231006,
+      "n_questions": 162
+    },
+    {
+      "dataset": "humaneval",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.31800348087514146,
+      "n_questions": 164
+    },
+    {
+      "dataset": "humaneval",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.3126575585287894,
+      "n_questions": 162
+    },
+    {
+      "dataset": "humaneval",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.16896528373739478,
+      "n_questions": 164
+    },
+    {
+      "dataset": "humaneval",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.15032153699248652,
+      "n_questions": 162
+    }
+  ],
+  "signal_alignment_summary": [
+    {
+      "dataset": "gsm8k",
+      "signal": "entropy_mean",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.4198861966713862
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "entropy_mean",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.27451179440600537
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "entropy_mean",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.3497772444311108
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "entropy_mean",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.5377696425759723
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "entropy_mean",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.3888681110250314
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "entropy_mean",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.2889562685331125
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "surprisal_mean",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.39373814548660274
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "surprisal_mean",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.23101007132743837
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "surprisal_mean",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.35477386934673366
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "surprisal_mean",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.5662612187057157
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "surprisal_mean",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.38954131381401436
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "surprisal_mean",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.30017898645580104
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "margin_mean",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.4786765688029279
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "margin_mean",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.2968103010712473
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "margin_mean",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.36490812270306755
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "margin_mean",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.5387773578963942
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "margin_mean",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.40611225389362327
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "margin_mean",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.3308551278283867
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.0696578686736547
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": -0.06243640006530478
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": -0.07961527023748788
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": -0.06733337257187666
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": -0.15906957832015797
+    },
+    {
+      "dataset": "gsm8k",
+      "signal": "risk_score",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": -0.047906853717581396
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "entropy_mean",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.15646756356018662
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "entropy_mean",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.09219389720856778
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "entropy_mean",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.06563737026104227
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "entropy_mean",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.5147263256092277
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "entropy_mean",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.27504250948811776
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "entropy_mean",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.030657910892640153
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "surprisal_mean",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.16935780066110756
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "surprisal_mean",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.09086726478030825
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "surprisal_mean",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.08243439935793669
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "surprisal_mean",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.5245123567342825
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "surprisal_mean",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.2677948118019942
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "surprisal_mean",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.07220126425247791
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "margin_mean",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": 0.150767891393359
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "margin_mean",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": 0.10812477683643328
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "margin_mean",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": 0.021773019738005522
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "margin_mean",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.467557486229132
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "margin_mean",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": 0.2539850094541102
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "margin_mean",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": 0.011997555609185378
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "model_a": "llama",
+      "model_b": "mistral7b",
+      "spearman_rho": -0.0332435814214201
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "model_a": "llama",
+      "model_b": "mixtral",
+      "spearman_rho": -0.010744217481060919
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "model_a": "llama",
+      "model_b": "qwen",
+      "spearman_rho": -0.014402894726102866
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "model_a": "mistral7b",
+      "model_b": "mixtral",
+      "spearman_rho": 0.010983548224434574
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "model_a": "mistral7b",
+      "model_b": "qwen",
+      "spearman_rho": -0.04829142289171882
+    },
+    {
+      "dataset": "humaneval",
+      "signal": "risk_score",
+      "model_a": "mixtral",
+      "model_b": "qwen",
+      "spearman_rho": -0.020261518547430142
+    }
+  ],
+  "fingerprint_note": "Fingerprint has 25 dimensions. Inspection shows these are concatenated summary statistics (fp_00=entropy_mean, fp_01=entropy_std, etc.), NOT a learned embedding. Fingerprint analysis is therefore redundant with named feature analysis and should not be treated as independent evidence."
+}

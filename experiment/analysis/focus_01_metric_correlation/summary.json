@@ -1,0 +1,228 @@
+{
+  "description": "Per-metric correlation with output quality (direction-aware)",
+  "n_signals_tested": 95,
+  "n_results": 647,
+  "n_significant_fdr05": 340,
+  "top_10_global": [
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "compound_density_per_100t",
+      "predictive_power": 0.8928356638099533,
+      "direction": "higher_better",
+      "correlation": 0.4885883874922863,
+      "p_value_fdr": 2.5198002996559504e-96
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "l2_norm_slope",
+      "predictive_power": 0.8675679513523447,
+      "direction": "lower_better",
+      "correlation": -0.45951600750798977,
+      "p_value_fdr": 5.991117394655395e-84
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "concentration_min_mean",
+      "predictive_power": 0.8530296196060743,
+      "direction": "higher_better",
+      "correlation": 0.4098633496709269,
+      "p_value_fdr": 2.392540407686167e-65
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "concentration_max_mean",
+      "predictive_power": 0.8105046860121286,
+      "direction": "higher_better",
+      "correlation": 0.37571804667510295,
+      "p_value_fdr": 2.2921126970731898e-54
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "entropy_max",
+      "predictive_power": 0.8063219398920798,
+      "direction": "lower_better",
+      "correlation": -0.3983619072353234,
+      "p_value_fdr": 1.2239956889520941e-61
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "perplexity_max",
+      "predictive_power": 0.8063219398920798,
+      "direction": "lower_better",
+      "correlation": -0.2598107830706963,
+      "p_value_fdr": 3.748700529478682e-25
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "entropy_range",
+      "predictive_power": 0.8063219398920798,
+      "direction": "lower_better",
+      "correlation": -0.3983619072353234,
+      "p_value_fdr": 1.2239956889520941e-61
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "entropy_range_approx",
+      "predictive_power": 0.7966805325849079,
+      "direction": "lower_better",
+      "correlation": -0.3894490816191079,
+      "p_value_fdr": 1.0187029131955633e-58
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "surprisal_range",
+      "predictive_power": 0.795711588900583,
+      "direction": "lower_better",
+      "correlation": -0.4037419256545904,
+      "p_value_fdr": 2.3015202391249887e-63
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "surprisal_max",
+      "predictive_power": 0.795711588900583,
+      "direction": "lower_better",
+      "correlation": -0.4037419256545904,
+      "p_value_fdr": 2.3015202391249887e-63
+    }
+  ],
+  "top_5_per_model": {
+    "llama": [
+      {
+        "dataset": "gsm8k",
+        "signal": "entropy_std",
+        "predictive_power": 0.6537127802680147,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "gsm8k",
+        "signal": "early50p_entropy_mean",
+        "predictive_power": 0.6527934872160083,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "gsm8k",
+        "signal": "perplexity_mean",
+        "predictive_power": 0.6520603800985855,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "gsm8k",
+        "signal": "entropy_p90",
+        "predictive_power": 0.6497365469025642,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "gsm8k",
+        "signal": "entropy_mean",
+        "predictive_power": 0.6454368154757748,
+        "direction": "lower_better"
+      }
+    ],
+    "mistral7b": [
+      {
+        "dataset": "humaneval",
+        "signal": "early10_surprisal_slope",
+        "predictive_power": 0.7314547025240385,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early25p_surprisal_slope",
+        "predictive_power": 0.7307191506410255,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early50p_surprisal_slope",
+        "predictive_power": 0.7156137319711539,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early10_surprisal_mean",
+        "predictive_power": 0.6984080779246795,
+        "direction": "higher_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early25p_surprisal_mean",
+        "predictive_power": 0.6620154747596154,
+        "direction": "higher_better"
+      }
+    ],
+    "mixtral": [
+      {
+        "dataset": "humaneval",
+        "signal": "early10_surprisal_mean",
+        "predictive_power": 0.7955377651344052,
+        "direction": "higher_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early10_entropy_mean",
+        "predictive_power": 0.7308387233183729,
+        "direction": "higher_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early10_margin_mean",
+        "predictive_power": 0.7257450673227552,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early10_surprisal_slope",
+        "predictive_power": 0.7111752890409511,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "early25p_surprisal_slope",
+        "predictive_power": 0.6956320909956986,
+        "direction": "lower_better"
+      }
+    ],
+    "qwen": [
+      {
+        "dataset": "humaneval",
+        "signal": "compound_density_per_100t",
+        "predictive_power": 0.8928356638099533,
+        "direction": "higher_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "l2_norm_slope",
+        "predictive_power": 0.8675679513523447,
+        "direction": "lower_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "concentration_min_mean",
+        "predictive_power": 0.8530296196060743,
+        "direction": "higher_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "concentration_max_mean",
+        "predictive_power": 0.8105046860121286,
+        "direction": "higher_better"
+      },
+      {
+        "dataset": "humaneval",
+        "signal": "entropy_range",
+        "predictive_power": 0.8063219398920798,
+        "direction": "lower_better"
+      }
+    ]
+  }
+}

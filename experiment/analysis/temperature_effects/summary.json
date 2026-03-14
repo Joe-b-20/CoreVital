@@ -1,0 +1,11 @@
+{
+  "description": "Temperature effect decomposition. Tests whether CoreVital signal distributions and predictive power change between temperatures.",
+  "temperatures": [
+    0.7,
+    0.8
+  ],
+  "n_shift_tests": 400,
+  "n_pp_tests": 160,
+  "mean_pp_abs_delta": 0.028231215672380006,
+  "finding": "Robust"
+}

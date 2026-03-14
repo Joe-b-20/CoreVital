@@ -40,6 +40,9 @@ class DeviceConfig(BaseModel):
     """Device configuration."""
 
     requested: str = "auto"  # auto, cpu, cuda
+    # When False (default): offload report tensors to CPU so GPU stays free for inference.
+    # When True: keep tensors on model device so report/summaries run on GPU (e.g. RunPod where CPU is the bottleneck).
+    report_on_gpu: bool = False
 
 
 class GenerationConfig(BaseModel):
@@ -327,8 +330,9 @@ class Config(BaseModel):
         splitting the env var name on ``_``.
 
         Examples:
-            COREVITAL_DEVICE_REQUESTED=cuda      → data["device"]["requested"]
-            COREVITAL_PROMPT_TELEMETRY_ENABLED=0  → data["prompt_telemetry"]["enabled"]
+            COREVITAL_DEVICE_REQUESTED=cuda         → data["device"]["requested"]
+            COREVITAL_DEVICE_REPORT_ON_GPU=1        → data["device"]["report_on_gpu"] (run report on GPU; default off)
+            COREVITAL_PROMPT_TELEMETRY_ENABLED=0    → data["prompt_telemetry"]["enabled"]
 
         Args:
             data: Configuration dictionary

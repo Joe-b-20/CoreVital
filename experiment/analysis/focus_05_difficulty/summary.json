@@ -1,0 +1,49 @@
+{
+  "description": "Prompt-level signal correlation with empirical difficulty",
+  "difficulty_definition": "1 - mean(correct) pooled across all models and temperatures",
+  "n_per_model_correlations": 88,
+  "n_pooled_correlations": 22,
+  "invariance_issues": 0,
+  "top_correlations": [
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "signal": "layer_transform_std",
+      "spearman_rho": -0.2626050397819558,
+      "p_value": 0.0001721928008256874,
+      "n_prompts": 200
+    },
+    {
+      "model": "llama",
+      "dataset": "humaneval",
+      "signal": "prompt_surprisal_max",
+      "spearman_rho": 0.24199369282783142,
+      "p_value": 0.0017971102422018523,
+      "n_prompts": 164
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "prompt_surprisal_std",
+      "spearman_rho": 0.21402300563233115,
+      "p_value": 0.005926360959581751,
+      "n_prompts": 164
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "signal": "prompt_surprisal_max",
+      "spearman_rho": 0.20863189819269426,
+      "p_value": 0.00734192740466425,
+      "n_prompts": 164
+    },
+    {
+      "model": "llama",
+      "dataset": "humaneval",
+      "signal": "layer_transform_std",
+      "spearman_rho": 0.2063985258228235,
+      "p_value": 0.00801144858077199,
+      "n_prompts": 164
+    }
+  ]
+}

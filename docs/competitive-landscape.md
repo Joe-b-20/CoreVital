@@ -29,7 +29,7 @@ How CoreVital differs from existing LLM observability products and research.
 
 - **Internal inference instrumentation:** Hooks into the model forward pass (Hugging Face / PyTorch); captures hidden states, attention, and logits **during** generation.
 - **Health signals:** Repetition loop (last-layer hidden-state similarity), high-entropy steps (logits entropy > threshold), attention collapse (collapsed/focused head counts), mid-layer anomaly (L2 norms, NaN/Inf), plus NaN/Inf in tensors.
-- **Single risk score + flags:** One run-level risk score and health flags for alerting and comparison.
+- **Single risk score + flags:** One run-level risk score and health flags for alerting and comparison. The risk score is a research-grounded heuristic; see the [validation report](validation-report.md) for evidence and interpretation.
 - **Summary-only storage:** No raw tensors in reports; only lightweight summaries. Enables practical storage and long retention.
 
 **Positioning:** "Internal inference health for self-hosted/open-source LLMs -- entropy, repetition, attention collapse, anomalies -- without storing raw activations."

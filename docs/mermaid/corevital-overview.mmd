@@ -7,9 +7,9 @@ flowchart TB
 
     subgraph WHAT["WHAT CoreVital MONITORS"]
         direction LR
-        HS["🧠 Hidden States<br/>Internal representations at every layer.<br/>Are they stable? Growing? Collapsing?"]
-        ATT["👁️ Attention Patterns<br/>Which tokens is each head focusing on?<br/>Is any head collapsed (ignoring everything)?"]
-        LOG["📊 Logits / Probabilities<br/>How confident is the model at each step?<br/>How many tokens is it choosing between?"]
+        HS[" Hidden States<br/>Internal representations at every layer.<br/>Are they stable? Growing? Collapsing?"]
+        ATT[" Attention Patterns<br/>Which tokens is each head focusing on?<br/>Is any head collapsed (ignoring everything)?"]
+        LOG[" Logits / Probabilities<br/>How confident is the model at each step?<br/>How many tokens is it choosing between?"]
     end
 
     subgraph WHY["WHY you need it"]
@@ -45,12 +45,12 @@ flowchart TB
 
     subgraph OUTPUT["WHAT you get"]
         direction LR
-        O1["📈 Per-step timeline<br/>entropy, perplexity, surprisal,<br/>top-K margin, top-K mass"]
-        O2["🚩 Health flags<br/>Boolean alerts for<br/>critical issues"]
-        O3["🎯 Risk score 0–1<br/>Single number: how likely<br/>is this output bad?"]
-        O4["🔍 Compound signals<br/>Multi-metric failure patterns<br/>(context loss, confusion, etc.)"]
-        O5["📋 Narrative<br/>Plain-English summary<br/>with recommendations"]
-        O6["🔢 Fingerprint<br/>25-element vector for<br/>clustering similar runs"]
+        O1[" Per-step timeline<br/>entropy, perplexity, surprisal,<br/>top-K margin, top-K mass"]
+        O2[" Health flags<br/>Boolean alerts for<br/>critical issues"]
+        O3[" Risk score 0–1<br/>Single number: how likely<br/>is this output bad?"]
+        O4[" Compound signals<br/>Multi-metric failure patterns<br/>(context loss, confusion, etc.)"]
+        O5[" Narrative<br/>Plain-English summary<br/>with recommendations"]
+        O6[" Fingerprint<br/>25-element vector for<br/>clustering similar runs"]
     end
 
     subgraph STORE["WHERE it goes"]

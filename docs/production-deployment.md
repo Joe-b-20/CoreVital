@@ -2,6 +2,30 @@
 
 This guide covers how to run CoreVital in production: sampling, persistence, metrics export, and alerting. It also explains the **Two Viewing Paths** (open-source/individual vs enterprise) for visualizing your data.
 
+## ⚠️ Critical: Built-in scores are not production-calibrated
+
+**Before deploying to production with risk-based alerts:**
+
+The built-in **`risk_score`** and **`failure_risk`** are **heuristic research placeholders**, not production-calibrated predictors. Validation on GSM8K/HumanEval showed:
+
+- **risk_score saturates at 1.0** for Mistral (96%) and Mixtral (94%)
+- **Poor calibration:** ECE 0.24-0.70 before Platt scaling
+- **Weak discrimination:** AUROC 0.48-0.62 (near chance in some cells)
+- **failure_risk is discrete** (2-5 unique values), AUROC near chance
+
+**Do NOT:**
+- Set production SLAs based on raw risk_score thresholds without calibration
+- Trigger automated rollbacks or circuit breakers on failure_risk
+- Assume risk_score=0.8 means 80% failure probability (it doesn't)
+
+**DO:**
+- Use built-in scores as **indicative signals** for debugging and exploration
+- Run your own calibration workflow (see [Risk Calibration](risk-calibration.md)) with labeled data from your domain
+- Implement per-model calibration (validation showed pooled models don't transfer well)
+- Use CoreVital metrics (entropy, margin, surprisal, attention stats) as inputs to your own learned failure detector
+
+See [Risk Calibration](risk-calibration.md) for experiment findings, calibration workflow, and recommendations. See [Validation Report](validation-report.md) for full methodology and per-model results.
+
 ## Sampling strategy
 
 Instrumenting every request can be expensive. Use **capture mode** and **sampling** to control cost and payload size.
@@ -11,6 +35,8 @@ Instrumenting every request can be expensive. Use **capture mode** and **samplin
 - **`--capture on_risk`** — Summary by default; when `risk_score` or health flags exceed thresholds, also persist a full trace. Requires Phase-2 risk; balance between observability and storage.
 
 **Sampling in your app:** If you use the Library API (`CoreVitalMonitor`), run CoreVital only on a subset of requests (e.g. 1% random, or every N-th request, or only when latency &gt; P95). The CLI does not sample; wrap it in your own script or scheduler that chooses which prompts to monitor.
+
+**Report on GPU:** By default, report and summary computation runs on CPU (tensors are offloaded after generation so the GPU is free for inference). On weak-CPU cloud hosts (e.g. RunPod), use `--report-on-gpu` (or `COREVITAL_DEVICE_REPORT_ON_GPU=1`) so summary ops run on the model device and avoid a CPU bottleneck.
 
 ## Database setup (SQLite)
 
@@ -36,10 +62,24 @@ Run one CoreVital process per app instance (or a dedicated sidecar) so metrics r
 
 ## Alerting on risk and health flags
 
-- **Risk score:** Alert when `risk_score` exceeds a threshold (e.g. > 0.7). Prometheus: `corevital_risk_score > 0.7`. Datadog: similar on the metric you export.
-- **Health flags:** Use series like `corevital_health_nan_detected`, `corevital_health_attention_collapse_detected`, `corevital_health_repetition_loop_detected` (names may vary; check the sink implementation). Alert on “any true” or "> 0" depending on how they’re encoded.
+⚠️ **See warning above** — Built-in risk_score is not production-calibrated. If using risk-based alerts:
 
-Combine with your existing incident pipeline (PagerDuty, Slack, etc.) by having Prometheus/Datadog send alerts when these conditions fire.
+- **Run calibration first:** Use the workflow in [Risk Calibration](risk-calibration.md) to fit Platt scaling or a learned model on your labeled data
+- **Use health flags for critical issues:** `nan_detected`, `repetition_loop_detected` are boolean and more reliable than continuous risk scores
+- **Combine with domain metrics:** Don't rely solely on CoreVital scores; use them alongside task-specific quality checks
+
+**If you choose to alert on risk_score** (after calibration):
+- **Prometheus:** `corevital_risk_score > <calibrated_threshold>`
+- **Datadog:** Similar on the exported metric
+- **Calibrated thresholds:** Determine from ECE analysis, not arbitrary cutoffs
+
+**Health flags (more reliable):**
+- `corevital_health_nan_detected` — Catastrophic numerical issues (alert immediately)
+- `corevital_health_repetition_loop_detected` — Degenerate output (high-severity alert)
+- `corevital_health_attention_collapse_detected` — Common in healthy runs; use with caution
+- `corevital_health_mid_layer_anomaly` — Suggests processing failure (medium severity)
+
+Combine with your existing incident pipeline (PagerDuty, Slack, etc.).
 
 ## Optional: Docker / K8s
 

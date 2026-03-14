@@ -80,8 +80,9 @@ class PromptForwardData:
 
     For CausalLM: comes from model(input_ids) before generate().
     For Seq2Seq: reuses encoder outputs (zero-cost).
-    Tensors remain on the model device; report_builder runs summary ops on device
-    and only syncs scalars to CPU. After building prompt_analysis, logits are cleared.
+    By default tensors are offloaded to CPU (config.device.report_on_gpu=False).
+    When report_on_gpu=True they stay on the model device and report_builder runs
+    summary ops on device. After building prompt_analysis, logits are cleared.
     """
 
     hidden_states: Optional[List[torch.Tensor]] = None

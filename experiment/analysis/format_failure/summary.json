@@ -1,0 +1,115 @@
+{
+  "description": "Format failure analysis \u2014 can CoreVital signals predict output format failures?",
+  "total_format_failures": 3137,
+  "total_runs": 14541,
+  "prevalence": [
+    {
+      "model": "llama",
+      "dataset": "gsm8k",
+      "n_runs": 2000,
+      "n_failures": 359,
+      "failure_rate": 0.1795
+    },
+    {
+      "model": "llama",
+      "dataset": "humaneval",
+      "n_runs": 1640,
+      "n_failures": 0,
+      "failure_rate": 0.0
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "gsm8k",
+      "n_runs": 2000,
+      "n_failures": 1445,
+      "failure_rate": 0.7225
+    },
+    {
+      "model": "mistral7b",
+      "dataset": "humaneval",
+      "n_runs": 1640,
+      "n_failures": 0,
+      "failure_rate": 0.0
+    },
+    {
+      "model": "mixtral",
+      "dataset": "gsm8k",
+      "n_runs": 2000,
+      "n_failures": 1242,
+      "failure_rate": 0.621
+    },
+    {
+      "model": "mixtral",
+      "dataset": "humaneval",
+      "n_runs": 1620,
+      "n_failures": 0,
+      "failure_rate": 0.0
+    },
+    {
+      "model": "qwen",
+      "dataset": "gsm8k",
+      "n_runs": 2000,
+      "n_failures": 91,
+      "failure_rate": 0.0455
+    },
+    {
+      "model": "qwen",
+      "dataset": "humaneval",
+      "n_runs": 1640,
+      "n_failures": 0,
+      "failure_rate": 0.0
+    }
+  ],
+  "top_predictive_signals": [
+    {
+      "model": "mistral7b",
+      "signal": "hidden_max_abs_last_layer_mean_zscore",
+      "correlation": -0.6445433614159733,
+      "p_value": 0.0,
+      "raw_auroc": 0.11806480598403102,
+      "predictive_power": 0.881935194015969,
+      "direction": "lower_more_failure",
+      "n": 3640
+    },
+    {
+      "model": "mistral7b",
+      "signal": "hidden_max_abs_last_layer_mean",
+      "correlation": -0.6445433614159732,
+      "p_value": 0.0,
+      "raw_auroc": 0.11806480598403102,
+      "predictive_power": 0.881935194015969,
+      "direction": "lower_more_failure",
+      "n": 3640
+    },
+    {
+      "model": "mistral7b",
+      "signal": "l2_norm_cross_layer_max",
+      "correlation": -0.587010860050317,
+      "p_value": 0.0,
+      "raw_auroc": 0.14824695951005354,
+      "predictive_power": 0.8517530404899465,
+      "direction": "lower_more_failure",
+      "n": 3640
+    },
+    {
+      "model": "mistral7b",
+      "signal": "l2_norm_cross_layer_max_zscore",
+      "correlation": -0.587010860050317,
+      "p_value": 0.0,
+      "raw_auroc": 0.14824695951005354,
+      "predictive_power": 0.8517530404899465,
+      "direction": "lower_more_failure",
+      "n": 3640
+    },
+    {
+      "model": "mixtral",
+      "signal": "focused_head_mean_zscore",
+      "correlation": -0.5259255578466722,
+      "p_value": 8.897929590009615e-257,
+      "raw_auroc": 0.1679791438641522,
+      "predictive_power": 0.8320208561358478,
+      "direction": "lower_more_failure",
+      "n": 3621
+    }
+  ]
+}

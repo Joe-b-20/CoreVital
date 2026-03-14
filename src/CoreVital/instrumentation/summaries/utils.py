@@ -35,6 +35,6 @@ def _random_projection_sketch(
     hidden_dim = vector.shape[0]
     generator = torch.Generator(device=device).manual_seed(seed)
     projection = torch.randn(hidden_dim, sketch_dim, device=device, generator=generator)
-    projection = projection / (hidden_dim ** 0.5)
+    projection = projection / (hidden_dim**0.5)
     sketch = vector @ projection  # (sketch_dim,)
     return [round(float(x), 2) for x in sketch.tolist()]

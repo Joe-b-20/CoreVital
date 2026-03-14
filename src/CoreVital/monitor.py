@@ -159,7 +159,7 @@ class CoreVitalMonitor:
         }
 
     def get_summary(self) -> Dict[str, Any]:
-        """Return full summary after a run: risk, flags, fingerprint, narrative, trace_id."""
+        """Return full summary after a run: risk, flags, fingerprint, narrative, trace_id, output_text."""
         out: Dict[str, Any] = {
             "risk_score": self.get_risk_score(),
             "health_flags": self.get_health_flags(),
@@ -175,6 +175,8 @@ class CoreVitalMonitor:
             out["trace_id"] = getattr(self._report, "trace_id", None)
             model = getattr(self._report, "model", None)
             out["model_id"] = getattr(model, "hf_id", None) if model else None
+            generated = getattr(self._report, "generated", None)
+            out["output_text"] = getattr(generated, "output_text", None) if generated else None
         return out
 
     def should_intervene(self) -> bool:

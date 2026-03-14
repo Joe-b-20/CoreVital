@@ -1,5 +1,7 @@
 # Test Prompts for CoreVital
 
+This document is for **manual and smoke testing** of CoreVital (quick verification of risk and health flags). For the **validation experiment** (GSM8K and HumanEval with four models at full precision), see the [Validation Report](validation-report.md) and `experiment/`; that run used different prompts and methodology.
+
 ## Evaluation Prompts (CoreVital Tool Validation)
 
 Use these **tried-and-tested** prompts to verify that CoreVital correctly reports low risk on clean runs and raises risk/flags on problematic ones. All use **GPT-2** and **CPU** (no GPU) so they are fast and reproducible.

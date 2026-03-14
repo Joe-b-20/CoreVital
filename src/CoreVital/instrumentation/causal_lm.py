@@ -218,6 +218,7 @@ def _process_timeline(
             raw_attention = outputs.attentions[step_idx]
 
         beam_handler = _slice_beam if num_beams > 1 else None
+        offload_to_cpu = not getattr(config.device, "report_on_gpu", False)
 
         payload = normalize_step_tensors(
             raw_hidden=raw_hidden,
@@ -226,6 +227,7 @@ def _process_timeline(
             raw_logits=raw_logits,
             num_layers=num_layers,
             beam_handler=beam_handler,
+            offload_to_cpu=offload_to_cpu,
         )
 
         summary = process_step(

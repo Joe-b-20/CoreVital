@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-EXPERIMENT_DIR = Path.home() / "experiment"
+EXPERIMENT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = EXPERIMENT_DIR / "data"
 SMOKE_DIR = EXPERIMENT_DIR / "smoke_test"
 
@@ -50,7 +50,7 @@ def main():
     from CoreVital.reporting.report_builder import ReportBuilder
     from CoreVital.utils.serialization import serialize_report_to_json
 
-    model_id = "meta-llama/Llama-3.1-8B-Instruct"
+    model_id = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     print(f"\nLoading model: {model_id}")
 
     config = Config.from_default()

@@ -1,0 +1,108 @@
+{
+  "description": "Signal redundancy mapping. Clusters correlated signals (|r| > 0.80) into families and identifies the best representative per family.",
+  "n_signals_analyzed": 95,
+  "n_families": 47,
+  "correlation_threshold": 0.8,
+  "recommended_minimal_set": [
+    {
+      "signal": "early10_surprisal_mean",
+      "pp": 0.6179976545778656,
+      "family_size": 1
+    },
+    {
+      "signal": "perplexity_max",
+      "pp": 0.6127253674815458,
+      "family_size": 6
+    },
+    {
+      "signal": "compound_density_per_100t",
+      "pp": 0.6100727313318783,
+      "family_size": 1
+    },
+    {
+      "signal": "entropy_std",
+      "pp": 0.6068609496399291,
+      "family_size": 12
+    },
+    {
+      "signal": "concentration_min_mean",
+      "pp": 0.6017880946860078,
+      "family_size": 2
+    },
+    {
+      "signal": "early50p_surprisal_slope",
+      "pp": 0.5987514941370307,
+      "family_size": 3
+    },
+    {
+      "signal": "early50p_surprisal_mean",
+      "pp": 0.5965447474546962,
+      "family_size": 3
+    },
+    {
+      "signal": "surprisal_max",
+      "pp": 0.5952180211233002,
+      "family_size": 2
+    },
+    {
+      "signal": "concentration_max_mean",
+      "pp": 0.5940916165752146,
+      "family_size": 1
+    },
+    {
+      "signal": "early10_margin_mean",
+      "pp": 0.592410295719084,
+      "family_size": 2
+    },
+    {
+      "signal": "l2_norm_slope",
+      "pp": 0.5915072910654317,
+      "family_size": 1
+    },
+    {
+      "signal": "early25p_surprisal_mean",
+      "pp": 0.5911142018252092,
+      "family_size": 3
+    },
+    {
+      "signal": "focused_head_rate",
+      "pp": 0.5858001767499864,
+      "family_size": 4
+    },
+    {
+      "signal": "focused_head_mean_zscore",
+      "pp": 0.5858001767499864,
+      "family_size": 2
+    },
+    {
+      "signal": "late50p_entropy_mean",
+      "pp": 0.585029858107016,
+      "family_size": 3
+    },
+    {
+      "signal": "early25p_surprisal_slope",
+      "pp": 0.5841072669124757,
+      "family_size": 3
+    },
+    {
+      "signal": "surprisal_slope",
+      "pp": 0.5819809486021672,
+      "family_size": 4
+    },
+    {
+      "signal": "collapsed_rate_mean",
+      "pp": 0.5760769992535845,
+      "family_size": 1
+    },
+    {
+      "signal": "surprisal_early_late_delta",
+      "pp": 0.5749468499640107,
+      "family_size": 2
+    },
+    {
+      "signal": "early10_surprisal_slope",
+      "pp": 0.5724900738366384,
+      "family_size": 1
+    }
+  ]
+}
