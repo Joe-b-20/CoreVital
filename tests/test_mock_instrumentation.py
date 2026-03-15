@@ -234,6 +234,12 @@ class TestMockCausalLMInstrumentation:
         # F2.3: when on_risk triggers, full layers are attached
         first_step = report.timeline[0]
         assert len(first_step.layers) > 0, "on_risk trigger should attach full timeline layers"
+        # Rebuilt prompt_analysis should have layers and preserved prompt_surprisals (not dropped on rebuild)
+        assert report.prompt_analysis is not None, "on_risk should attach prompt_analysis"
+        assert len(report.prompt_analysis.layers) > 0, "on_risk rebuild should include layers"
+        assert report.prompt_analysis.prompt_surprisals is not None, "prompt_surprisals must be preserved on rebuild"
+        # First build computes surprisals from logits; on_risk rebuild preserves them (logits cleared after first build)
+        assert isinstance(report.prompt_analysis.prompt_surprisals, list), "prompt_surprisals must be a list"
 
     def test_report_builder_rag_context_in_extensions(self, mock_model_bundle):
         """When config.rag_context is set, report.extensions['rag'] should contain RAGContext data (Foundation F3)."""
