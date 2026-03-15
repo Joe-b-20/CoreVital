@@ -156,95 +156,109 @@ class ReportBuilder:
         trace_id = str(uuid.uuid4())
         created_at = get_utc_timestamp()
 
-        # Build model info (tracked as child of report_build - corevital logic)
-        with _op("_build_model_info"):
-            model_info = self._build_model_info(results)
+        try:
+            # Build model info (tracked as child of report_build - corevital logic)
+            with _op("_build_model_info"):
+                model_info = self._build_model_info(results)
 
-        # Build run config
-        run_config = self._build_run_config(trace_id)
+            # Build run config
+            run_config = self._build_run_config(trace_id)
 
-        # Build prompt info
-        prompt_info = PromptInfo(
-            text=prompt,
-            token_ids=results.prompt_token_ids,
-            num_tokens=len(results.prompt_token_ids),
-        )
-
-        # Build generated info
-        generated_info = GeneratedInfo(
-            output_text=results.generated_text,
-            token_ids=results.generated_token_ids,
-            num_tokens=len(results.generated_token_ids),
-        )
-
-        # Build timeline (tracked as child of report_build - corevital logic)
-        # Returns (timeline, layers_by_step) for health flags; summary mode omits layers from storage
-        with _op("_build_timeline"):
-            timeline, timeline_layers_for_flags = self._build_timeline(results, profile)
-
-        # Build encoder layers (for Seq2Seq models)
-        # encoder_layers represents the encoder pass computed ONCE
-        # (Tracked as child of report_build)
-        with _op("_build_encoder_layers"):
-            encoder_layers = None
-            if results.encoder_hidden_states is not None or results.encoder_attentions is not None:
-                try:
-                    encoder_layers = self._build_encoder_layers(
-                        results.encoder_hidden_states,
-                        results.encoder_attentions,
-                        results.model_bundle.num_layers,
-                        profile=profile,
-                    )
-                    if encoder_layers:
-                        logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
-                except Exception as e:
-                    logger.warning(f"Failed to compute encoder layers: {e}")
-
-        # Build summary (tracked as child of report_build)
-        with _op("build Summary"):
-            summary = Summary(
-                prompt_tokens=len(results.prompt_token_ids),
-                generated_tokens=len(results.generated_token_ids),
-                total_steps=len(results.prompt_token_ids) + len(results.generated_token_ids),
-                elapsed_ms=results.elapsed_ms,
+            # Build prompt info
+            prompt_info = PromptInfo(
+                text=prompt,
+                token_ids=results.prompt_token_ids,
+                num_tokens=len(results.prompt_token_ids),
             )
 
-        # Convert warnings (tracked as child of report_build)
-        with _op("convert warnings"):
-            warnings = [Warning(code=w["code"], message=w["message"]) for w in results.warnings]
-
-        # Build prompt analysis (Phase-1b)
-        with _op("_build_prompt_analysis"):
-            prompt_analysis = self._build_prompt_analysis(results)
-
-        # Build health flags (Phase-1c)
-        # Transient buffer lifecycle: allocate → consume → kill, all inside this method
-        # When capture_mode is summary/on_risk, use timeline_layers_for_flags (not stored in report)
-        with _op("_build_health_flags"):
-            health_flags = self._build_health_flags(
-                results,
-                timeline,
-                timeline_layers_override=timeline_layers_for_flags,
-                profile=profile,
+            # Build generated info
+            generated_info = GeneratedInfo(
+                output_text=results.generated_text,
+                token_ids=results.generated_token_ids,
+                num_tokens=len(results.generated_token_ids),
             )
 
-        # Assemble final Report (tracked as child of report_build)
-        with _op("assemble Report"):
-            report = Report(
-                schema_version="0.4.0",
-                trace_id=trace_id,
-                created_at_utc=created_at,
-                model=model_info,
-                run_config=run_config,
-                prompt=prompt_info,
-                generated=generated_info,
-                timeline=timeline,
-                summary=summary,
-                warnings=warnings,
-                encoder_layers=encoder_layers,
-                prompt_analysis=prompt_analysis,
-                health_flags=health_flags,
-            )
+            # Build timeline (tracked as child of report_build - corevital logic)
+            # Returns (timeline, layers_by_step) for health flags; summary mode omits layers from storage
+            with _op("_build_timeline"):
+                timeline, timeline_layers_for_flags = self._build_timeline(results, profile)
+
+            # Build encoder layers (for Seq2Seq models)
+            # encoder_layers represents the encoder pass computed ONCE
+            # (Tracked as child of report_build)
+            with _op("_build_encoder_layers"):
+                encoder_layers = None
+                if results.encoder_hidden_states is not None or results.encoder_attentions is not None:
+                    try:
+                        encoder_layers = self._build_encoder_layers(
+                            results.encoder_hidden_states,
+                            results.encoder_attentions,
+                            results.model_bundle.num_layers,
+                            profile=profile,
+                        )
+                        if encoder_layers:
+                            logger.debug(f"Computed {len(encoder_layers)} encoder layer summaries")
+                    except Exception as e:
+                        logger.warning(f"Failed to compute encoder layers: {e}")
+
+            # Build summary (tracked as child of report_build)
+            with _op("build Summary"):
+                summary = Summary(
+                    prompt_tokens=len(results.prompt_token_ids),
+                    generated_tokens=len(results.generated_token_ids),
+                    total_steps=len(results.prompt_token_ids) + len(results.generated_token_ids),
+                    elapsed_ms=results.elapsed_ms,
+                )
+
+            # Convert warnings (tracked as child of report_build)
+            with _op("convert warnings"):
+                warnings = [Warning(code=w["code"], message=w["message"]) for w in results.warnings]
+
+            # Build prompt analysis (Phase-1b)
+            with _op("_build_prompt_analysis"):
+                prompt_analysis = self._build_prompt_analysis(results)
+            # When not on_risk, no second _build_prompt_analysis will run — clear prompt tensors
+            # now to reduce peak GPU memory; finally block remains as safety net.
+            capture_mode = getattr(self.config.capture, "capture_mode", "full")
+            if capture_mode != "on_risk":
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
+
+            # Build health flags (Phase-1c)
+            # Transient buffer lifecycle: allocate → consume → kill, all inside this method
+            # When capture_mode is summary/on_risk, use timeline_layers_for_flags (not stored in report)
+            with _op("_build_health_flags"):
+                health_flags = self._build_health_flags(
+                    results,
+                    timeline,
+                    timeline_layers_override=timeline_layers_for_flags,
+                    profile=profile,
+                )
+            # Consumed _last_layer_hidden_vec from timeline steps; clear so we don't retain
+            # one tensor per step (GPU when report_on_gpu) for the lifetime of results.
+            for step in results.timeline:
+                if hasattr(step, "_last_layer_hidden_vec"):
+                    step._last_layer_hidden_vec = None
+
+            # Assemble final Report (tracked as child of report_build) — op limited to Report() only
+            with _op("assemble Report"):
+                report = Report(
+                    schema_version="0.4.0",
+                    trace_id=trace_id,
+                    created_at_utc=created_at,
+                    model=model_info,
+                    run_config=run_config,
+                    prompt=prompt_info,
+                    generated=generated_info,
+                    timeline=timeline,
+                    summary=summary,
+                    warnings=warnings,
+                    encoder_layers=encoder_layers,
+                    prompt_analysis=prompt_analysis,
+                    health_flags=health_flags,
+                )
 
             # RAG context (Foundation F3): store in extensions when provided via CLI/API
             rag_dict = getattr(self.config, "rag_context", None)
@@ -323,11 +337,27 @@ class ReportBuilder:
                     step.model_copy(update={"layers": timeline_layers_for_flags[i]})
                     for i, step in enumerate(report.timeline)
                 ]
-                # Rebuild prompt_analysis with sparse heads included
+                # Rebuild prompt_analysis with sparse heads included (pf.logits already cleared
+                # in first build, so preserve prompt_surprisals from initial prompt_analysis)
                 full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
                 if full_prompt_analysis is not None:
+                    if report.prompt_analysis is not None:
+                        full_prompt_analysis = full_prompt_analysis.model_copy(
+                            update={"prompt_surprisals": report.prompt_analysis.prompt_surprisals}
+                        )
                     report.prompt_analysis = full_prompt_analysis
                 logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
+                # Clear prompt tensors now; no further _build_prompt_analysis. Reduces peak GPU use.
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
+            elif capture_mode == "on_risk":
+                # on_risk but condition not met; no second build; clear prompt tensors now
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
 
             # Phase-4: calibration divergence scoring (Issue 33)
             if self.config.calibration_profile:
@@ -418,10 +448,20 @@ class ReportBuilder:
                 except Exception as e:
                     logger.debug(f"Metric consistency validation failed: {e}")
 
-        # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
-
-        logger.debug(f"Report built: {len(timeline)} timeline steps")
-        return report
+            # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
+            logger.debug(f"Report built: {len(timeline)} timeline steps")
+            return report
+        finally:
+            # Clear prompt-forward tensors once all prompt_analysis builds are done (or on any exit).
+            # Ensures cleanup even if build() raises (e.g. in _build_health_flags); frees GPU when report_on_gpu.
+            pf = getattr(results, "prompt_forward", None)
+            if pf is not None:
+                pf.hidden_states = None
+                pf.attentions = None
+            # Release per-step vectors so we don't retain them (e.g. on GPU) if build() raised before clearing.
+            for step in results.timeline:
+                if hasattr(step, "_last_layer_hidden_vec"):
+                    step._last_layer_hidden_vec = None
 
     def _build_model_info(self, results: InstrumentationResults) -> ModelInfo:
         """Build ModelInfo from results."""
@@ -873,9 +913,10 @@ class ReportBuilder:
             # Discard raw logits after use — not persisted to report JSON; frees memory.
             pf.logits = None
 
-        # When report_on_gpu=True, clear prompt-forward tensors after use to free GPU memory.
-        pf.hidden_states = None
-        pf.attentions = None
+        # Do not clear pf.hidden_states / pf.attentions here: when capture_mode is on_risk,
+        # build() may call _build_prompt_analysis again with store_sparse_heads_override=True
+        # after risk/flag evaluation; clearing here would drop sparse heads/layer data for that rebuild.
+        # Clearing is done in build() after the on_risk rebuild path (if any).
 
         return PromptAnalysis(
             layers=layers,

@@ -24,6 +24,7 @@ import torch
 from CoreVital.config import Config
 from CoreVital.instrumentation.collector import InstrumentationCollector, InstrumentationResults
 from CoreVital.instrumentation.step_processor import StepSummary
+from CoreVital.instrumentation.summaries import compute_prompt_surprisal
 from CoreVital.reporting.report_builder import ReportBuilder
 from CoreVital.reporting.schema import Report
 from CoreVital.utils.serialization import serialize_report_to_json
@@ -227,6 +228,18 @@ class TestMockCausalLMInstrumentation:
         collector.model_bundle = mock_model_bundle
         results = collector.run("On-risk trigger test")
 
+        # Compute expected surprisals before build() (build clears pf.logits after first _build_prompt_analysis)
+        expected_surprisals: list = []
+        if (
+            results.prompt_forward is not None
+            and results.prompt_forward.logits is not None
+            and results.prompt_forward.prompt_token_ids is not None
+        ):
+            expected_surprisals = compute_prompt_surprisal(
+                results.prompt_forward.logits,
+                results.prompt_forward.prompt_token_ids,
+            )
+
         builder = ReportBuilder(config)
         report = builder.build(results, "On-risk trigger test")
 
@@ -234,6 +247,12 @@ class TestMockCausalLMInstrumentation:
         # F2.3: when on_risk triggers, full layers are attached
         first_step = report.timeline[0]
         assert len(first_step.layers) > 0, "on_risk trigger should attach full timeline layers"
+        # Rebuilt prompt_analysis should have layers and preserved prompt_surprisals (not dropped on rebuild)
+        assert report.prompt_analysis is not None, "on_risk should attach prompt_analysis"
+        assert len(report.prompt_analysis.layers) > 0, "on_risk rebuild should include layers"
+        assert report.prompt_analysis.prompt_surprisals == expected_surprisals, (
+            "on_risk rebuild must preserve prompt_surprisals from first build (logits cleared after first build)"
+        )
 
     def test_report_builder_rag_context_in_extensions(self, mock_model_bundle):
         """When config.rag_context is set, report.extensions['rag'] should contain RAGContext data (Foundation F3)."""
