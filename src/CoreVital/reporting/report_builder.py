@@ -242,7 +242,7 @@ class ReportBuilder:
                 if hasattr(step, "_last_layer_hidden_vec"):
                     step._last_layer_hidden_vec = None
 
-            # Assemble final Report (tracked as child of report_build)
+            # Assemble final Report (tracked as child of report_build) — op limited to Report() only
             with _op("assemble Report"):
                 report = Report(
                     schema_version="0.4.0",
@@ -260,98 +260,104 @@ class ReportBuilder:
                     health_flags=health_flags,
                 )
 
-                # RAG context (Foundation F3): store in extensions when provided via CLI/API
-                rag_dict = getattr(self.config, "rag_context", None)
-                if rag_dict is not None:
-                    try:
-                        report.extensions["rag"] = RAGContext(**rag_dict).model_dump()
-                    except Exception as e:
-                        logger.warning(f"Invalid RAG context, skipping: {e}")
-
-                # Phase-2: compound signals (Issue 6) — after timeline, before risk
-                compound_signals: List[CompoundSignal] = []
+            # RAG context (Foundation F3): store in extensions when provided via CLI/API
+            rag_dict = getattr(self.config, "rag_context", None)
+            if rag_dict is not None:
                 try:
-                    basin_scores: Optional[List[List[float]]] = None
-                    if prompt_analysis and prompt_analysis.layers:
-                        basin_scores = [lyr.basin_scores for lyr in prompt_analysis.layers]
-                    compound_signals = detect_compound_signals(
-                        timeline,
-                        layers_by_step=timeline_layers_for_flags,
-                        basin_scores=basin_scores,
-                    )
-                    report.extensions["compound_signals"] = [
-                        {
-                            "name": s.name,
-                            "description": s.description,
-                            "severity": s.severity,
-                            "evidence": s.evidence,
-                        }
-                        for s in compound_signals
-                    ]
+                    report.extensions["rag"] = RAGContext(**rag_dict).model_dump()
                 except Exception as e:
-                    logger.warning(f"Compound signal detection failed, skipping: {e}")
+                    logger.warning(f"Invalid RAG context, skipping: {e}")
 
-                # Phase-2: risk score and layer blame (always computed when health_flags exist)
-                risk_score = 0.0
-                if health_flags is not None:
-                    try:
-                        # New composite score from timeline + compound signals; fallback to legacy if timeline is None
-                        risk_score, risk_factors = compute_risk_score(
-                            health_flags,
-                            summary,
-                            timeline=timeline,
-                            layers_by_step=timeline_layers_for_flags,
-                            compound_signals=compound_signals if compound_signals else None,
-                        )
-                        blamed_layers = compute_layer_blame(timeline_layers_for_flags)
-                        blamed_layers_flat = compute_layer_blame_flat(timeline_layers_for_flags)
-                        report.extensions["risk"] = {
-                            "risk_score": risk_score,
-                            "risk_factors": risk_factors,
-                            "blamed_layers": blamed_layers,
-                            "blamed_layers_flat": blamed_layers_flat,
-                        }
-                        if hasattr(self, "_last_collapse_detail") and self._last_collapse_detail:
-                            report.extensions["risk"]["attention_collapse_detail"] = self._last_collapse_detail
-                    except Exception as e:
-                        logger.warning(f"Risk computation failed, skipping: {e}")
-
-                # F2.3 on_risk: when risk or any health flag triggers, attach full layer data to report
-                capture_mode = getattr(self.config.capture, "capture_mode", "full")
-                risk_threshold = getattr(self.config.capture, "risk_threshold", 0.7)
-                any_health_flag_set = health_flags is not None and (
-                    health_flags.nan_detected
-                    or health_flags.inf_detected
-                    or health_flags.attention_collapse_detected
-                    or health_flags.repetition_loop_detected
-                    or health_flags.mid_layer_anomaly_detected
-                    or (health_flags.high_entropy_steps > 0)
+            # Phase-2: compound signals (Issue 6) — after timeline, before risk
+            compound_signals: List[CompoundSignal] = []
+            try:
+                basin_scores: Optional[List[List[float]]] = None
+                if prompt_analysis and prompt_analysis.layers:
+                    basin_scores = [lyr.basin_scores for lyr in prompt_analysis.layers]
+                compound_signals = detect_compound_signals(
+                    timeline,
+                    layers_by_step=timeline_layers_for_flags,
+                    basin_scores=basin_scores,
                 )
-                if (
-                    capture_mode == "on_risk"
-                    and (risk_score >= risk_threshold or any_health_flag_set)
-                    and len(timeline_layers_for_flags) == len(report.timeline)
-                ):
-                    # Attach full layers to timeline (already computed in timeline_layers_for_flags)
-                    report.timeline = [
-                        step.model_copy(update={"layers": timeline_layers_for_flags[i]})
-                        for i, step in enumerate(report.timeline)
-                    ]
-                    # Rebuild prompt_analysis with sparse heads included (pf.logits already cleared
-                    # in first build, so preserve prompt_surprisals from initial prompt_analysis)
-                    full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
-                    if full_prompt_analysis is not None:
-                        if report.prompt_analysis is not None:
-                            full_prompt_analysis = full_prompt_analysis.model_copy(
-                                update={"prompt_surprisals": report.prompt_analysis.prompt_surprisals}
-                            )
-                        report.prompt_analysis = full_prompt_analysis
-                    logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
-                    # Clear prompt tensors now; no further _build_prompt_analysis. Reduces peak GPU use.
-                    pf = getattr(results, "prompt_forward", None)
-                    if pf is not None:
-                        pf.hidden_states = None
-                        pf.attentions = None
+                report.extensions["compound_signals"] = [
+                    {
+                        "name": s.name,
+                        "description": s.description,
+                        "severity": s.severity,
+                        "evidence": s.evidence,
+                    }
+                    for s in compound_signals
+                ]
+            except Exception as e:
+                logger.warning(f"Compound signal detection failed, skipping: {e}")
+
+            # Phase-2: risk score and layer blame (always computed when health_flags exist)
+            risk_score = 0.0
+            if health_flags is not None:
+                try:
+                    # New composite score from timeline + compound signals; fallback to legacy if timeline is None
+                    risk_score, risk_factors = compute_risk_score(
+                        health_flags,
+                        summary,
+                        timeline=timeline,
+                        layers_by_step=timeline_layers_for_flags,
+                        compound_signals=compound_signals if compound_signals else None,
+                    )
+                    blamed_layers = compute_layer_blame(timeline_layers_for_flags)
+                    blamed_layers_flat = compute_layer_blame_flat(timeline_layers_for_flags)
+                    report.extensions["risk"] = {
+                        "risk_score": risk_score,
+                        "risk_factors": risk_factors,
+                        "blamed_layers": blamed_layers,
+                        "blamed_layers_flat": blamed_layers_flat,
+                    }
+                    if hasattr(self, "_last_collapse_detail") and self._last_collapse_detail:
+                        report.extensions["risk"]["attention_collapse_detail"] = self._last_collapse_detail
+                except Exception as e:
+                    logger.warning(f"Risk computation failed, skipping: {e}")
+
+            # F2.3 on_risk: when risk or any health flag triggers, attach full layer data to report
+            capture_mode = getattr(self.config.capture, "capture_mode", "full")
+            risk_threshold = getattr(self.config.capture, "risk_threshold", 0.7)
+            any_health_flag_set = health_flags is not None and (
+                health_flags.nan_detected
+                or health_flags.inf_detected
+                or health_flags.attention_collapse_detected
+                or health_flags.repetition_loop_detected
+                or health_flags.mid_layer_anomaly_detected
+                or (health_flags.high_entropy_steps > 0)
+            )
+            if (
+                capture_mode == "on_risk"
+                and (risk_score >= risk_threshold or any_health_flag_set)
+                and len(timeline_layers_for_flags) == len(report.timeline)
+            ):
+                # Attach full layers to timeline (already computed in timeline_layers_for_flags)
+                report.timeline = [
+                    step.model_copy(update={"layers": timeline_layers_for_flags[i]})
+                    for i, step in enumerate(report.timeline)
+                ]
+                # Rebuild prompt_analysis with sparse heads included (pf.logits already cleared
+                # in first build, so preserve prompt_surprisals from initial prompt_analysis)
+                full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
+                if full_prompt_analysis is not None:
+                    if report.prompt_analysis is not None:
+                        full_prompt_analysis = full_prompt_analysis.model_copy(
+                            update={"prompt_surprisals": report.prompt_analysis.prompt_surprisals}
+                        )
+                    report.prompt_analysis = full_prompt_analysis
+                logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
+                # Clear prompt tensors now; no further _build_prompt_analysis. Reduces peak GPU use.
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
+            elif capture_mode == "on_risk":
+                # on_risk but condition not met; no second build; clear prompt tensors now
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
 
             # Phase-4: calibration divergence scoring (Issue 33)
             if self.config.calibration_profile:
