@@ -341,12 +341,17 @@ class ReportBuilder:
                     # in first build, so preserve prompt_surprisals from initial prompt_analysis)
                     full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
                     if full_prompt_analysis is not None:
-                        if report.prompt_analysis and report.prompt_analysis.prompt_surprisals:
+                        if report.prompt_analysis is not None:
                             full_prompt_analysis = full_prompt_analysis.model_copy(
                                 update={"prompt_surprisals": report.prompt_analysis.prompt_surprisals}
                             )
                         report.prompt_analysis = full_prompt_analysis
                     logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
+                    # Clear prompt tensors now; no further _build_prompt_analysis. Reduces peak GPU use.
+                    pf = getattr(results, "prompt_forward", None)
+                    if pf is not None:
+                        pf.hidden_states = None
+                        pf.attentions = None
 
             # Phase-4: calibration divergence scoring (Issue 33)
             if self.config.calibration_profile:
