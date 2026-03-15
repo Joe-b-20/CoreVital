@@ -217,6 +217,14 @@ class ReportBuilder:
             # Build prompt analysis (Phase-1b)
             with _op("_build_prompt_analysis"):
                 prompt_analysis = self._build_prompt_analysis(results)
+            # When not on_risk, no second _build_prompt_analysis will run — clear prompt tensors
+            # now to reduce peak GPU memory; finally block remains as safety net.
+            capture_mode = getattr(self.config.capture, "capture_mode", "full")
+            if capture_mode != "on_risk":
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
 
             # Build health flags (Phase-1c)
             # Transient buffer lifecycle: allocate → consume → kill, all inside this method
@@ -228,6 +236,11 @@ class ReportBuilder:
                     timeline_layers_override=timeline_layers_for_flags,
                     profile=profile,
                 )
+            # Consumed _last_layer_hidden_vec from timeline steps; clear so we don't retain
+            # one tensor per step (GPU when report_on_gpu) for the lifetime of results.
+            for step in results.timeline:
+                if hasattr(step, "_last_layer_hidden_vec"):
+                    step._last_layer_hidden_vec = None
 
             # Assemble final Report (tracked as child of report_build)
             with _op("assemble Report"):

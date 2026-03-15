@@ -5,7 +5,8 @@
 # 1. Normalizes shapes into a uniform contract (NormalizedStepPayload)
 # 2. Computes all summary functions (logits, attention, hidden state)
 # 3. Returns StepSummary (scalars + one small 1D vector per step for repetition buffer)
-# 4. Discards all raw full tensors; no large or GPU tensors retained past process_step
+# 4. Discards all raw full tensors; one small 1D vector per step may be retained on the
+#    payload device (CPU or GPU when report_on_gpu) until report_builder consumes and clears it.
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
