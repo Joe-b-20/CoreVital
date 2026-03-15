@@ -214,243 +214,243 @@ class ReportBuilder:
             with _op("convert warnings"):
                 warnings = [Warning(code=w["code"], message=w["message"]) for w in results.warnings]
 
-                # Build prompt analysis (Phase-1b)
-                with _op("_build_prompt_analysis"):
-                    prompt_analysis = self._build_prompt_analysis(results)
-                # When not on_risk, no second _build_prompt_analysis will run — clear prompt tensors
-                # now to reduce peak GPU memory; finally block remains as safety net.
-                capture_mode = getattr(self.config.capture, "capture_mode", "full")
-                if capture_mode != "on_risk":
-                    pf = getattr(results, "prompt_forward", None)
-                    if pf is not None:
-                        pf.hidden_states = None
-                        pf.attentions = None
+            # Build prompt analysis (Phase-1b)
+            with _op("_build_prompt_analysis"):
+                prompt_analysis = self._build_prompt_analysis(results)
+            # When not on_risk, no second _build_prompt_analysis will run — clear prompt tensors
+            # now to reduce peak GPU memory; finally block remains as safety net.
+            capture_mode = getattr(self.config.capture, "capture_mode", "full")
+            if capture_mode != "on_risk":
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
 
-                # Build health flags (Phase-1c)
-                # Transient buffer lifecycle: allocate → consume → kill, all inside this method
-                # When capture_mode is summary/on_risk, use timeline_layers_for_flags (not stored in report)
-                with _op("_build_health_flags"):
-                    health_flags = self._build_health_flags(
-                        results,
-                        timeline,
-                        timeline_layers_override=timeline_layers_for_flags,
-                        profile=profile,
-                    )
-                # Consumed _last_layer_hidden_vec from timeline steps; clear so we don't retain
-                # one tensor per step (GPU when report_on_gpu) for the lifetime of results.
-                for step in results.timeline:
-                    if hasattr(step, "_last_layer_hidden_vec"):
-                        step._last_layer_hidden_vec = None
-
-                # Assemble final Report (tracked as child of report_build) — op limited to Report() only
-                with _op("assemble Report"):
-                    report = Report(
-                        schema_version="0.4.0",
-                        trace_id=trace_id,
-                        created_at_utc=created_at,
-                        model=model_info,
-                        run_config=run_config,
-                        prompt=prompt_info,
-                        generated=generated_info,
-                        timeline=timeline,
-                        summary=summary,
-                        warnings=warnings,
-                        encoder_layers=encoder_layers,
-                        prompt_analysis=prompt_analysis,
-                        health_flags=health_flags,
-                    )
-
-                # RAG context (Foundation F3): store in extensions when provided via CLI/API
-                rag_dict = getattr(self.config, "rag_context", None)
-                if rag_dict is not None:
-                    try:
-                        report.extensions["rag"] = RAGContext(**rag_dict).model_dump()
-                    except Exception as e:
-                        logger.warning(f"Invalid RAG context, skipping: {e}")
-
-                # Phase-2: compound signals (Issue 6) — after timeline, before risk
-                compound_signals: List[CompoundSignal] = []
-                try:
-                    basin_scores: Optional[List[List[float]]] = None
-                    if prompt_analysis and prompt_analysis.layers:
-                        basin_scores = [lyr.basin_scores for lyr in prompt_analysis.layers]
-                    compound_signals = detect_compound_signals(
-                        timeline,
-                        layers_by_step=timeline_layers_for_flags,
-                        basin_scores=basin_scores,
-                    )
-                    report.extensions["compound_signals"] = [
-                        {
-                            "name": s.name,
-                            "description": s.description,
-                            "severity": s.severity,
-                            "evidence": s.evidence,
-                        }
-                        for s in compound_signals
-                    ]
-                except Exception as e:
-                    logger.warning(f"Compound signal detection failed, skipping: {e}")
-
-                # Phase-2: risk score and layer blame (always computed when health_flags exist)
-                risk_score = 0.0
-                if health_flags is not None:
-                    try:
-                        # New composite score from timeline + compound signals; fallback to legacy if timeline is None
-                        risk_score, risk_factors = compute_risk_score(
-                            health_flags,
-                            summary,
-                            timeline=timeline,
-                            layers_by_step=timeline_layers_for_flags,
-                            compound_signals=compound_signals if compound_signals else None,
-                        )
-                        blamed_layers = compute_layer_blame(timeline_layers_for_flags)
-                        blamed_layers_flat = compute_layer_blame_flat(timeline_layers_for_flags)
-                        report.extensions["risk"] = {
-                            "risk_score": risk_score,
-                            "risk_factors": risk_factors,
-                            "blamed_layers": blamed_layers,
-                            "blamed_layers_flat": blamed_layers_flat,
-                        }
-                        if hasattr(self, "_last_collapse_detail") and self._last_collapse_detail:
-                            report.extensions["risk"]["attention_collapse_detail"] = self._last_collapse_detail
-                    except Exception as e:
-                        logger.warning(f"Risk computation failed, skipping: {e}")
-
-                # F2.3 on_risk: when risk or any health flag triggers, attach full layer data to report
-                capture_mode = getattr(self.config.capture, "capture_mode", "full")
-                risk_threshold = getattr(self.config.capture, "risk_threshold", 0.7)
-                any_health_flag_set = health_flags is not None and (
-                    health_flags.nan_detected
-                    or health_flags.inf_detected
-                    or health_flags.attention_collapse_detected
-                    or health_flags.repetition_loop_detected
-                    or health_flags.mid_layer_anomaly_detected
-                    or (health_flags.high_entropy_steps > 0)
+            # Build health flags (Phase-1c)
+            # Transient buffer lifecycle: allocate → consume → kill, all inside this method
+            # When capture_mode is summary/on_risk, use timeline_layers_for_flags (not stored in report)
+            with _op("_build_health_flags"):
+                health_flags = self._build_health_flags(
+                    results,
+                    timeline,
+                    timeline_layers_override=timeline_layers_for_flags,
+                    profile=profile,
                 )
-                if (
-                    capture_mode == "on_risk"
-                    and (risk_score >= risk_threshold or any_health_flag_set)
-                    and len(timeline_layers_for_flags) == len(report.timeline)
-                ):
-                    # Attach full layers to timeline (already computed in timeline_layers_for_flags)
-                    report.timeline = [
-                        step.model_copy(update={"layers": timeline_layers_for_flags[i]})
-                        for i, step in enumerate(report.timeline)
-                    ]
-                    # Rebuild prompt_analysis with sparse heads included (pf.logits already cleared
-                    # in first build, so preserve prompt_surprisals from initial prompt_analysis)
-                    full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
-                    if full_prompt_analysis is not None:
-                        if report.prompt_analysis is not None:
-                            full_prompt_analysis = full_prompt_analysis.model_copy(
-                                update={"prompt_surprisals": report.prompt_analysis.prompt_surprisals}
-                            )
-                        report.prompt_analysis = full_prompt_analysis
-                    logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
-                    # Clear prompt tensors now; no further _build_prompt_analysis. Reduces peak GPU use.
-                    pf = getattr(results, "prompt_forward", None)
-                    if pf is not None:
-                        pf.hidden_states = None
-                        pf.attentions = None
-                elif capture_mode == "on_risk":
-                    # on_risk but condition not met; no second build; clear prompt tensors now
-                    pf = getattr(results, "prompt_forward", None)
-                    if pf is not None:
-                        pf.hidden_states = None
-                        pf.attentions = None
+            # Consumed _last_layer_hidden_vec from timeline steps; clear so we don't retain
+            # one tensor per step (GPU when report_on_gpu) for the lifetime of results.
+            for step in results.timeline:
+                if hasattr(step, "_last_layer_hidden_vec"):
+                    step._last_layer_hidden_vec = None
 
-                # Phase-4: calibration divergence scoring (Issue 33)
-                if self.config.calibration_profile:
-                    try:
-                        from CoreVital.calibration import CalibrationProfile, compute_divergence_score
+            # Assemble final Report (tracked as child of report_build) — op limited to Report() only
+            with _op("assemble Report"):
+                report = Report(
+                    schema_version="0.4.0",
+                    trace_id=trace_id,
+                    created_at_utc=created_at,
+                    model=model_info,
+                    run_config=run_config,
+                    prompt=prompt_info,
+                    generated=generated_info,
+                    timeline=timeline,
+                    summary=summary,
+                    warnings=warnings,
+                    encoder_layers=encoder_layers,
+                    prompt_analysis=prompt_analysis,
+                    health_flags=health_flags,
+                )
 
-                        cal_path = Path(self.config.calibration_profile)
-                        if cal_path.exists():
-                            cal_profile = CalibrationProfile.load(cal_path)
-                            trace_dict = report.model_dump()
-                            div_score, div_anomalies = compute_divergence_score(trace_dict, cal_profile)
-                            report.extensions["calibration"] = {
-                                "divergence_score": div_score,
-                                "anomalies": div_anomalies,
-                                "baseline_model_id": cal_profile.model_id,
-                                "baseline_num_runs": cal_profile.num_runs,
-                            }
-                        else:
-                            logger.warning(f"Calibration profile not found at {cal_path}, skipping divergence scoring")
-                    except Exception as e:
-                        logger.warning(f"Calibration divergence scoring failed, skipping: {e}")
-
-                # Phase-4.3: fingerprint v2 (25-element vector + prompt hash) for every report
+            # RAG context (Foundation F3): store in extensions when provided via CLI/API
+            rag_dict = getattr(self.config, "rag_context", None)
+            if rag_dict is not None:
                 try:
-                    hf = health_flags if health_flags is not None else HealthFlags()
-                    vec = compute_fingerprint_vector(
-                        timeline,
+                    report.extensions["rag"] = RAGContext(**rag_dict).model_dump()
+                except Exception as e:
+                    logger.warning(f"Invalid RAG context, skipping: {e}")
+
+            # Phase-2: compound signals (Issue 6) — after timeline, before risk
+            compound_signals: List[CompoundSignal] = []
+            try:
+                basin_scores: Optional[List[List[float]]] = None
+                if prompt_analysis and prompt_analysis.layers:
+                    basin_scores = [lyr.basin_scores for lyr in prompt_analysis.layers]
+                compound_signals = detect_compound_signals(
+                    timeline,
+                    layers_by_step=timeline_layers_for_flags,
+                    basin_scores=basin_scores,
+                )
+                report.extensions["compound_signals"] = [
+                    {
+                        "name": s.name,
+                        "description": s.description,
+                        "severity": s.severity,
+                        "evidence": s.evidence,
+                    }
+                    for s in compound_signals
+                ]
+            except Exception as e:
+                logger.warning(f"Compound signal detection failed, skipping: {e}")
+
+            # Phase-2: risk score and layer blame (always computed when health_flags exist)
+            risk_score = 0.0
+            if health_flags is not None:
+                try:
+                    # New composite score from timeline + compound signals; fallback to legacy if timeline is None
+                    risk_score, risk_factors = compute_risk_score(
+                        health_flags,
                         summary,
-                        hf,
-                        risk_score,
+                        timeline=timeline,
                         layers_by_step=timeline_layers_for_flags,
-                    )
-                    prompt_hash = compute_prompt_hash(prompt, model_info.hf_id)
-                    report.extensions["fingerprint"] = {
-                        "vector": vec,
-                        "prompt_hash": prompt_hash,
-                        "version": FINGERPRINT_VERSION,
-                    }
-                except Exception as e:
-                    logger.warning(f"Fingerprint computation failed, skipping: {e}")
-
-                # Phase-2.5: early warning (failure_risk, warning_signals) from timeline + health_flags
-                try:
-                    hf_ew = health_flags if health_flags is not None else HealthFlags()
-                    ew_entropy_threshold = 4.0
-                    if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
-                        ew_entropy_threshold = float(profile.high_entropy_threshold_bits)
-                    failure_risk, warning_signals = compute_early_warning(
-                        timeline,
-                        hf_ew,
-                        high_entropy_threshold=ew_entropy_threshold,
-                    )
-                    report.extensions["early_warning"] = {
-                        "failure_risk": failure_risk,
-                        "warning_signals": warning_signals,
-                    }
-                except Exception as e:
-                    logger.warning(f"Early warning computation failed, skipping: {e}")
-
-                # Phase-2.3: data-specific narrative (Issue 8)
-                try:
-                    hf_n = health_flags if health_flags is not None else HealthFlags()
-                    risk_ext = report.extensions.get("risk") or {}
-                    ew_ext = report.extensions.get("early_warning") or {}
-                    summary_text = build_narrative(
-                        hf_n,
-                        risk_ext.get("risk_score", 0.0),
-                        risk_ext.get("risk_factors", []),
-                        risk_ext.get("blamed_layers", []),
-                        ew_ext.get("warning_signals", []),
-                        timeline,
                         compound_signals=compound_signals if compound_signals else None,
-                        summary=summary,
                     )
-                    report.extensions["narrative"] = {"summary": summary_text}
+                    blamed_layers = compute_layer_blame(timeline_layers_for_flags)
+                    blamed_layers_flat = compute_layer_blame_flat(timeline_layers_for_flags)
+                    report.extensions["risk"] = {
+                        "risk_score": risk_score,
+                        "risk_factors": risk_factors,
+                        "blamed_layers": blamed_layers,
+                        "blamed_layers_flat": blamed_layers_flat,
+                    }
+                    if hasattr(self, "_last_collapse_detail") and self._last_collapse_detail:
+                        report.extensions["risk"]["attention_collapse_detail"] = self._last_collapse_detail
                 except Exception as e:
-                    logger.warning(f"Narrative build failed, skipping: {e}")
+                    logger.warning(f"Risk computation failed, skipping: {e}")
 
-                # Phase-5: metric consistency validation (Issue 15) — debug mode only
-                if logger.isEnabledFor(10):  # logging.DEBUG == 10
-                    try:
-                        consistency_warnings = validate_metric_consistency_and_log(report)
-                        if consistency_warnings:
-                            report.extensions["metric_consistency"] = {
-                                "warnings": consistency_warnings,
-                                "count": len(consistency_warnings),
-                            }
-                    except Exception as e:
-                        logger.debug(f"Metric consistency validation failed: {e}")
+            # F2.3 on_risk: when risk or any health flag triggers, attach full layer data to report
+            capture_mode = getattr(self.config.capture, "capture_mode", "full")
+            risk_threshold = getattr(self.config.capture, "risk_threshold", 0.7)
+            any_health_flag_set = health_flags is not None and (
+                health_flags.nan_detected
+                or health_flags.inf_detected
+                or health_flags.attention_collapse_detected
+                or health_flags.repetition_loop_detected
+                or health_flags.mid_layer_anomaly_detected
+                or (health_flags.high_entropy_steps > 0)
+            )
+            if (
+                capture_mode == "on_risk"
+                and (risk_score >= risk_threshold or any_health_flag_set)
+                and len(timeline_layers_for_flags) == len(report.timeline)
+            ):
+                # Attach full layers to timeline (already computed in timeline_layers_for_flags)
+                report.timeline = [
+                    step.model_copy(update={"layers": timeline_layers_for_flags[i]})
+                    for i, step in enumerate(report.timeline)
+                ]
+                # Rebuild prompt_analysis with sparse heads included (pf.logits already cleared
+                # in first build, so preserve prompt_surprisals from initial prompt_analysis)
+                full_prompt_analysis = self._build_prompt_analysis(results, store_sparse_heads_override=True)
+                if full_prompt_analysis is not None:
+                    if report.prompt_analysis is not None:
+                        full_prompt_analysis = full_prompt_analysis.model_copy(
+                            update={"prompt_surprisals": report.prompt_analysis.prompt_surprisals}
+                        )
+                    report.prompt_analysis = full_prompt_analysis
+                logger.debug("on_risk triggered: full timeline layers and prompt_analysis attached")
+                # Clear prompt tensors now; no further _build_prompt_analysis. Reduces peak GPU use.
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
+            elif capture_mode == "on_risk":
+                # on_risk but condition not met; no second build; clear prompt tensors now
+                pf = getattr(results, "prompt_forward", None)
+                if pf is not None:
+                    pf.hidden_states = None
+                    pf.attentions = None
 
-                # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
-                logger.debug(f"Report built: {len(timeline)} timeline steps")
-                return report
+            # Phase-4: calibration divergence scoring (Issue 33)
+            if self.config.calibration_profile:
+                try:
+                    from CoreVital.calibration import CalibrationProfile, compute_divergence_score
+
+                    cal_path = Path(self.config.calibration_profile)
+                    if cal_path.exists():
+                        cal_profile = CalibrationProfile.load(cal_path)
+                        trace_dict = report.model_dump()
+                        div_score, div_anomalies = compute_divergence_score(trace_dict, cal_profile)
+                        report.extensions["calibration"] = {
+                            "divergence_score": div_score,
+                            "anomalies": div_anomalies,
+                            "baseline_model_id": cal_profile.model_id,
+                            "baseline_num_runs": cal_profile.num_runs,
+                        }
+                    else:
+                        logger.warning(f"Calibration profile not found at {cal_path}, skipping divergence scoring")
+                except Exception as e:
+                    logger.warning(f"Calibration divergence scoring failed, skipping: {e}")
+
+            # Phase-4.3: fingerprint v2 (25-element vector + prompt hash) for every report
+            try:
+                hf = health_flags if health_flags is not None else HealthFlags()
+                vec = compute_fingerprint_vector(
+                    timeline,
+                    summary,
+                    hf,
+                    risk_score,
+                    layers_by_step=timeline_layers_for_flags,
+                )
+                prompt_hash = compute_prompt_hash(prompt, model_info.hf_id)
+                report.extensions["fingerprint"] = {
+                    "vector": vec,
+                    "prompt_hash": prompt_hash,
+                    "version": FINGERPRINT_VERSION,
+                }
+            except Exception as e:
+                logger.warning(f"Fingerprint computation failed, skipping: {e}")
+
+            # Phase-2.5: early warning (failure_risk, warning_signals) from timeline + health_flags
+            try:
+                hf_ew = health_flags if health_flags is not None else HealthFlags()
+                ew_entropy_threshold = 4.0
+                if profile is not None and hasattr(profile, "high_entropy_threshold_bits"):
+                    ew_entropy_threshold = float(profile.high_entropy_threshold_bits)
+                failure_risk, warning_signals = compute_early_warning(
+                    timeline,
+                    hf_ew,
+                    high_entropy_threshold=ew_entropy_threshold,
+                )
+                report.extensions["early_warning"] = {
+                    "failure_risk": failure_risk,
+                    "warning_signals": warning_signals,
+                }
+            except Exception as e:
+                logger.warning(f"Early warning computation failed, skipping: {e}")
+
+            # Phase-2.3: data-specific narrative (Issue 8)
+            try:
+                hf_n = health_flags if health_flags is not None else HealthFlags()
+                risk_ext = report.extensions.get("risk") or {}
+                ew_ext = report.extensions.get("early_warning") or {}
+                summary_text = build_narrative(
+                    hf_n,
+                    risk_ext.get("risk_score", 0.0),
+                    risk_ext.get("risk_factors", []),
+                    risk_ext.get("blamed_layers", []),
+                    ew_ext.get("warning_signals", []),
+                    timeline,
+                    compound_signals=compound_signals if compound_signals else None,
+                    summary=summary,
+                )
+                report.extensions["narrative"] = {"summary": summary_text}
+            except Exception as e:
+                logger.warning(f"Narrative build failed, skipping: {e}")
+
+            # Phase-5: metric consistency validation (Issue 15) — debug mode only
+            if logger.isEnabledFor(10):  # logging.DEBUG == 10
+                try:
+                    consistency_warnings = validate_metric_consistency_and_log(report)
+                    if consistency_warnings:
+                        report.extensions["metric_consistency"] = {
+                            "warnings": consistency_warnings,
+                            "count": len(consistency_warnings),
+                        }
+                except Exception as e:
+                    logger.debug(f"Metric consistency validation failed: {e}")
+
+            # Note: Performance extensions are injected by CLI into report.extensions before sink.write()
+            logger.debug(f"Report built: {len(timeline)} timeline steps")
+            return report
         finally:
             # Clear prompt-forward tensors once all prompt_analysis builds are done (or on any exit).
             # Ensures cleanup even if build() raises (e.g. in _build_health_flags); frees GPU when report_on_gpu.
