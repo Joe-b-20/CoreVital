@@ -337,11 +337,11 @@ def _extract_last_layer_vec(
         return None
     try:
         if last_layer.dim() == 3:
-            return last_layer[0, -1, :].detach()
+            return last_layer[0, -1, :].detach().clone()
         if last_layer.dim() == 2:
-            return last_layer[-1, :].detach()
+            return last_layer[-1, :].detach().clone()
         if last_layer.dim() == 1:
-            return last_layer.detach()
+            return last_layer.detach().clone()
     except Exception:
         pass
     return None
